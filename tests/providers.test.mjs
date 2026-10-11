@@ -43,7 +43,8 @@ const req = (body, signal) => new Request("http://localhost/api", { method: "POS
 const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aY1cAAAAASUVORK5CYII=";
 function configure(capability = "agent", model = "anthropic/test-model") {
   process.env.TICKETSTUB_RUNTIME_MODE = "live";
-  process.env.OPENROUTER_API_KEY = "offline-test-placeholder";
+  for (const c of ["RESEARCH", "AGENT", "ART"]) delete process.env[`TICKETSTUB_${c}_OPENROUTER_API_KEY`];
+  process.env[`TICKETSTUB_${capability.toUpperCase()}_OPENROUTER_API_KEY`] = "offline-test-placeholder";
   delete process.env.ANTHROPIC_API_KEY; delete process.env.OPENAI_API_KEY;
   process.env[`TICKETSTUB_${capability.toUpperCase()}_PROVIDER`] = "openrouter";
   process.env[`TICKETSTUB_${capability.toUpperCase()}_MODEL`] = model;
@@ -52,6 +53,7 @@ const textResponse = (text = "Confirmed.") => ({ model: "anthropic/test-model", 
 
 test("demo routes never dispatch with all provider keys and selections present", async () => {
   for (const c of ["agent", "research", "art"]) configure(c);
+  for (const c of ["RESEARCH", "AGENT", "ART"]) process.env[`TICKETSTUB_${c}_OPENROUTER_API_KEY`] = "offline-test-placeholder";
   delete process.env.TICKETSTUB_RUNTIME_MODE;
   globalThis.fetch = () => { assert.fail("demo attempted network"); };
   assert.equal(await generateText({ capability: "agent", prompt: "test", maxTokens: 10 }), undefined);
@@ -125,7 +127,7 @@ test("unsupported image model fails before generation, without simulated fallbac
 });
 
 for (const [key, value, code] of [
-  ["OPENROUTER_API_KEY", "", "missing_provider_key"],
+  ["TICKETSTUB_AGENT_OPENROUTER_API_KEY", "", "missing_provider_key"],
   ["TICKETSTUB_AGENT_MODEL", "", "invalid_model_configuration"],
   ["TICKETSTUB_AGENT_MODEL", "openrouter/auto", "invalid_model_configuration"],
   ["TICKETSTUB_AGENT_MODEL", "openai/test:online", "invalid_model_configuration"],
@@ -223,4 +225,40 @@ test("optional direct-provider paths still simulate without credentials", async 
   globalThis.fetch = () => { assert.fail("missing direct keys attempted network"); };
   assert.equal((await agent.POST(req({ event, message: "Hello?" }))).status, 204);
   assert.equal((await (await art.POST(req({ event }))).json()).provenance, "simulated");
+});
+
+
+test("each OpenRouter model uses only its paired capability key", async () => {
+  process.env.TICKETSTUB_RUNTIME_MODE = "live";
+  process.env.OPENROUTER_API_KEY = "offline-shared-key-must-not-be-used";
+  for (const c of ["research", "agent", "art"]) {
+    const prefix = `TICKETSTUB_${c.toUpperCase()}`;
+    process.env[`${prefix}_PROVIDER`] = "openrouter";
+    process.env[`${prefix}_MODEL`] = c === "art" ? "openai/test-image" : `anthropic/test-${c}`;
+    process.env[`${prefix}_OPENROUTER_API_KEY`] = `offline-${c}-key`;
+  }
+  const authorizations = [];
+  globalThis.fetch = async (url, init) => {
+    const body = init.body ? JSON.parse(init.body) : undefined;
+    const capability = url.includes("/images") ? "art" : body.model.endsWith("research") ? "research" : "agent";
+    assert.equal(init.headers.authorization, `Bearer offline-${capability}-key`);
+    authorizations.push(capability);
+    if (url.endsWith("/images/models")) return response({ data: [{ id: "openai/test-image", architecture: { output_modalities: ["image"] } }] });
+    if (url.endsWith("/images")) return response({ data: [{ b64_json: png, media_type: "image/png" }] });
+    return response(textResponse());
+  };
+  await generateText({ capability: "research", prompt: "test", maxTokens: 10 });
+  await generateText({ capability: "agent", prompt: "test", maxTokens: 10 });
+  await generateImage("test");
+  assert.deepEqual(authorizations, ["research", "agent", "art", "art"]);
+});
+
+for (const capability of ["research", "agent", "art"]) test(`${capability} never falls back to another model or shared key`, async () => {
+  configure(capability, capability === "art" ? "openai/test-image" : "anthropic/test-model");
+  process.env.OPENROUTER_API_KEY = "offline-shared-key";
+  for (const c of ["RESEARCH", "AGENT", "ART"]) process.env[`TICKETSTUB_${c}_OPENROUTER_API_KEY`] = "offline-other-key";
+  process.env[`TICKETSTUB_${capability.toUpperCase()}_OPENROUTER_API_KEY`] = " ";
+  globalThis.fetch = () => { assert.fail("missing paired key attempted network"); };
+  const operation = capability === "art" ? generateImage("test") : generateText({ capability, prompt: "test", maxTokens: 10 });
+  await assert.rejects(operation, e => e.code === "missing_provider_key");
 });

@@ -64,17 +64,20 @@ No live provider calls were made to validate this deployment fix.
 OpenRouter is an optional server-side route for OpenAI and Anthropic models.
 [Create an account](https://openrouter.ai/) and generate a key at
 [OpenRouter API keys](https://openrouter.ai/keys). Copy `.env.example` to
-`.env.local` in this repository root and fill in `OPENROUTER_API_KEY` locally.
+`.env.local` in this repository root and give each selected model a separate
+OpenRouter key using the capability-specific names below. A generic
+`OPENROUTER_API_KEY` is not used; a missing capability key fails instead of
+borrowing another model's key.
 For deployment, enter the same names in the hosting platform's **server
 Environment Variables / Secrets** settings. Never use `NEXT_PUBLIC_` names or
 commit `.env.local`. No direct OpenAI or Anthropic key is needed for a capability
 that selects OpenRouter.
 
-| Capability | Provider setting | Allowed values / default | OpenRouter model setting |
-| --- | --- | --- | --- |
-| Page fact extraction | `TICKETSTUB_RESEARCH_PROVIDER` | `anthropic` (default), `openrouter` | `TICKETSTUB_RESEARCH_MODEL` |
-| Agent chat | `TICKETSTUB_AGENT_PROVIDER` | `anthropic` (default), `openrouter` | `TICKETSTUB_AGENT_MODEL` |
-| Artwork | `TICKETSTUB_ART_PROVIDER` | `openai` (default), `openrouter` | `TICKETSTUB_ART_MODEL` |
+| Capability | Provider setting | Allowed values / default | OpenRouter model setting | OpenRouter key setting |
+| --- | --- | --- | --- | --- |
+| Page fact extraction | `TICKETSTUB_RESEARCH_PROVIDER` | `anthropic` (default), `openrouter` | `TICKETSTUB_RESEARCH_MODEL` | `TICKETSTUB_RESEARCH_OPENROUTER_API_KEY` |
+| Agent chat | `TICKETSTUB_AGENT_PROVIDER` | `anthropic` (default), `openrouter` | `TICKETSTUB_AGENT_MODEL` | `TICKETSTUB_AGENT_OPENROUTER_API_KEY` |
+| Artwork | `TICKETSTUB_ART_PROVIDER` | `openai` (default), `openrouter` | `TICKETSTUB_ART_MODEL` | `TICKETSTUB_ART_OPENROUTER_API_KEY` |
 
 For reviewed development with all three capabilities using OpenRouter:
 
@@ -86,8 +89,16 @@ TICKETSTUB_AGENT_PROVIDER=openrouter
 TICKETSTUB_AGENT_MODEL=openai/gpt-6.1-sol
 TICKETSTUB_ART_PROVIDER=openrouter
 TICKETSTUB_ART_MODEL=openai/gpt-image-2
-OPENROUTER_API_KEY=<set privately in .env.local or hosting secrets>
+TICKETSTUB_RESEARCH_OPENROUTER_API_KEY=<research model key>
+TICKETSTUB_AGENT_OPENROUTER_API_KEY=<agent model key>
+TICKETSTUB_ART_OPENROUTER_API_KEY=<image model key>
 ```
+
+Keys are paired with capability settings, so research and chat can use distinct
+keys even if they select the same model. When changing a model, update its paired
+key as needed. Existing setups using only `OPENROUTER_API_KEY` must migrate to
+the three capability-specific variables. Keys are not included in responses,
+usage metadata, logs, or browser bundles.
 
 These example IDs were listed by OpenRouter's public discovery APIs on
 2026-10-11 UTC; they are not proof of account access or a paid smoke test.

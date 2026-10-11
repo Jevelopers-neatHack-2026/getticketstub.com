@@ -26,7 +26,9 @@ jobs:
           SMOKE_BASE_URL: http://127.0.0.1:43121
           OPENAI_API_KEY: unused-preview-sentinel
           ANTHROPIC_API_KEY: unused-preview-sentinel
-          OPENROUTER_API_KEY: unused-preview-sentinel
+          TICKETSTUB_RESEARCH_OPENROUTER_API_KEY: unused-preview-sentinel
+          TICKETSTUB_AGENT_OPENROUTER_API_KEY: unused-preview-sentinel
+          TICKETSTUB_ART_OPENROUTER_API_KEY: unused-preview-sentinel
           TICKETSTUB_RESEARCH_PROVIDER: openrouter
           TICKETSTUB_AGENT_PROVIDER: openrouter
           TICKETSTUB_ART_PROVIDER: openrouter

@@ -33,7 +33,7 @@ function config(capability: Capability): Config | undefined {
   if (provider !== "openrouter" && provider !== (capability === "art" ? "openai" : "anthropic")) {
     throw new ProviderError("invalid_provider_configuration", 503);
   }
-  const key = process.env[provider === "openrouter" ? "OPENROUTER_API_KEY" : provider === "openai" ? "OPENAI_API_KEY" : "ANTHROPIC_API_KEY"]?.trim();
+  const key = process.env[provider === "openrouter" ? `${prefix}_OPENROUTER_API_KEY` : provider === "openai" ? "OPENAI_API_KEY" : "ANTHROPIC_API_KEY"]?.trim();
   if (!key) {
     if (provider === "openrouter") throw new ProviderError("missing_provider_key", 503);
     return undefined; // Retain the optional direct-provider prototype behavior.
