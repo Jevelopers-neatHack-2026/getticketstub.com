@@ -98,6 +98,7 @@ const server = spawn(process.execPath, [join(root, "node_modules/next/dist/bin/n
   cwd: root,
   env: {
     ...process.env,
+    TICKETSTUB_OPS_TELEMETRY: "off",
     NODE_ENV: "production",
     TICKETSTUB_ANALYTICS_ENV: "preview",
     TICKETSTUB_GA_MEASUREMENT_ID: MEASUREMENT_ID,
