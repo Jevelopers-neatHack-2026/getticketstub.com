@@ -9,11 +9,18 @@ jobs:
   build-and-smoke:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        # .nvmrc for development; 22 matches the Plus Launch runtime.
+        node: ['.nvmrc', '22']
+    name: build-and-smoke (node ${{ matrix.node }})
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version-file: .nvmrc
+          node-version-file: ${{ matrix.node == '.nvmrc' && '.nvmrc' || '' }}
+          node-version: ${{ matrix.node != '.nvmrc' && matrix.node || '' }}
           cache: npm
       - run: npm ci
       - run: npm run lint
