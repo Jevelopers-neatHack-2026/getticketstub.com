@@ -92,5 +92,14 @@
     "No data available"
   ],
   "ipFiltering": "not planned per owner",
-  "date": "2026-10-11"
+  "date": "2026-10-11",
+  "debugVerification": {
+    "preview": {
+      "field": "ep.debug_mode",
+      "value": "true"
+    },
+    "production": {
+      "debugRelatedFields": "absent"
+    }
+  }
 }
