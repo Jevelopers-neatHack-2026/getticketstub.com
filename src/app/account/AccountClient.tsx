@@ -12,6 +12,7 @@ import { MATERIALS, formatMoney } from "@/customer/studio/types";
 import type { Order } from "@/customer/pages/commerce";
 import { PageShell } from "@/customer/pages/ui";
 import { useMounted } from "@/customer/pages/useMounted";
+import { errorCode, flow } from "@/customer/flows/events";
 import s from "./account.module.css";
 
 const dateOf = (iso: string) => {
@@ -207,9 +208,21 @@ function ChangeEmail() {
   const [sent, setSent] = useState<{ email: string; devLink?: string } | null>(null);
   async function send() {
     const to = email.trim();
-    if (!EMAIL_RE.test(to)) return setError("That email doesn't look right. Check it and try again.");
+    if (!EMAIL_RE.test(to)) {
+      flow("account_action", { action: "change_email", result: "invalid" });
+      return setError("That email doesn't look right. Check it and try again.");
+    }
     setError("");
-    const r = await progress.run(() => api.changeEmail(to));
+    // a link sent, not an email changed: that happens when the link is opened
+    const r = await progress.run(() =>
+      api.changeEmail(to).then(
+        (res) => (flow("account_action", { action: "change_email", result: res.sandbox || res.devLink ? "sandbox" : "sent" }), res),
+        (e: unknown) => {
+          flow("account_action", { action: "change_email", result: "error", error_code: errorCode(e) });
+          throw e;
+        },
+      ),
+    );
     if (r) {
       setSent({ email: to, devLink: r.devLink });
       progress.reset();
@@ -272,7 +285,13 @@ function DeleteAccount({ email, onDone }: { email: string; onDone: () => void })
   const match = typed.trim().toLowerCase() === email.toLowerCase();
   async function go() {
     const done = await progress.run(async () => {
-      await api.deleteAccount(typed.trim());
+      try {
+        await api.deleteAccount(typed.trim());
+      } catch (e) {
+        flow("account_action", { action: "delete", result: "error", error_code: errorCode(e) });
+        throw e;
+      }
+      flow("account_action", { action: "delete", result: "done" });
       await refreshAccount();
       return true;
     });

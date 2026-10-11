@@ -173,3 +173,36 @@ export function hideSelection(stub: Stub, sel: Selectable): Stub {
 export function hiddenLabel(stub: Stub, key: string): string {
   return stub.event.facts.find((f) => f.id === key)?.label ?? key;
 }
+
+/** A committed studio change, in the analytics catalog's words. */
+export type EditChange = "edition" | "version_select" | "material" | "finish" | "font" | "title_color" | "foil" | "visibility" | "fact_kept" | "fact_correct" | "fact_confirm" | "fact_undo";
+
+/**
+ * What one committed edit changed, compared field by field (never the values). Art versions, photos, the note,
+ * friends and the tear are left out on purpose: their own outcome events report them (remix_result, photo_add,
+ * note_edit, friends_update, tear_complete), so the editor's save does not count them a second time.
+ */
+export function editChanges(prev: Stub, next: Stub): EditChange[] {
+  const out: EditChange[] = [];
+  const a = currentVersion(prev);
+  const b = currentVersion(next);
+  if (prev.currentVersionId !== next.currentVersionId) {
+    // a different edition is a style (restoring one from the history included); an existing version is a pick from the history;
+    // a brand-new version in the same edition is new art, which its remix result reports
+    if (a.edition !== b.edition) out.push("edition");
+    else if (prev.versions.some((v) => v.id === next.currentVersionId)) out.push("version_select");
+  }
+  if (prev.material !== next.material) out.push("material");
+  if (prev.finish !== next.finish) out.push("finish");
+  if (prev.personal.titleFont !== next.personal.titleFont) out.push("font");
+  if (prev.personal.titleColor !== next.personal.titleColor) out.push("title_color");
+  if (prev.personal.foilTitle !== next.personal.foilTitle) out.push("foil");
+  if (prev.personal.hiddenFields.join("|") !== next.personal.hiddenFields.join("|")) out.push("visibility");
+  const added = (next.corrections ?? []).slice((prev.corrections ?? []).length);
+  for (const c of added) out.push(c.kind === "undo" ? "fact_undo" : c.kind === "confirm" ? "fact_confirm" : "fact_correct");
+  if (!added.length) {
+    const keptBefore = new Map(prev.event.facts.map((f) => [f.id, !!f.kept]));
+    if (next.event.facts.some((f) => keptBefore.has(f.id) && keptBefore.get(f.id) !== !!f.kept)) out.push("fact_kept");
+  }
+  return out;
+}

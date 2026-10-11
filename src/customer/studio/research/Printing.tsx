@@ -14,6 +14,7 @@ import { PathTrack } from "@/customer/wayfinding/PathTrack";
 import { researchEvent } from "./client";
 import { factGroup, type FactGroup } from "../facts/corrections";
 import { GROUP_TITLE, whenLabel } from "../facts/FactsReview";
+import { clock, errorCode, flow, since } from "@/customer/flows/events";
 import styles from "./Printing.module.css";
 
 const MIN_MS = 2500;
@@ -105,10 +106,17 @@ export function Printing(props: {
   input: { url?: string; query?: string; event?: EventData };
   /** Id the finished stub will carry, so the preview prints the same number and art. */
   stubId?: string;
+  /** Which screen is printing (analytics only). */
+  entry?: "home" | "make" | "new_page";
+  /** A handed-in event is a demo unless the caller says it was picked from search (analytics only). */
+  picked?: boolean;
   onDone: (event: EventData) => void;
-  onError: (message: string) => void;
+  /** `error` is what research threw, for its bounded code; the message is already the person's copy. */
+  onError: (message: string, error?: unknown) => void;
 }) {
   const { input } = props;
+  const entry = props.entry ?? "new_page";
+  const source = input.event ? (props.picked ? "picked" : "demo") : input.url ? "link" : "query";
   const reduced = usePrefersReducedMotion();
   const [event, setEvent] = useState<EventData | undefined>(input.event);
   const [staggered, setShown] = useState(0);
@@ -137,6 +145,9 @@ export function Printing(props: {
   const startRef = useRef(0);
   const deadlineRef = useRef(0);
   const skipRef = useRef(false);
+  // the print's own clock for analytics, set once: a Strict Mode re-run of the effect must not restart it or report twice
+  const begunRef = useRef<number | null>(null);
+  const researchedAt = useRef<number | null>(null);
   const finishingRef = useRef(false);
   const feedRef = useRef<HTMLDivElement>(null);
   const schedule = useMemo(() => feedSchedule(props.stubId ?? input.url ?? input.query ?? "stub"), []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -145,6 +156,10 @@ export function Printing(props: {
   useEffect(() => {
     startRef.current = Date.now();
     finishingRef.current = false;
+    if (begunRef.current === null) {
+      begunRef.current = clock();
+      flow("creation_start", { entry, input_source: source });
+    }
     try {
       play("print", { schedule });
     } catch {
@@ -169,6 +184,8 @@ export function Printing(props: {
         ...ev,
         facts: ev.facts.map((f, i) => ({ ...f, kept: !!keptRef.current[keyOf(f, i)] })),
       };
+      // the reveal runs from when the facts were in hand (research done, or handed in) to the ink settling
+      flow("reveal_complete", { entry, skipped: skipRef.current, duration_ms: since(researchedAt.current ?? begunRef.current ?? clock()), fact_count: final.facts.length, kept_count: final.facts.filter((f) => f.kept).length });
       doneTimer = window.setTimeout(() => onDoneRef.current(final), reducedRef.current ? 0 : SETTLE_MS);
     };
 
@@ -197,7 +214,7 @@ export function Printing(props: {
         /* ignore */
       }
     };
-  }, [schedule]); // schedule is fixed for the life of the print
+  }, [schedule]); // eslint-disable-line react-hooks/exhaustive-deps -- schedule, entry and source are fixed for the life of the print
 
   // Feed the paper out in runs, in step with the printer's ticks. One feed: the blank paper and the
   // printed stub share it, so the stub never jumps back into the slot when the research lands.
@@ -214,27 +231,34 @@ export function Printing(props: {
   const query = input.query;
   const hasEvent = !!input.event;
   useEffect(() => {
-    if (hasEvent) return;
+    if (hasEvent) {
+      researchedAt.current ??= clock();
+      return;
+    }
     let cancelled = false;
+    const asked = clock();
     researchEvent({ url, query })
       .then((ev) => {
         if (cancelled) return;
+        researchedAt.current = clock();
+        flow("research_complete", { entry, input_source: url ? "link" : "query", result: "success", duration_ms: since(asked), fact_count: ev.facts.length });
         setKept(Object.fromEntries(ev.facts.map((f, i) => [keyOf(f, i), !!f.kept])));
         setEvent(ev);
       })
       .catch((err: unknown) => {
         if (cancelled) return;
+        flow("research_complete", { entry, input_source: url ? "link" : "query", result: "error", duration_ms: since(asked), error_code: errorCode(err) });
         try {
           stopPrint();
         } catch {
           /* ignore */
         }
-        onErrorRef.current(err instanceof Error && err.message ? err.message : "We couldn't read that link.");
+        onErrorRef.current(err instanceof Error && err.message ? err.message : "We couldn't read that link.", err);
       });
     return () => {
       cancelled = true;
     };
-  }, [url, query, hasEvent]);
+  }, [url, query, hasEvent]); // eslint-disable-line react-hooks/exhaustive-deps -- entry is fixed for the print
 
   // Stagger fact cards in as they arrive.
   const factCount = event?.facts.length ?? 0;
@@ -256,6 +280,7 @@ export function Printing(props: {
 
   const toggle = (k: string) => {
     const turningOn = !keptRef.current[k];
+    flow("reveal_fact_toggle", { kept: turningOn });
     setKept((m) => ({ ...m, [k]: !m[k] }));
     setTouched((m) => ({ ...m, [k]: true }));
     // The "Kept" stamp plays its own thunk; taking a line off is a quiet tap.
@@ -367,6 +392,7 @@ export function Printing(props: {
         <div className={styles.skip}>
           <TearLink
             onClick={() => {
+              if (!skipRef.current) flow("reveal_skip", { entry });
               skipRef.current = true;
             }}
           >

@@ -7,6 +7,7 @@ import { currentVersion, type Stub } from "@/customer/studio/types";
 import { PageShell, EmptyState, QrPlaceholder, StampLink, ui } from "@/customer/pages/ui";
 import { absoluteUrl, formatDate, memoryPath } from "@/customer/pages/share";
 import { useMounted } from "@/customer/pages/useMounted";
+import { flow } from "@/customer/flows/events";
 import s from "./wallet.module.css";
 
 type Provider = "apple" | "google";
@@ -97,11 +98,21 @@ export default function WalletClient({ id }: { id: string }) {
           </div>
 
           <div className={s.buttons}>
-            <PunchTabs label="Wallet" options={PROVIDERS} value={provider} onChange={setProvider} />
+            <PunchTabs
+              label="Wallet"
+              options={PROVIDERS}
+              value={provider}
+              onChange={(v) => {
+                if (v !== provider) flow("wallet_option", { provider: v });
+                setProvider(v);
+              }}
+            />
             <Stamp
               block
               onClick={() => {
                 setIssued(provider);
+                // a simulated pass: choosing a wallet is not a pass issued
+                flow("wallet_select", { provider, capability: "simulated" });
                 haptic([20]);
               }}
             >

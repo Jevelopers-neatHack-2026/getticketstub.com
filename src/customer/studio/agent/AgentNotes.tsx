@@ -16,6 +16,7 @@ import { CloseIcon } from "@/customer/desk/icons";
 import { addArtVersion, toggleKept } from "../editor/ops";
 import { FactQuestion } from "../facts/FactsReview";
 import { openQuestions } from "../facts/corrections";
+import { artOutcome, clock, errorCode, flow, since } from "@/customer/flows/events";
 import styles from "./AgentNotes.module.css";
 
 interface Answer {
@@ -91,13 +92,17 @@ export function AgentNotes({ stub, onChange, onAsk, onShowBack, variant, folded 
     if (busy) return;
     setBusy("art");
     play("remix");
+    flow("remix_request", { via: "note", vibe: "custom" });
+    const asked = clock();
     try {
       const art = await remixArt(stub, "moodier");
+      flow("remix_result", { via: "note", result: "success", ...artOutcome(art), duration_ms: since(asked) });
       onChange(addArtVersion(stub, art));
       play("success");
       haptic([18, 40, 28]);
       dismiss("art");
-    } catch {
+    } catch (e) {
+      flow("remix_result", { via: "note", result: "error", duration_ms: since(asked), error_code: errorCode(e) });
       play("close");
     } finally {
       setBusy(null);

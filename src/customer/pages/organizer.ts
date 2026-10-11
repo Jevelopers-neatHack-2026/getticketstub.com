@@ -117,3 +117,18 @@ Mei Chen,B04,Night Owls
 Kwame Mensah,B05,Night Owls
 Sofia Lindqvist,C01,Paperclip
 Arjun Mehta,C02,Paperclip`;
+
+/** What a parsed guest list amounts to, as counts only: never a header, a cell, a name or the file's name. */
+export function csvSummary(list: GuestList): { result: "parsed" | "empty" | "no_rows"; row_count: number; column_count: number } {
+  const column_count = Math.min(100, list.headers.length);
+  const row_count = Math.min(1000, list.rows.length);
+  if (list.headers.length === 0) return { result: "empty", row_count, column_count };
+  if (list.rows.length === 0) return { result: "no_rows", row_count, column_count };
+  return { result: "parsed", row_count, column_count };
+}
+
+/** Guests a mapping yields (rows with a name), and rows it drops for having none. */
+export function mappedCounts(list: GuestList, nameColumn: number): { row_count: number; missing_name_count: number } {
+  const named = list.rows.filter((r) => (r[nameColumn] ?? "").trim()).length;
+  return { row_count: Math.min(1000, list.rows.length), missing_name_count: Math.min(1000, list.rows.length - named) };
+}

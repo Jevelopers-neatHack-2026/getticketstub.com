@@ -2,8 +2,72 @@
 import type { ArtLayer, EventData, Stub } from "../types";
 import { currentVersion } from "../types";
 import { codeOf, messageFor } from "@/customer/feedback-messages/messages";
+import { track, type EventParams } from "@/customer/analytics/track";
 
 const READ_ERROR = "We couldn't read that link.";
+
+type Api = "research" | "art" | "agent";
+type ApiCall = EventParams<"api_call">;
+
+/** The coarse analytics class for a server error code. The code itself is never sent. */
+function errorClass(code: string | undefined, status: number): NonNullable<ApiCall["error_code"]> {
+  switch (code) {
+    case "art_limit":
+    case "rate_limited":
+    case "provider_rate_limited":
+      return "rate_limited";
+    case "missing_provider_key":
+    case "invalid_provider_configuration":
+    case "invalid_model_configuration":
+    case "unsupported_image_model":
+    case "provider_authentication_failed":
+      return "provider_config";
+    case "provider_unavailable":
+    case "provider_request_cancelled":
+    case "invalid_provider_response":
+    case "unsupported_provider_response":
+    case "invalid_image_response":
+    case "unsupported_provider_request":
+      return "provider";
+    case "bad_request":
+    case "bad_json":
+    case "too_large":
+      return "invalid_input";
+    case "unreadable_link":
+    case "demo_only":
+      return "unsupported_url";
+    case "bad_origin":
+    case "unauthorized":
+    case "forbidden":
+      return "unauthorized";
+    case "not_found":
+      return "not_found";
+  }
+  return status >= 500 ? "http_5xx" : status >= 400 ? "http_4xx" : "unknown";
+}
+
+const statusClass = (status: number): ApiCall["status_class"] => (status === 204 ? "204" : status < 300 ? "2xx" : status < 400 ? "3xx" : status < 500 ? "4xx" : "5xx");
+
+/** One client-observed API call: how it ended and how long the network round trip took. Never throws. */
+function reportCall(api: Api, started: number, outcome: { status?: number; result: ApiCall["result"]; code?: string; mode?: ApiCall["mode"]; parse?: boolean }): void {
+  const params: ApiCall = { api, result: outcome.result, duration_ms: Math.max(0, Math.min(3_600_000, Math.round(performance.now() - started))), attempt: 1 };
+  if (outcome.status === undefined) {
+    params.status_class = "network";
+    params.error_code = "network";
+  } else {
+    params.status_class = statusClass(outcome.status);
+    if (outcome.parse) params.error_code = "parse";
+    else if (outcome.result === "failure" || outcome.code) params.error_code = errorClass(outcome.code, outcome.status);
+  }
+  if (outcome.mode) params.mode = outcome.mode;
+  track("api_call", params);
+}
+
+const serverCode = (data: unknown): string | undefined => {
+  const e = (data as { error?: unknown } | null)?.error;
+  const code = e && typeof e === "object" ? (e as { code?: unknown }).code : undefined;
+  return typeof code === "string" ? code : undefined;
+};
 
 /** The words to show for a caught failure: our own copy (it carries a catalog code), never a raw runtime message. */
 export function failureCopy(e: unknown, fallback: string): string {
@@ -21,22 +85,28 @@ function apiError(data: unknown, fallback: string): Error {
   return Object.assign(new Error(messageFor(code).message), { code });
 }
 
-async function postJson<T>(path: string, body: unknown, fallbackError: string): Promise<T> {
+async function postJson<T>(api: Api, path: string, body: unknown, fallbackError: string): Promise<T> {
+  const started = performance.now();
   let res: Response;
   try {
     res = await fetch(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
   } catch {
+    reportCall(api, started, { result: "failure" });
     throw Object.assign(new Error(messageFor("network").message), { code: "network" });
   }
   let data: unknown;
   try {
     data = await res.json();
   } catch {
+    reportCall(api, started, { status: res.status, result: "failure", parse: res.ok });
     throw Object.assign(new Error(fallbackError), { code: "unavailable" });
   }
   if (!res.ok || (data && typeof data === "object" && "error" in data)) {
+    reportCall(api, started, { status: res.status, result: "failure", code: serverCode(data) });
     throw apiError(data, fallbackError);
   }
+  const results = (data as { results?: unknown } | null)?.results;
+  reportCall(api, started, { status: res.status, result: Array.isArray(results) && results.length === 0 ? "empty" : "success" });
   return data as T;
 }
 
@@ -69,7 +139,7 @@ export function pickEvent(data: EventData): EventData {
 /** Research one event from a link (or a demo keyword). Throws Error(message) on failure. */
 export async function researchEvent(input: { url?: string; query?: string }): Promise<EventData> {
   if (input.url && input.url.trim()) {
-    return pickEvent(await postJson<EventData>("/api/research", { url: input.url.trim() }, READ_ERROR));
+    return pickEvent(await postJson<EventData>("research", "/api/research", { url: input.url.trim() }, READ_ERROR));
   }
   if (input.query && input.query.trim()) {
     const results = await searchEvents(input.query);
@@ -81,7 +151,7 @@ export async function researchEvent(input: { url?: string; query?: string }): Pr
 
 /** Search fallback. Results are demo events, labelled simulated. */
 export async function searchEvents(query: string): Promise<EventData[]> {
-  const data = await postJson<{ results?: EventData[] }>("/api/research", { query }, "Search is unavailable right now. Try again in a moment.");
+  const data = await postJson<{ results?: EventData[] }>("research", "/api/research", { query }, "Search is unavailable right now. Try again in a moment.");
   return Array.isArray(data.results) ? data.results.map(pickEvent) : [];
 }
 
@@ -100,6 +170,7 @@ export interface RemixResult {
 export async function remixArtNoted(stub: Stub, vibe?: string): Promise<RemixResult> {
   const v = currentVersion(stub);
   const seed = Math.floor(Math.random() * 2_147_483_647);
+  const started = performance.now();
   let res: Response;
   try {
     res = await fetch("/api/art", {
@@ -108,23 +179,29 @@ export async function remixArtNoted(stub: Stub, vibe?: string): Promise<RemixRes
       body: JSON.stringify({ event: stub.event, vibe, seed, edition: v?.edition, first: false }),
     });
   } catch {
+    reportCall("art", started, { result: "failure" });
     throw Object.assign(new Error(messageFor("network").message), { code: "network" });
   }
   let data: unknown;
   try {
     data = await res.json();
   } catch {
+    reportCall("art", started, { status: res.status, result: "failure", parse: res.ok });
     throw Object.assign(new Error("We couldn't remix the art. Try again in a moment."), { code: "unavailable" });
   }
   if (res.status === 429 && (data as { error?: { code?: string } })?.error?.code === "art_limit") {
     const d = data as { art?: ArtLayer; retryAt?: number };
     const art: ArtLayer = d.art?.kind === "procedural" ? d.art : { kind: "procedural", seed, vibe, provenance: "simulated" };
+    reportCall("art", started, { status: res.status, result: "fallback", code: "art_limit", mode: "fallback" });
     return { art, limitNote: ART_LIMIT_NOTE, retryAt: d.retryAt };
   }
   if (!res.ok || (data && typeof data === "object" && "error" in data)) {
+    reportCall("art", started, { status: res.status, result: "failure", code: serverCode(data) });
     throw apiError(data, "We couldn't remix the art. Try again in a moment.");
   }
-  return { art: data as ArtLayer };
+  const art = data as ArtLayer;
+  reportCall("art", started, { status: res.status, result: "success", mode: art.provenance === "live" ? "live" : "simulated" });
+  return { art };
 }
 
 /** Remix the art layer for a stub. The caller pushes it as a new DesignVersion. */
@@ -134,6 +211,7 @@ export async function remixArt(stub: Stub, vibe?: string): Promise<ArtLayer> {
 
 /** Optional server agent reply. Returns undefined when no model is configured (caller falls back to rules). */
 export async function askAgent(stub: Stub, message: string): Promise<{ reply: string; provenance: "live" } | undefined> {
+  const started = performance.now();
   let res: Response;
   try {
     res = await fetch("/api/agent", {
@@ -142,10 +220,20 @@ export async function askAgent(stub: Stub, message: string): Promise<{ reply: st
       body: JSON.stringify({ event: stub.event, message }),
     });
   } catch {
+    reportCall("agent", started, { result: "failure" });
     throw Object.assign(new Error(messageFor("network").message), { code: "network" });
   }
-  if (res.status === 204) return undefined;
+  if (res.status === 204) {
+    // No model answered (demo, unconfigured, or a direct-provider failure): the caller falls back to rules.
+    reportCall("agent", started, { status: 204, result: "fallback", mode: "fallback" });
+    return undefined;
+  }
   const data = (await res.json().catch(() => ({}))) as { reply?: string; provenance?: string };
-  if (!res.ok) throw apiError(data, "The agent is unavailable. Try again in a moment.");
-  return data.reply && data.provenance === "live" ? { reply: data.reply, provenance: "live" } : undefined;
+  if (!res.ok) {
+    reportCall("agent", started, { status: res.status, result: "failure", code: serverCode(data) });
+    throw apiError(data, "The agent is unavailable. Try again in a moment.");
+  }
+  const live = !!data.reply && data.provenance === "live";
+  reportCall("agent", started, live ? { status: res.status, result: "success", mode: "live" } : { status: res.status, result: "fallback", mode: "fallback" });
+  return live ? { reply: data.reply as string, provenance: "live" } : undefined;
 }

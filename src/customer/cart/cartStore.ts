@@ -5,6 +5,7 @@
 import { useMemo, useSyncExternalStore } from "react";
 import { CART_EVENT, CART_KEY, addToCart, type CartItem } from "@/customer/pages/commerce";
 import type { Stub } from "@/customer/studio/types";
+import { flow, major, variantId, type EventParams } from "@/customer/flows/events";
 
 /** Fired on window when a stub should fly to the cart. The corner button answers it. */
 export const CART_FLY = "ticketstub:cart-fly";
@@ -105,9 +106,15 @@ export function flyToCart(fromEl: Element | null, stub: Stub, grew = true): void
   window.dispatchEvent(new CustomEvent<CartFlyDetail>(CART_FLY, { detail: { from: fromEl.getBoundingClientRect(), stub, hold } }));
 }
 
-/** The one way screens add: saves the line, then flies the stub to the corner. The caller stays on the page. */
-export function addToCartAndFly(item: CartItem, stub: Stub, fromEl: Element | null): void {
+/** The one way screens add: saves the line, then flies the stub to the corner. The caller stays on the page. True when stored. */
+export function addToCartAndFly(item: CartItem, stub: Stub, fromEl: Element | null, context?: EventParams<"add_to_cart">["context"]): boolean {
   const before = parse(rawCart()).length;
-  addToCart(item);
+  const stored = addToCart(item);
+  // an add that didn't reach storage isn't in the cart: it is a storage failure (already reported), not an add
+  if (stored) {
+    const seats = Math.max(1, item.seats.filter((x) => x.decision !== "drop").length);
+    flow("add_to_cart", { currency: "USD", value: major(item.unitMinor * seats), item_id: variantId(item.material, item.finish, item.size), quantity: seats, context, capability: "sandbox" });
+  }
   flyToCart(fromEl, stub, parse(rawCart()).length > before);
+  return stored;
 }

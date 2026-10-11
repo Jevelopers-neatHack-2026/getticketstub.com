@@ -7,7 +7,8 @@ import { useIsClient } from "@/customer/studio/editor/useClient";
 import type { EventData } from "@/customer/studio/types";
 import { DEMO_EVENTS, demoStubId } from "@/customer/studio/fixtures";
 import { Printing } from "@/customer/studio/research/Printing";
-import { existingStub, isDemoKey, keepStub } from "@/customer/start/make";
+import { existingStub, inputSource, isDemoKey, keepStubResult } from "@/customer/start/make";
+import { errorCode, flow } from "@/customer/flows/events";
 import styles from "./new.module.css";
 
 /** Search results hand their event over through sessionStorage so we don't research it twice. */
@@ -62,6 +63,15 @@ export function NewStub() {
 
   // Opening a demo twice reopens the stub that is already on the wall.
   const already = useMemo(() => (client && demo ? existingStub(undefined, demoStubId(demo)) : undefined), [client, demo]);
+  // the address itself is the intake here (/new?url=, ?q=, ?demo=): reported once per visit, never its values
+  const reported = useRef(false);
+  useEffect(() => {
+    if (!ready || reported.current || (demo && !client)) return;
+    reported.current = true;
+    if (!input) flow("intake_invalid", { entry: "new_page", reason: "missing_input" });
+    else flow("intake_submit", { entry: "new_page", input_source: inputSource(input, !!picked), result: already ? "reopened" : "accepted" });
+  }, [ready, input, already, demo, client, picked]);
+
   useEffect(() => {
     if (already) router.replace(`/studio/${already.id}`);
   }, [already, router]);
@@ -98,10 +108,14 @@ export function NewStub() {
       <Printing
         input={input}
         stubId={stubId}
+        entry="new_page"
+        picked={!!picked}
         onDone={(event) => {
           if (done.current) return;
           done.current = true;
-          const id = keepStub(event, stubId);
+          const kept = keepStubResult(event, stubId);
+          flow("creation_complete", { entry: "new_page", input_source: inputSource(input, !!picked), result: kept.created ? "created" : "reopened", storage: kept.stored ? "ok" : "failed" });
+          const id = kept.id;
           try {
             sessionStorage.removeItem(PICK_KEY);
           } catch {
@@ -109,7 +123,10 @@ export function NewStub() {
           }
           router.replace(`/studio/${id}`);
         }}
-        onError={(message) => setError(message || "Try a different link, or search for the show instead.")}
+        onError={(message, err) => {
+          flow("creation_error", { entry: "new_page", input_source: inputSource(input, !!picked), error_code: errorCode(err) });
+          setError(message || "Try a different link, or search for the show instead.");
+        }}
       />
     </Stage>
   );

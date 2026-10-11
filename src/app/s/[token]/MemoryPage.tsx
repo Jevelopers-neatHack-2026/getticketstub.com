@@ -14,7 +14,8 @@ import { formatMoney, type Stub } from "@/customer/studio/types";
 import { FINISHES, materialPrice } from "@/customer/pages/commerce";
 import { PageShell, FriendlyError, OnDesk, PaperLink, StampLink, TearAnchor, ui } from "@/customer/pages/ui";
 import { TearLink } from "@/customer/desk/Desk";
-import { absoluteUrl, copyText, formatDate, isStub } from "@/customer/pages/share";
+import { absoluteUrl, formatDate, isStub, shareLink } from "@/customer/pages/share";
+import { errorCode, flow } from "@/customer/flows/events";
 import { renderStoryPng, downloadBlob, photoToDataUrl } from "@/customer/pages/storyImage";
 import { useMounted } from "@/customer/pages/useMounted";
 import { EventContent, Facts } from "./EventContent";
@@ -82,6 +83,22 @@ export default function MemoryPage({ token, gift, giftTo, giftToken, wrap = true
   const [confirmStop, setConfirmStop] = useState(false);
   const [stopped, setStopped] = useState(false);
 
+  // The landing, once the link is read (server snapshot, encoded stub, or nothing): once per link, never its contents.
+  const landed = useRef<string | null>(null);
+  const settled = mounted && decoded !== undefined && !giftPending;
+  useEffect(() => {
+    if (!settled || landed.current === token) return;
+    landed.current = token;
+    const server = remote?.token === token && !!remote.stub;
+    const owner = !!ownedState?.stub && server; // local ownership on this device, not an identity
+    flow("share_landing", {
+      surface: giftToken || gift ? "gift" : "memory",
+      result: decoded ? "valid" : "invalid",
+      viewer: owner ? "owner" : "visitor",
+      link_kind: server ? "server" : "encoded",
+    });
+  }, [settled, token, decoded, remote, ownedState, giftToken, gift]);
+
   if (!mounted) return <PageShell>{null}</PageShell>;
   if (decoded === undefined || giftPending) return <PageShell>{null}</PageShell>;
   if (!decoded) {
@@ -116,25 +133,21 @@ export default function MemoryPage({ token, gift, giftTo, giftToken, wrap = true
     // The owner's link becomes a short server link when there is a server; everyone else re-shares the link they opened.
     const url = isOwner ? absoluteUrl(await sharePath(stub)) : shareUrl;
     const data = { title: `${e.title} · TicketStub`, text: "My stub from that night.", url };
-    try {
-      if (typeof navigator.share === "function") {
-        await navigator.share(data);
-        return;
-      }
-    } catch (err) {
-      if ((err as DOMException)?.name === "AbortError") return;
-    }
-    if (await copyText(url)) say("Link copied", true);
-    else say("Couldn't copy the link. Copy it from the address bar.");
+    // closing the share sheet is a cancel (nothing more happens); another failure falls back to copying
+    const outcome = await shareLink(data, "memory", "stub");
+    if (outcome === "copied") say("Link copied", true);
+    else if (outcome === "failed") say("Couldn't copy the link. Copy it from the address bar.");
   }
 
   async function stopSharing() {
     try {
       await api.stopSharing(stub.id);
+      flow("stop_sharing_stub", { result: "saved" });
       setStopped(true);
       setConfirmStop(false);
       say("Sharing stopped. The old link no longer works.", true);
     } catch (err) {
+      flow("stop_sharing_stub", { result: "error", error_code: errorCode(err) });
       say(messageForError(err).message);
     }
   }
@@ -144,6 +157,8 @@ export default function MemoryPage({ token, gift, giftTo, giftToken, wrap = true
     say("Building your story image…");
     const blob = await renderStoryPng(stub);
     setBusy(false);
+    // the image was made and a download started; whether the file was kept is the browser's business
+    flow("story_export", { action: "download", result: blob ? "generated" : "failed" });
     if (!blob) {
       say("We couldn't build the image. Try again, or take a screenshot of the preview.");
       return;
@@ -159,6 +174,7 @@ export default function MemoryPage({ token, gift, giftTo, giftToken, wrap = true
     const urls = (await Promise.all(Array.from(files).slice(0, 6).map((f) => photoToDataUrl(f)))).filter((u): u is string => !!u);
     const next = { ...owned, photos: [...owned.photos, ...urls].slice(-12) };
     upsertStub(next);
+    flow("photo_add", { via: "memory_page", result: urls.length ? "success" : "error", photo_count: next.photos.length });
     setOwned(next);
     play("drop");
     if (urls.length) say(`${urls.length} ${urls.length === 1 ? "photo" : "photos"} added`, true);
@@ -168,7 +184,7 @@ export default function MemoryPage({ token, gift, giftTo, giftToken, wrap = true
   function removePhoto(i: number) {
     if (!owned) return;
     const next = { ...owned, photos: owned.photos.filter((_, j) => j !== i) };
-    upsertStub(next);
+    flow("memory_photo_remove", { photo_count: next.photos.length, storage: upsertStub(next) ? "ok" : "failed" });
     setOwned(next);
   }
 
@@ -179,7 +195,10 @@ export default function MemoryPage({ token, gift, giftTo, giftToken, wrap = true
     setTimeout(() => {
       setLeaving(true);
       play("drop");
-      setTimeout(() => setTorn(true), 600);
+      setTimeout(() => {
+        setTorn(true);
+        flow("gift_unwrap");
+      }, 600);
     }, 650);
   }
 
@@ -208,14 +227,18 @@ export default function MemoryPage({ token, gift, giftTo, giftToken, wrap = true
                   Share your stub
                 </Stamp>
                 <div className={s.actionsPair}>
-                  <PaperLink href={`/checkout/${stub.id}`}>
+                  <PaperLink href={`/checkout/${stub.id}`} onClick={() => flow("cta_select", { cta: "print", context: "memory" })}>
                     {stub.material === "digital" ? "Get the file" : "Print it"} · {formatMoney(printMinor(stub))}
                     <SourceMark p="sandbox" />
                   </PaperLink>
-                  <PaperLink href={`/wallet/${stub.id}`}>Add to Wallet</PaperLink>
+                  <PaperLink href={`/wallet/${stub.id}`} onClick={() => flow("cta_select", { cta: "wallet", context: "memory" })}>
+                    Add to Wallet
+                  </PaperLink>
                 </div>
                 <div className={s.tearHolder}>
-                  <TearAnchor href={`/friends/${stub.id}`}>Send matching stubs to friends</TearAnchor>
+                  <TearAnchor href={`/friends/${stub.id}`} onClick={() => flow("cta_select", { cta: "friends", context: "memory" })}>
+                    Send matching stubs to friends
+                  </TearAnchor>
                 </div>
                 <MarkLegend marks={["sandbox"]} />
               </div>
@@ -396,8 +419,14 @@ export default function MemoryPage({ token, gift, giftTo, giftToken, wrap = true
                   Your night deserves a stub too.
                 </h2>
                 <p className={ui.muted}>Paste your ticket and get a stub with the setlist, the weather and the story of the night.</p>
-                <StampLink href="/">Paste your ticket link</StampLink>
-                {legacy ? null : <TearAnchor href={claimHref}>Were you there too? Claim a matching stub</TearAnchor>}
+                <StampLink href="/" onClick={() => flow("cta_select", { cta: "make_own", context: "memory" })}>
+                  Paste your ticket link
+                </StampLink>
+                {legacy ? null : (
+                  <TearAnchor href={claimHref} onClick={() => flow("cta_select", { cta: "claim", context: "memory" })}>
+                    Were you there too? Claim a matching stub
+                  </TearAnchor>
+                )}
               </section>
             ) : null}
 

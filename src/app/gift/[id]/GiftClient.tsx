@@ -10,7 +10,9 @@ import { sharePath } from "@/customer/account/share";
 import { getStub } from "@/customer/studio/store";
 import { formatMoney, type Stub } from "@/customer/studio/types";
 import { PageShell, CopyField, EmptyState, OnDesk, PaperLink, StampLink, TearAnchor, ui } from "@/customer/pages/ui";
-import { OrderBlocked, SANDBOX_LABEL, addOrder, materialPrice, updateSeat } from "@/customer/pages/commerce";
+import { OrderBlocked, SANDBOX_LABEL, addOrderStored, materialPrice, updateSeat } from "@/customer/pages/commerce";
+import { reportOrder } from "@/customer/account/orders";
+import { errorCode, flow } from "@/customer/flows/events";
 import { useMounted, randomId } from "@/customer/pages/useMounted";
 import s from "./gift.module.css";
 
@@ -52,7 +54,11 @@ export default function GiftClient({ id, forName, cartItem, seatIndex }: { id: s
   async function send() {
     if (!stub) return;
     const to = name.trim();
+    const message = note.trim();
+    // what was chosen, never what was written: no name, no note
+    const chosen = { delivery, wrap, has_message: !!message } as const;
     if (!to) {
+      flow("gift_prepare", { ...chosen, result: "invalid" });
       setError("Add who it's for so their name goes on it.");
       return;
     }
@@ -64,36 +70,47 @@ export default function GiftClient({ id, forName, cartItem, seatIndex }: { id: s
       setId: stub.setId ?? stub.id,
       photos: [],
     };
-    const message = note.trim();
     if (delivery === "print") {
+      const draft = { stubIds: [gift.id], lines: [{ title: `Gift for ${to}: ${stub.event.title}`, material: "print" as const, finish: stub.finish, size: "classic" as const, totalMinor: printPrice }], totalMinor: printPrice, method: "gift-print" as const };
       try {
-        addOrder({ stubIds: [gift.id], lines: [{ title: `Gift for ${to}: ${stub.event.title}`, material: "print", finish: stub.finish, size: "classic", totalMinor: printPrice }], totalMinor: printPrice, method: "gift-print" });
+        // a local sandbox record only (the gift print never reaches the order API)
+        reportOrder(draft, "local", addOrderStored(draft).stored);
       } catch (e) {
         // live mode refuses print variants no supplier has confirmed yet (capabilities.ts)
         if (e instanceof OrderBlocked) {
+          flow("gift_prepare", { ...chosen, result: "blocked", error_code: "variant_not_orderable" });
           setError("Printed gifts aren't orderable yet. Send it as a link instead.");
           return;
         }
         throw e;
       }
     }
-    if (cartItem && seatIndex !== undefined) updateSeat(cartItem, seatIndex, { decision: "gift", name: to });
+    if (cartItem && seatIndex !== undefined && updateSeat(cartItem, seatIndex, { decision: "gift", name: to })) flow("seat_decision", { decision: "gift" });
     // The server half: share the copy, then attach the note. Only real states are shown (sending, still working, failed).
     const made = await progress.run(async () => {
-      const path = await sharePath(gift);
-      if (/^\/s\/[\w-]+$/.test(path)) {
-        try {
-          const g = await api.createGift(gift.id, to, message);
-          return { token: g.giftToken as string | null, link: wrap ? g.sharePath : `${g.sharePath}&wrap=0` };
-        } catch (e) {
-          if (message) throw e; // the note can't travel without the server: say so rather than send a link without it
-          return { token: null, link: wrap ? `${path}?gift=1&to=${encodeURIComponent(to)}` : path };
+      try {
+        const path = await sharePath(gift);
+        if (/^\/s\/[\w-]+$/.test(path)) {
+          try {
+            const g = await api.createGift(gift.id, to, message);
+            flow("server_save", { kind: "gift", result: "saved" });
+            return { token: g.giftToken as string | null, link: wrap ? g.sharePath : `${g.sharePath}&wrap=0` };
+          } catch (e) {
+            flow("server_save", { kind: "gift", result: "failed", error_code: errorCode(e) });
+            if (message) throw e; // the note can't travel without the server: say so rather than send a link without it
+            return { token: null, link: wrap ? `${path}?gift=1&to=${encodeURIComponent(to)}` : path };
+          }
         }
+        if (message) throw new ApiError("unavailable", "offline");
+        return { token: null, link: wrap ? `${path}?gift=1&to=${encodeURIComponent(to)}` : path };
+      } catch (e) {
+        flow("gift_prepare", { ...chosen, result: "error", error_code: errorCode(e) });
+        throw e;
       }
-      if (message) throw new ApiError("unavailable", "offline");
-      return { token: null, link: wrap ? `${path}?gift=1&to=${encodeURIComponent(to)}` : path };
     });
     if (!made) return;
+    // a link ready to hand over: preparing it is not delivering it
+    flow("gift_prepare", { ...chosen, result: "prepared", storage: made.token ? "server" : "local" });
     progress.reset();
     setGiftToken(made.token);
     setRevoked(false);
@@ -134,15 +151,17 @@ export default function GiftClient({ id, forName, cartItem, seatIndex }: { id: s
               </p>
             ) : (
               <>
-                <CopyField path={giftPath} label="Gift link" />
+                <CopyField path={giftPath} label="Gift link" context="gift" content="gift" />
                 {giftToken ? (
                   <TearLink
                     type="button"
                     onClick={async () => {
                       try {
                         await api.revokeGift(giftToken);
+                        flow("gift_revoke", { result: "saved" });
                         setRevoked(true);
                       } catch (e) {
+                        flow("gift_revoke", { result: "error", error_code: errorCode(e) });
                         setError(messageForError(e).message);
                       }
                     }}
@@ -182,7 +201,15 @@ export default function GiftClient({ id, forName, cartItem, seatIndex }: { id: s
 
             <div className={s.group}>
               <span className="desk-label">Delivery</span>
-              <PunchTabs label="Delivery" options={options} value={delivery} onChange={setDelivery} />
+              <PunchTabs
+                label="Delivery"
+                options={options}
+                value={delivery}
+                onChange={(v) => {
+                  if (v !== delivery) flow("gift_option", { option: "delivery", delivery: v, wrap });
+                  setDelivery(v);
+                }}
+              />
               <p className={ui.status}>{delivery === "link" ? "They open it on their phone." : "Classic stub, 2 × 5.5 in, shipped to them. They get the link too."}</p>
             </div>
 
@@ -196,7 +223,14 @@ export default function GiftClient({ id, forName, cartItem, seatIndex }: { id: s
 
             <Rule kind="perf" />
 
-            <Switch checked={wrap} onChange={setWrap} hint="They tear it open to see the stub.">
+            <Switch
+              checked={wrap}
+              onChange={(v) => {
+                flow("gift_option", { option: "wrap", delivery, wrap: v });
+                setWrap(v);
+              }}
+              hint="They tear it open to see the stub."
+            >
               Wrap it
             </Switch>
 

@@ -7,6 +7,7 @@ import { formatMoney } from "@/customer/studio/types";
 import { LeavesMark, PageShell, EmptyState, StampLink, TearAnchor, ui } from "@/customer/pages/ui";
 import { loadCart, updateSeat, type CartItem } from "@/customer/pages/commerce";
 import { useMounted } from "@/customer/pages/useMounted";
+import { flow } from "@/customer/flows/events";
 import s from "./unclaimed.module.css";
 
 const TIMELINE = [
@@ -54,7 +55,8 @@ export default function UnclaimedClient({ id, seatIndex }: { id: string; seatInd
       router.push(giftHref);
       return;
     }
-    updateSeat(item!.id, idx, { decision: choice });
+    // a sandbox decision: "drop" is a simulated refund, no money moves
+    if (updateSeat(item!.id, idx, { decision: choice })) flow("seat_decision", { decision: choice === "seat-only" ? "seat_only" : "drop" });
     if (choice === "drop") play("tear");
     router.push("/cart");
   }

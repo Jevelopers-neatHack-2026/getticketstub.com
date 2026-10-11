@@ -37,6 +37,20 @@ const STUB_PLACES = [
   { seg: "gift", label: "Gift", path: (id: string) => `/gift/${id}` },
 ] as const;
 
+/** What kind of place a sidebar row is, for analytics: never a stub's id or title. */
+export type NavItem = "make" | "search" | "printing" | "wall" | "all_stubs" | "stub" | "studio" | "checkout" | "wallet" | "friends" | "gift" | "share_page" | "claim" | "public_wall" | "cart" | "unclaimed" | "organizer" | "guest_claims" | "account" | "orders" | "help" | "privacy" | "terms" | "admin" | "other";
+const NAV_ITEMS: Record<string, NavItem> = {
+  make: "make", search: "search", new: "printing", wall: "wall", all: "all_stubs", claim: "claim", public: "public_wall", share: "share_page",
+  cart: "cart", unclaimed: "unclaimed", organizer: "organizer", guests: "guest_claims", account: "account", orders: "orders",
+  help: "help", privacy: "privacy", terms: "terms", admin: "admin", stub: "stub",
+  studio: "studio", checkout: "checkout", wallet: "wallet", friends: "friends", gift: "gift",
+};
+export function navItem(key: string): NavItem {
+  const kind = key.includes(":") ? key.slice(0, key.indexOf(":")) : key;
+  if (kind === "share" && key.includes(":")) return "share_page";
+  return Object.hasOwn(NAV_ITEMS, kind) ? NAV_ITEMS[kind] : "other";
+}
+
 /** Routes that sit on a route with no nav at all. */
 export const NAV_FREE = ["/", "/parts"];
 

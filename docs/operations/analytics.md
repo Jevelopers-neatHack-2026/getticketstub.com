@@ -1,0 +1,524 @@
+# Product analytics (GA4)
+
+Browser product analytics for the TicketStub customer app (issue
+[#39](https://github.com/Jevelopers-neatHack-2026/getticketstub.com/issues/39)): configuration, consent,
+page views and URL sanitization, the versioned event dictionary, Google Analytics administration,
+reporting definitions, QA and rollback. Server operational measurement is a separate system with its own
+policy: [observability.md](observability.md). The stub lifecycle event log (`ticketstub.event/1`) is in
+[../architecture/events.md](../architecture/events.md).
+
+## Status: what is done and what is still external
+
+As of 2026-10-11. **#39 is not complete**: the final live readback and the items marked pending below are open.
+
+| | State |
+| --- | --- |
+| Catalog, runtime validation, URL sanitization, consent, GA4 adapter, page views, Web Vitals, route timing | Implemented in this repository |
+| Offline tests (no network, synthetic ids) | `tests/analytics.test.mjs`, `tests/analytics-browser.test.mjs` and the flow/observability suites; run by `npm test` and CI |
+| GA4 properties and web streams | **Created** (production and preview, separate properties). See [GA4 setup record](#ga4-setup-record) |
+| Stream and property privacy settings | **Done and read back after saving**: enhanced measurement off, data redaction on, Google signals off, user-provided data off, granular location/device off, ad personalization off. Details and caveats in the record |
+| Custom dimensions (14), custom metrics (2), key event `tear_complete` | **Registered** on both properties |
+| Data retention | Two months for events and users; activity reset off, saved on both properties; preview verified after reload |
+| Data filters (internal/developer traffic), access review, saved explorations | **Pending.** |
+| Deployment configuration | **Not set anywhere.** No deployment, including the public host, has these ids configured; no release is authorized. The code's default stays off |
+| Live validation in the preview property | **Partly done, final readback pending.** See [Live validation](#live-validation-partly-done-full-journeys-pending) |
+
+Until the final live readback is done and its redacted evidence attached to #39, nothing here is proof that
+Google stores what this page describes. The offline tests prove what the page hands to `gtag.js`.
+
+## Architecture
+
+All code is in `src/customer/analytics/`. Product code needs one import.
+
+| Module | Role |
+| --- | --- |
+| `track.ts` | Public API: `track(name, params)`, `trackOnce(key, name, params)`, `toMajorUnits(minor)`. Never throws, never awaits, no-op on the server |
+| `catalog.ts` | The single, versioned event catalog (`SCHEMA_VERSION = 1`): every event, its parameters as closed enums / bounded integers / money / booleans, runtime-stamped truth values, forbidden and reserved names. `src/customer/flows/events.ts` types its `flow()` helper from it |
+| `validate.ts` | Runtime enforcement of the catalog. A bad event is dropped whole (never trimmed or coerced) |
+| `routes.ts` | Route templates, page titles, `page_location` and `page_referrer` sanitization, campaign allowlist |
+| `consent.ts` | The visitor's choice (`unset`/`granted`/`denied`) in `localStorage` (`ticketstub.analytics-consent.v1`), cross-tab sync, `openConsentPreferences()` |
+| `runtime.ts` | One per page: gates on configuration + consent + tag state, de-duplicates page views, attaches the sanitized page and deployment labels, buffers only post-consent events while the tag loads |
+| `gtag.ts` | GA4 adapter: injects `gtag.js` only after consent, configures manual page views with signals/ads off, shapes ecommerce `items`, pauses and clears cookies on withdrawal |
+| `timing.ts` | Route timing (start from `src/instrumentation-client.ts`'s `onRouterTransitionStart`, end after the new route paints) and Web Vitals mapping |
+| `config.ts` | Reads the server's settings per request; validates them again on the client |
+| `Analytics.tsx`, `ConsentControls.tsx` | Mounted once by `src/app/layout.tsx`: runtime setup, page-view observer, Web Vitals, consent card and reopen control |
+
+```text
+layout.tsx (server, per request) ──config props──▶ <Analytics> (client)
+   product code ── track() ──▶ validate ──▶ runtime ──(configured + granted + tag ready)──▶ gtag.ts ──▶ gtag.js ──▶ GA4
+                                              ▲
+                     usePathname/useSearchParams ── recordPageView()   useReportWebVitals / route timing ── trackInternal()
+```
+
+## Configuration and environments
+
+All settings are server environment variables read **per request** by the root layout (it is
+`force-dynamic`), so one build can run as production, preview, or with analytics off, and changing them
+needs a restart, not a rebuild. Nothing uses a `NEXT_PUBLIC_` name and nothing is baked into the bundle.
+
+| Variable | Values | Meaning |
+| --- | --- | --- |
+| `TICKETSTUB_ANALYTICS_ENV` | `production` \| `preview` | Required. Sent as `deployment_env` on every event. Any other value disables analytics |
+| `TICKETSTUB_GA_MEASUREMENT_ID` | `G-` + 4–16 uppercase letters/digits | Required. The web stream's measurement id. Public page configuration, not a secret. Malformed ⇒ disabled |
+| `TICKETSTUB_GA_DEBUG` | `1` | Adds GA `debug_mode` so events appear in DebugView. Preview property (`G-M2ELMGCNKW`) only |
+| `TICKETSTUB_ANALYTICS_DISABLED` | `1` | Kill switch: overrides everything above |
+| `TICKETSTUB_RUNTIME_MODE` | existing | Sent as `runtime_mode` (`demo`/`live`). `live` means live AI providers, never live commerce |
+
+Rules:
+
+- **Missing or malformed configuration means no analytics**: no consent card, no script, `track()` is a no-op.
+  This is the default for local development, CI and every current deployment: the measurement ids in the
+  [setup record](#ga4-setup-record) are documented here, not hardcoded and not configured on any host.
+- Automated tests (`NODE_ENV=test`) never collect, whatever is set.
+- **Environment isolation:** production and preview use **separate GA4 properties** (see the record); every hit carries
+  `deployment_env`, and reports must filter on it. Preview, demo and sandbox activity is additionally labelled
+  by `runtime_mode` and per-event `capability`, so it can never pass for live outcomes. Never point a preview
+  deployment at the production measurement id.
+- Server collection credentials (for example a Measurement Protocol API secret) are **not used** and must never
+  be added under a client-visible name. There is no server-side GA collection in this change.
+- No Content-Security-Policy is configured today (`next.config.ts`). If one is added, analytics needs
+  `script-src https://www.googletagmanager.com` and `connect-src https://*.google-analytics.com https://*.analytics.google.com https://www.googletagmanager.com`;
+  without them the tag is blocked, which the app tolerates (see [Failure isolation](#failure-isolation)).
+
+## Consent
+
+Basic consent mode: optional analytics loads and sends **only after the visitor agrees**.
+
+- **First visit (configured deployments only):** a small non-modal card, bottom right (a full-width sheet on
+  phones), asks once. "Allow analytics" and "No thanks" are equal-weight buttons. It does not take focus or
+  block the page; it stays until answered.
+- **Before an answer, and after "No thanks":** no `gtag.js`, no `dataLayer`, no cookie, no request. Events and
+  page views are dropped, not stored: **there is no backlog and nothing is replayed** after a later "Allow".
+- **On "Allow":** the tag is injected once and the page the visitor is on at that moment gets one page view.
+  Earlier pages and actions stay unmeasured. Events tracked after consent while the tag is still loading wait in
+  a small buffer (25) that is discarded if consent is withdrawn or the tag never arrives.
+- **Persistence:** the choice is stored as `{"v":1,"decision":"granted"|"denied"}` under
+  `ticketstub.analytics-consent.v1` and applies on every reload and in every tab (`storage` events). If storage
+  is unavailable the answer holds for the current page only and the card asks again next visit.
+- **Reopen / withdraw:** a small "Analytics" tag (bottom right, with its state in its accessible name) reopens
+  the card at any time; any page can also call `openConsentPreferences()` from
+  `@/customer/analytics/consent` (the /privacy page's "Analytics choices" button does). The reopened card takes focus, Escape
+  closes it, and focus returns to where it came from. Choices are announced through the app's live region.
+- **Withdrawal** stops sending at once: buffered events are dropped, `gtag('consent','update',{analytics_storage:'denied'})`
+  is pushed, `window['ga-disable-<id>'] = true`, and GA's first-party cookies (`_ga`, `_ga_<stream>`, legacy
+  `_gid`/`_gat`) are deleted on the host and each parent domain. Leftover GA cookies are also cleared on any page
+  load without consent. The script cannot be unloaded from the current page; it is not loaded on the next one.
+- **Advertising is denied by default and never offered:** `ad_storage`, `ad_user_data` and `ad_personalization`
+  are `denied`, `ads_data_redaction` is on, `url_passthrough` is off, Google signals and ad personalization are
+  disabled in the tag config. There is no ad product, remarketing, session replay or heatmap.
+- **Server operational diagnostics are separate:** they never read this choice and are never used to get around
+  it. They carry no personal identifiers and follow their own collection and retention policy in
+  [observability.md](observability.md). Nothing from the server is sent to Google.
+
+The card's copy says what is collected ("the kind of page, never your links, stubs, names or what you
+type"), that there are no ads, and links to /privacy. The /privacy page has an "Optional analytics" section
+that matches this behaviour: opt-in before anything loads, what is and is not sent, Google as the recipient, the
+per-browser-profile random identifier (not linked to an account), and how to withdraw. Where analytics is
+configured it shows an "Analytics choices" button (`ConsentChoicesButton`) that opens the card; elsewhere the
+button is not rendered. The wording is plain-language and makes no legal guarantees; it has not had legal review.
+
+## Page views and URL sanitization
+
+`gtag('config', id, { send_page_view: false, ... })` disables automatic page views. The layout's observer
+(`usePathname` + `useSearchParams`, inside `Suspense`) records **one page view per accepted App Router
+navigation**:
+
+- initial load, `router.push`, `router.replace`, `<Link>`, and browser back/forward each count once;
+- navigating between different ids or queries on the same template (`/studio/a` → `/studio/b`, `/search?q=a` →
+  `/search?q=b`) counts as a new view;
+- the same pathname + query twice in a row (React Strict Mode double effects, remounts, re-renders) counts once;
+  the identity used for this is the raw pathname + query and **never leaves the runtime module**;
+- hash-only changes are not navigations.
+
+**Every URL is reduced to a known route template before anything is sent.** Share links embed serialized stubs
+(`/s/<token>`, `/u/<token>`, `?from=`), organizer links carry designs (`?d=`), gift links carry names (`?to=`),
+and `/new?url=` / `?q=` carry what someone typed; none of that can reach a provider.
+
+| Path | Template | Title sent |
+| --- | --- | --- |
+| `/`, `/make`, `/search`, `/new`, `/wall`, `/cart`, `/organizer`, `/organizer/claim`, `/account`, `/signin/confirm`, `/help`, `/map`, `/privacy`, `/terms`, `/parts` | the path itself | fixed name |
+| `/studio/<id>`, `/checkout/<id>`, `/wallet/<id>`, `/friends/<id>`, `/gift/<id>`, `/cart/unclaimed/<id>` | `/studio/:id` etc. | fixed name |
+| `/s/<token>`, `/u/<token>`, `/claim/g/<token>`, `/claim/<set>` | `/s/:token`, `/u/:token`, `/claim/g/:token`, `/claim/:set` | "Share page", "Public wall", "Gift claim", "Claim" |
+| `/admin`, `/admin/...` | `/admin`, `/admin/*` | "Admin" |
+| `/api/...` | `/api` | "API" |
+| anything else (extra segments, unknown routes, malformed paths) | `/unknown` | "Page" |
+
+- `page_location` = page origin + template. All query strings and hashes are removed. The only exception is the
+  **landing** page view, which keeps `utm_source`/`utm_medium`/`utm_campaign` **only when the value is in the
+  reviewed allowlist** in `routes.ts` (`CAMPAIGN_ALLOWLIST`). A value's shape proves nothing (a name looks like
+  any word), so unknown values are dropped; `utm_campaign` starts empty. Add campaign names there, with review,
+  before links carrying them go out.
+- `page_referrer`: on landing, a same-site referrer becomes its template and another site keeps only its origin
+  (`https://mail.example.com/`, never its path, query or credentials); non-http referrers are dropped. On SPA
+  navigations it is the previous page's template URL.
+- `page_title` comes from the fixed table, never `document.title` (which can contain a stub's event title).
+- These three fields are set on the tag config, updated with `gtag('set', ...)` at every page view, and added
+  to **every event**, so `gtag.js` never falls back to `document.location`, `document.referrer` or
+  `document.title`, even for its own automatic events.
+- `src/app` pages are checked by a test: a new page without a template fails `npm test`.
+
+## What every event carries
+
+Added by the runtime (callers cannot set them; `validate.ts` rejects them):
+
+| Field | Value |
+| --- | --- |
+| `schema_version` | `1` |
+| `deployment_env` | `production` \| `preview` |
+| `runtime_mode` | `demo` \| `live` (AI runtime only) |
+| `route_template` | the current page's template |
+| `page_location`, `page_referrer`, `page_title` | sanitized as above |
+
+Also reserved: `page_path`, `user_id`, `client_id`, `session_id`, `transaction_id`, `debug_mode`, `items`.
+There is no `user_id`; GA's own random client id (cookie `_ga`, only after consent) is the only identifier.
+Nothing derived from personal data, hashed or not, is sent as an identifier.
+
+## Event dictionary (schema v1)
+
+Validation rules (enforced at runtime, not just by TypeScript): the name must be in the catalog; each parameter
+must be listed for that event; enum values must match exactly; integers must be integers within range; money is
+a finite number 0–100000 rounded to cents; booleans must be booleans; the params object must be a plain object.
+Any violation drops the **whole** event; in development the reason (event and key, never the value) is logged
+with `console.warn`. GA limits are checked by tests (names ≤ 40 characters, ≤ 25 parameters including runtime
+fields, enum values ≤ 100 characters).
+
+Conventions: `capability` / `mode` say truthfully where a result came from (`live` provider, `simulated`,
+`fallback`, `demo` fixture, `sandbox` commerce, `local` device-only). `storage` reports whether a persistence
+step really succeeded, so an event never claims a save that failed. `error_code` is the bounded code catalog
+in `src/customer/feedback-messages/messages.ts`, never an error message. Counts are capped at 1000 and
+durations at ten minutes (`api_call` at one hour). The "Stamped" column lists values the runtime sets
+regardless of the caller (passing a different value is rejected).
+
+"Emitted from" is generated from the call sites at the time of writing; the boundary column is the contract.
+Consent behavior is the same for every event (dropped unless configured and consented); the reporting
+destination is GA4 for all of them.
+
+<!-- dictionary:start -->
+| Event | Flow | GA | Parameters | Stamped | Emitted from | Boundary |
+| --- | --- | --- | --- | --- | --- | --- |
+| `intake_submit` | intake | custom | `entry`: home\|make\|new_page\|search; `input_source`: link\|query\|demo\|picked; `result`: accepted\|reopened | — | `app/new/NewStub.tsx`, `customer/start/StudioStart.tsx` | Start/new-page intake accepted a link, query, demo or picked show (or reopened an existing stub) |
+| `intake_invalid` | intake | custom | `entry`: home\|make\|new_page\|search; `reason`: empty\|clipboard_empty\|clipboard_denied\|missing_input | — | `app/new/NewStub.tsx`, `customer/start/StudioStart.tsx` | Intake refused: empty input, clipboard empty/denied, missing input |
+| `intake_paste` | intake | custom | `entry`: home\|make\|new_page\|search; `result`: success\|empty\|denied; `via`: button\|field | — | `customer/start/StudioStart.tsx` | Paste button/field outcome on the start screen |
+| `search_results` | search | custom | `result`: results\|zero\|error; `result_count`: int 0–1000; `query_kind`: empty\|text; `error_code`: enum(42) | — | `app/search/SearchShows.tsx` | A debounced search settled (results, zero, error); never per keystroke |
+| `search_filter` | search | custom | `filter`: all\|concert\|game\|show\|generic | — | `app/search/SearchShows.tsx` | Search event-type filter changed |
+| `select_item` | search | recommended | `item_list_id`: search_results; `index`: int 0–100; `item_category`: all\|concert\|game\|show\|generic; `demo`: bool | — | `app/search/SearchShows.tsx` | A search result was chosen (rank, event type, demo flag) |
+| `search_fallback` | search | custom | `to`: link | — | `app/search/SearchShows.tsx` | Searcher switched to link intake |
+| `creation_start` | create | custom | `entry`: home\|make\|new_page\|search; `input_source`: link\|query\|demo\|picked | — | `customer/studio/research/Printing.tsx` | Printing stage began research for the chosen input |
+| `research_complete` | create | custom | `entry`: home\|make\|new_page\|search; `input_source`: link\|query\|demo\|picked; `result`: success\|error; `duration_ms`: int 0–600000; `fact_count`: int 0–1000; `error_code`: enum(42) | — | `customer/studio/research/Printing.tsx` | Research finished (success/error) with duration and fact count |
+| `reveal_fact_toggle` | create | custom | `kept`: bool | — | `customer/studio/research/Printing.tsx` | A fact was kept or removed during the reveal |
+| `reveal_skip` | create | custom | `entry`: home\|make\|new_page\|search | — | `customer/studio/research/Printing.tsx` | Reveal skipped |
+| `reveal_complete` | create | custom | `entry`: home\|make\|new_page\|search; `skipped`: bool; `duration_ms`: int 0–600000; `fact_count`: int 0–1000; `kept_count`: int 0–1000 | — | `customer/studio/research/Printing.tsx` | Reveal finished (skipped or watched) with duration and kept/total facts |
+| `creation_complete` | create | custom | `entry`: home\|make\|new_page\|search; `input_source`: link\|query\|demo\|picked; `result`: created\|reopened; `storage`: ok\|failed | — | `app/new/NewStub.tsx`, `customer/start/StudioStart.tsx` | The stub was persisted (storage ok/failed) at the creation boundary |
+| `creation_error` | create | custom | `entry`: home\|make\|new_page\|search; `input_source`: link\|query\|demo\|picked; `error_code`: enum(42) | — | `app/new/NewStub.tsx`, `customer/start/StudioStart.tsx` | Creation failed with a bounded error code |
+| `studio_open` | editor | custom | `status`: ready\|missing; `device`: desktop\|phone | — | `customer/studio/editor/Editor.tsx` | Editor mounted with a ready or missing stub |
+| `studio_edit` | editor | custom | `change`: enum(15); `method`: swipe\|keyboard\|grid\|rail\|dots\|other; `edition`: researched\|letterpress\|risograph\|minimal\|classic; `material`: digital\|card\|print\|framed; `finish`: matte\|foil\|holo; `storage`: ok\|failed | — | `customer/studio/editor/Editor.tsx` | A committed editor change (style, version, material, finish, font, colour, foil, visibility, fact correction/confirmation, photos, friends) with its persistence result |
+| `studio_flip` | editor | custom | `method`: button\|keyboard | — | `customer/studio/editor/Editor.tsx` | Stub flipped by button or keyboard |
+| `studio_view` | editor | custom | `action`: zoom_in\|zoom_out\|fit\|zoom_selection\|preview_on\|preview_off | — | `customer/studio/editor/Editor.tsx` | Zoom/fit/preview command |
+| `studio_panel` | editor | custom | `panel`: rail\|inspector\|focus\|styles\|remix\|agent\|facts\|versions; `open`: bool | — | `customer/studio/editor/Editor.tsx` | Editor panel opened or closed |
+| `remix_request` | remix | custom | `via`: sheet\|agent\|note; `vibe`: neon\|risograph\|70s\|minimal\|custom\|none | — | `customer/studio/agent/AgentChat.tsx`, `customer/studio/agent/AgentNotes.tsx`, `customer/studio/editor/RemixSheet.tsx` | Remix requested from the sheet, agent or note (vibe enum only; never the prompt) |
+| `remix_result` | remix | custom | `via`: sheet\|agent\|note; `result`: success\|limited\|error; `art`: generated\|procedural\|uploaded; `capability`: live\|simulated\|sandbox\|demo\|local; `duration_ms`: int 0–600000; `error_code`: enum(42) | — | `customer/studio/agent/AgentChat.tsx`, `customer/studio/agent/AgentNotes.tsx`, `customer/studio/editor/RemixSheet.tsx` | Remix finished: generated/procedural/uploaded art, capability provenance, duration, error |
+| `photo_add` | memories | custom | `via`: memories\|agent\|memory_page\|organizer_claim; `result`: success\|error; `photo_count`: int 0–1000 | — | `app/organizer/claim/OrganizerClaimClient.tsx`, `app/s/[token]/MemoryPage.tsx`, `customer/studio/agent/AgentChat.tsx`, `customer/studio/editor/Memories.tsx` | Photo add outcome and resulting count (never the photo) |
+| `note_edit` | memories | custom | `has_note`: bool | — | `customer/studio/editor/Memories.tsx` | Memory note saved (whether a note exists; never its text) |
+| `agent_open` | agent | custom | `via`: button\|note\|seed | — | `customer/studio/editor/Editor.tsx` | Agent chat opened |
+| `agent_message` | agent | custom | `intent`: weather\|photo\|question\|remix; `result`: live\|rules\|pending\|error; `error_code`: enum(42) | — | `customer/studio/agent/AgentChat.tsx` | Agent reply outcome: live, rules, pending or error (intent enum; never the message) |
+| `agent_suggestion` | agent | custom | `suggestion`: moodier\|weather\|photo | — | `customer/studio/agent/AgentChat.tsx` | A suggested agent action was applied |
+| `tear_start` | tear | custom | — | — | `customer/studio/editor/Editor.tsx` | Tear gesture/flow began |
+| `tear_cancel` | tear | custom | — | — | `customer/studio/editor/Editor.tsx` | Tear abandoned |
+| `tear_complete` | tear | custom | `method`: drag\|keyboard\|auto; `storage`: ok\|failed | — | `customer/studio/editor/TearFlow.tsx` | Tear finished (drag, keyboard or auto) and the result persisted |
+| `wall_view` | wall | custom | `state`: empty\|loaded; `stub_count`: int 0–1000 | — | `app/wall/WallClient.tsx` | Wall loaded (empty or with N stubs) |
+| `wall_filter` | wall | custom | `filter`: all\|concert\|game\|show\|generic | — | `app/wall/WallClient.tsx` | Wall filter changed |
+| `wall_stub_open` | wall | custom | `via`: pointer\|keyboard | — | `app/wall/WallClient.tsx` | A stub opened from the wall |
+| `wall_reorder` | wall | custom | `method`: drag\|keyboard; `storage`: ok\|failed | — | `app/wall/WallClient.tsx` | Wall reordered and persisted |
+| `wall_remove` | wall | custom | `storage`: ok\|failed | — | `app/wall/WallClient.tsx` | Stub removed from the wall (persistence result) |
+| `wall_public_toggle` | wall | custom | `public`: bool; `result`: saved\|local\|error; `error_code`: enum(42) | — | `app/wall/WallClient.tsx` | Public wall toggled (saved on server, local only, or error) |
+| `wall_stop_sharing` | wall | custom | `result`: saved\|error; `error_code`: enum(42) | — | `app/wall/WallClient.tsx` | Wall sharing stopped |
+| `wall_banner_dismiss` | wall | custom | — | — | `app/wall/WallClient.tsx` | Wall banner dismissed |
+| `cta_select` | share | custom | `cta`: enum(13); `context`: wall\|memory\|public_wall\|gift\|claim\|editor\|lamp\|home\|make | — | `app/claim/g/[token]/GuestClaimClient.tsx`, `app/s/[token]/MemoryPage.tsx`, `app/u/[token]/PublicWall.tsx`, `app/wall/WallClient.tsx`, `customer/start/StudioStart.tsx`, `customer/studio/editor/Editor.tsx`, `customer/studio/editor/Tray.tsx` | A call to action chosen on wall, memory page, public wall, gift, claim or editor |
+| `nav_select` | nav | custom | `item`: enum(25); `has_stubs`: bool | — | `customer/nav/NavFrame.tsx` | A sidebar row chosen, by place kind (never a stub id or title); has_stubs marks a returning wall |
+| `share` | share | recommended | `method`: native\|copy; `content_type`: stub\|wall\|gift\|invite\|claim_link\|story; `result`: success\|cancel\|failure; `context`: wall\|lamp\|memory\|public_wall\|gift\|friends\|organizer | — | `customer/pages/share.ts` | Native share sheet or copy finished on this device (success/cancel/failure). Not delivery |
+| `share_landing` | share | custom | `surface`: memory\|public_wall\|gift; `result`: valid\|invalid\|not_found\|error; `viewer`: owner\|visitor; `link_kind`: server\|encoded | — | `app/s/[token]/MemoryPage.tsx`, `app/u/[token]/PublicWall.tsx` | A share link opened: valid/invalid/not found, owner (local ownership only) or visitor |
+| `public_wall_select` | share | custom | `rank`: int 0–100 | — | `app/u/[token]/PublicWall.tsx` | Public wall item opened (rank) |
+| `gift_unwrap` | share | custom | — | — | `app/s/[token]/MemoryPage.tsx` | Gift unwrap animation completed |
+| `story_export` | share | custom | `action`: download; `result`: generated\|failed | — | `app/s/[token]/MemoryPage.tsx` | Story image generated for download (initiation, not proof of saving) |
+| `memory_photo_remove` | share | custom | `photo_count`: int 0–1000; `storage`: ok\|failed | — | `app/s/[token]/MemoryPage.tsx` | Memory-page photo removed |
+| `stop_sharing_stub` | share | custom | `result`: saved\|error; `error_code`: enum(42) | — | `app/s/[token]/MemoryPage.tsx` | Sharing of one stub stopped |
+| `friends_update` | friends | custom | `action`: add\|remove\|mode; `friend_count`: int 0–1000; `mode`: make\|claim; `storage`: ok\|failed | — | `app/friends/[id]/FriendsClient.tsx` | Friend added/removed or matching-set mode changed (counts only) |
+| `claim_view` | claim | custom | `flow`: set\|guest\|organizer; `result`: valid\|invalid\|expired\|claimed\|error; `error_code`: enum(42) | — | `app/claim/[set]/ClaimClient.tsx`, `app/claim/g/[token]/GuestClaimClient.tsx`, `app/organizer/claim/OrganizerClaimClient.tsx` | Claim page validated its link (set, guest or organizer flow) |
+| `claim_invalid` | claim | custom | `flow`: set\|guest\|organizer; `reason`: name_missing | — | `app/claim/[set]/ClaimClient.tsx`, `app/organizer/claim/OrganizerClaimClient.tsx` | Claim form refused (name missing) |
+| `claim_complete` | claim | custom | `flow`: set\|guest\|organizer; `result`: claimed\|error; `storage`: ok\|failed; `error_code`: enum(42) | — | `app/claim/[set]/ClaimClient.tsx`, `app/claim/g/[token]/GuestClaimClient.tsx`, `app/organizer/claim/OrganizerClaimClient.tsx` | Claim saved (or failed) |
+| `signin_choice` | account | custom | `choice`: sign_in\|skip; `reason`: save\|checkout\|claim | — | `customer/account/SignInSheet.tsx`, `customer/account/signin.ts` | Visitor chose to sign in or skip at a prompt. A choice, not a login |
+| `sign_in_return` | account | custom | `result`: signed_in\|not_signed_in\|expired | — | `customer/account/AccountRoot.tsx` | Returned from a magic link: signed in, not signed in, expired |
+| `sign_in_link` | account | custom | `reason`: save\|checkout\|claim; `result`: sent\|sandbox\|invalid\|error; `error_code`: enum(42) | — | `customer/account/SignInSheet.tsx` | Magic link requested: sent, sandbox mail, invalid, error. Not a login |
+| `sign_out` | account | custom | `result`: done\|offline | — | `customer/account/useAccount.ts` | Signed out (or offline) |
+| `account_action` | account | custom | `action`: change_email\|delete; `result`: sent\|sandbox\|done\|invalid\|error; `error_code`: enum(42) | — | `app/account/AccountClient.tsx` | Email change or account deletion outcome |
+| `server_save` | account | custom | `kind`: sync\|share\|order\|gift\|publish\|claim; `result`: saved\|failed\|off; `error_code`: enum(42) | — | `app/gift/[id]/GiftClient.tsx`, `customer/account/share.ts`, `customer/account/sync.ts` | A server persistence step: sync, share, order, gift, publish, claim |
+| `product_option` | checkout | custom | `option`: material\|finish\|size; `material`: digital\|card\|print\|framed; `finish`: matte\|foil\|holo; `size`: classic\|stamp\|framed\|file; `context`: checkout | — | `app/checkout/[id]/CheckoutClient.tsx` | Checkout option changed (material, finish, size) |
+| `add_to_cart` | cart | recommended | `currency`: USD; `value`: money; `item_id`: enum(48); `quantity`: int 0–1000; `context`: checkout\|friends\|wall\|memory; `capability`: sandbox | capability=sandbox | `customer/cart/cartStore.ts` | A variant was added to the local cart (sandbox) |
+| `remove_from_cart` | cart | recommended | `currency`: USD; `value`: money; `item_id`: enum(48); `quantity`: int 0–1000; `context`: cart\|mini_cart | capability=sandbox | `app/cart/CartClient.tsx`, `customer/cart/MiniCart.tsx` | A variant was removed from the cart |
+| `view_cart` | cart | recommended | `currency`: USD; `value`: money; `item_count`: int 0–1000; `context`: cart\|mini_cart | capability=sandbox | `app/cart/CartClient.tsx`, `customer/cart/MiniCart.tsx` | Cart or mini cart viewed with its value |
+| `cart_update` | cart | custom | `action`: restore\|remove_undo\|quantity | — | `customer/cart/MiniCart.tsx` | Cart restored, removal undone, or quantity changed |
+| `begin_checkout` | checkout | recommended | `currency`: USD; `value`: money; `item_id`: enum(48); `item_count`: int 0–1000; `context`: checkout\|cart; `capability`: sandbox | capability=sandbox | `app/cart/CartClient.tsx`, `app/checkout/[id]/CheckoutClient.tsx` | Checkout started from cart or checkout page (sandbox) |
+| `add_payment_info` | checkout | recommended | `payment_type`: apple_pay\|google_pay\|card\|gift_print\|organizer_print; `capability`: sandbox | capability=sandbox | `app/cart/CartClient.tsx`, `app/checkout/[id]/CheckoutClient.tsx` | Sandbox payment method chosen (no payment details exist) |
+| `checkout_invalid` | checkout | custom | `reason`: email\|variant_blocked\|choose_again\|empty\|quote_expired | — | `app/cart/CartClient.tsx`, `app/checkout/[id]/CheckoutClient.tsx` | Checkout refused: email, blocked variant, choose again, empty, quote expired |
+| `quote_expired` | checkout | custom | `context`: checkout\|cart | — | `app/checkout/[id]/CheckoutClient.tsx` | A quote expired |
+| `quote_refresh` | checkout | custom | `context`: checkout\|cart | — | `app/checkout/[id]/CheckoutClient.tsx` | A quote was refreshed |
+| `sandbox_order` | checkout | custom | `method`: apple_pay\|google_pay\|card\|gift_print\|organizer_print; `result`: placed\|blocked; `receipt`: server\|local; `line_count`: int 0–1000; `value`: money; `currency`: USD; `capability`: sandbox; `storage`: ok\|failed; `error_code`: enum(42) | capability=sandbox | `customer/account/orders.ts` | A sandbox order record was persisted (server or local receipt). Never purchase |
+| `sandbox_order_retry` | checkout | custom | `result`: server\|local; `error_code`: enum(42) | capability=sandbox | `customer/account/orders.ts` | A sandbox order retried (server or local) |
+| `seat_decision` | cart | custom | `decision`: seat_only\|gift\|drop | — | `app/cart/unclaimed/[id]/UnclaimedClient.tsx`, `app/gift/[id]/GiftClient.tsx` | Unclaimed-seat decision: seat only, gift, drop |
+| `gift_prepare` | gift | custom | `delivery`: link\|print; `wrap`: bool; `has_message`: bool; `result`: prepared\|invalid\|blocked\|error; `storage`: server\|local; `error_code`: enum(42) | — | `app/gift/[id]/GiftClient.tsx` | Gift link/print prepared (or refused). Preparation is not delivery |
+| `gift_option` | gift | custom | `option`: delivery\|wrap; `delivery`: link\|print; `wrap`: bool | — | `app/gift/[id]/GiftClient.tsx` | Gift delivery or wrap choice changed before sending (never a name or note) |
+| `gift_revoke` | gift | custom | `result`: saved\|error; `error_code`: enum(42) | — | `app/gift/[id]/GiftClient.tsx` | Gift link revoked |
+| `wallet_select` | wallet | custom | `provider`: apple\|google; `capability`: simulated | capability=simulated | `app/wallet/[id]/WalletClient.tsx` | Wallet provider chosen. Passes are simulated; nothing is issued |
+| `wallet_option` | wallet | custom | `provider`: apple\|google | — | `app/wallet/[id]/WalletClient.tsx` | Wallet tab switched before adding; a preference, not a pass |
+| `organizer_step` | organizer | custom | `step`: design\|guests\|check\|publish\|done | — | `app/organizer/OrganizerClient.tsx` | Organizer wizard step reached |
+| `organizer_design` | organizer | custom | `change`: edition\|allowed\|lock_logo\|lock_title\|organizer_name\|title; `edition`: researched\|letterpress\|risograph\|minimal\|classic; `value`: bool | — | `app/organizer/OrganizerClient.tsx` | Organizer design choice (which field changed; never its value) |
+| `organizer_csv` | organizer | custom | `source`: file\|paste\|sample; `result`: parsed\|empty\|no_rows\|error; `row_count`: int 0–1000; `column_count`: int 0–100 | — | `app/organizer/OrganizerClient.tsx` | CSV parsed: source, result, row and column counts (never contents, headers or file names) |
+| `organizer_mapping` | organizer | custom | `result`: auto\|manual; `has_seat`: bool; `has_extra`: bool | — | `app/organizer/OrganizerClient.tsx` | Column mapping completed (auto/manual, seat/extra columns present) |
+| `organizer_check` | organizer | custom | `row_count`: int 0–1000; `missing_name_count`: int 0–1000 | — | `app/organizer/OrganizerClient.tsx` | Preview check: rows and missing names (counts) |
+| `organizer_contact_select` | organizer | custom | `action`: inspect\|show_more; `rank`: int 0–1000; `shown_count`: int 0–1000; `row_count`: int 0–1000 | — | `app/organizer/OrganizerClient.tsx` | Contact-sheet position inspected or more rows shown (never the guest) |
+| `organizer_publish` | organizer | custom | `mode`: links\|print; `result`: server\|local\|blocked\|error; `guest_count`: int 0–1000; `error_code`: enum(42) | — | `app/organizer/OrganizerClient.tsx` | Claim links or print run published (server, local, blocked, error) with guest count |
+| `storage_failure` | reliability | custom | `store`: wall\|deleted\|cart\|orders\|session\|prefs; `op`: read\|write; `reason`: quota\|unavailable\|parse\|unknown | — | `customer/flows/events.ts` | A browser storage read/write failed (once per store/op/reason per page load) |
+| `api_call` | reliability | custom | `api`: enum(13); `result`: success\|empty\|fallback\|failure\|aborted; `status_class`: 2xx\|204\|3xx\|4xx\|5xx\|network; `duration_ms`: int 0–3600000; `mode`: live\|simulated\|fallback\|demo\|sandbox\|local; `attempt`: int 1–20; `error_code`: enum(14) | — | `customer/studio/research/client.ts` | Browser-observed API call completed (one per attempt) |
+<!-- dictionary:end -->
+
+Runtime-only events (not available to `track()`):
+
+| Event | Parameters | Boundary |
+| --- | --- | --- |
+| `page_view` | runtime fields only | One per accepted navigation (see above), plus the current page when consent is given |
+| `web_vital` | `metric_name`: CLS\|FCP\|INP\|LCP\|TTFB; `metric_value`: int 0–600000 (ms; CLS × 1000); `metric_rating`: good\|needs-improvement\|poor; `navigation_type` | Reported by `next/web-vitals` (`useReportWebVitals`, the Web Vitals library bundled with Next.js, so no extra dependency). The per-load metric id is dropped |
+| `route_timing` | `duration_ms`; `navigation_type`: push\|replace\|traverse | From `onRouterTransitionStart` to the first animation frame after the new route's page view. Not sent for the initial load (Web Vitals cover it). The destination URL the router passes is ignored |
+
+### Commerce: GA ecommerce mapping (all sandbox)
+
+- GA recommended events used: `select_item` (search result chosen), `add_to_cart`, `remove_from_cart`,
+  `view_cart`, `begin_checkout`, `add_payment_info` (payment *method* chosen on the sandbox checkout; no payment
+  details exist) and `share`. All commerce events are stamped `capability=sandbox`.
+- `item_id` is a variant from the closed set `material_finish_size` (48 values, `VARIANT_IDS`), never a stub,
+  cart, quote or order id. The adapter moves `item_id`/`quantity` into GA's `items` array as
+  `{ item_id, item_category: material, item_variant: "finish_size", quantity }`.
+- `currency` is `USD`. Prices are stored in integer **minor units** (cents); `value` is **major units**:
+  `value = minor / 100` (`toMajorUnits`, or `major()` in the flows helper), rounded to cents.
+- **`purchase` and `refund` are reserved** for a future authoritative payment confirmation, deduplicated by
+  transaction id. Until then a persisted sandbox order is `sandbox_order` (custom), which GA never counts as
+  revenue. Do **not** mark `sandbox_order` as a purchase or assign it revenue in GA.
+- Never emitted (not in the catalog, listed in `FORBIDDEN_EVENTS`, checked by a source scan in tests):
+  `purchase`, `refund`, `login`, `sign_up`, `add_shipping_info`, lead events, virtual currency, GA `search` /
+  `view_search_results` (would invite a `search_term`), and GA's automatic event names.
+- A sign-in **choice** (`signin_choice`) and a sent magic link (`sign_in_link`) are not logins. A magic-link
+  return (`sign_in_return`) reflects this prototype's identity, which is not yet a production identity (#9),
+  so GA `login` is withheld. Wallet selection (`wallet_select`, stamped `simulated`) is not pass issuance. Gift
+  preparation (`gift_prepare`) is not delivery. `share` with `result=success` means the share sheet or copy
+  finished on this device, not that anyone received it. `share_landing` `viewer=owner` is local device
+  ownership, not identity.
+
+## Performance measurement
+
+- Core Web Vitals (LCP, INP, CLS) plus FCP and TTFB via `useReportWebVitals` from `next/web-vitals`. These cover
+  the hard-navigation landing load; CLS and INP may be reported when the page is hidden, so their
+  `route_template` is the page current at report time. Soft navigations get `route_timing` only.
+- Same consent as everything else: reports before consent are dropped.
+- GA aggregates `metric_value` as a sum/average; it does not compute percentiles. For p75 per metric use the
+  `metric_rating` distribution in explorations, or a BigQuery export if one is approved later. Establish a
+  baseline over at least two weeks of consented production traffic before setting alert thresholds.
+- Server/API durations and provider latency are in the operational log ([observability.md](observability.md)),
+  with the browser-observed side in `api_call`.
+
+## Failure isolation
+
+`track()` and every runtime entry point catch everything; a throwing transport, a blocked script, missing
+storage or SSR never reaches a customer action. A blocked or slow tag (10 s timeout) drops what was waiting and
+everything after it for that page; a late arrival gets nothing stale. With no configuration nothing is mounted.
+
+## GA4 setup record
+
+Done by the project owner in the Google Analytics web interface on 2026-10-11 (no API, no scripted changes).
+Measurement, property and stream ids are public identifiers; there are no secrets here. Evidence screenshots are
+kept with the #39 working notes (stream details of production, home of preview), not in the repository.
+
+| | Production | Preview |
+| --- | --- | --- |
+| Account | CompleteTech LLC (`393449895`) | same |
+| Property | *TicketStub — Production*, id `558390557` | *TicketStub — Preview*, id `558454273` |
+| Web stream | *TicketStub Production Web*, id `16107672790` | *TicketStub Preview and Development Web*, id `16107767122` |
+| Measurement id (`TICKETSTUB_GA_MEASUREMENT_ID`) | `G-RVV7ZNF463` with `TICKETSTUB_ANALYTICS_ENV=production` | `G-M2ELMGCNKW` with `TICKETSTUB_ANALYTICS_ENV=preview` |
+| Stream URL | `https://getticketstub.com` | `https://getticketstub.com` (a label only; GA does not restrict collection by it. Preview and local hosts use this separate id) |
+| Time zone / currency | America/New_York, USD | same |
+| Tag | Manual installation of this app's own tag | same |
+
+- **Do not reuse the tag already on the live domain** (`G-YBRK8129PK` / `GT-M3L6XD84`, shared with other
+  properties). It is not connected to these properties and must not be connected, replaced or overwritten.
+- Use the preview id for local development and preview deployments, with `TICKETSTUB_GA_DEBUG=1` only there.
+
+### Settings read back after saving
+
+| Setting | State | How it was verified |
+| --- | --- | --- |
+| Enhanced measurement | **Off** on both saved streams | The switch chosen while creating the streams **did not persist**: real browser traffic to preview showed an automatic `scroll` event. It was then turned off on each saved stream ("Turn off" confirmation) and a reload showed it off on both |
+| Data redaction | On for both streams: email redaction, plus query parameter redaction for `url`, `q`, `from`, `d`, `to`, `token`, `email`, `name`, `note` | Stream settings readback. A second line of defence only: the app already removes every query string before sending |
+| Google signals | Off on both | Data collection page readback ("Turn on" offered) |
+| User-provided data collection | Off on both | Data collection page readback |
+| Granular location and device data | Off on both | Readback |
+| Advertising personalization | Off in all 307 regions (0 of 307 allowed) on both | Readback on each property |
+| Product links (Google Ads, Merchant Center, etc.) | None | Not linked |
+
+### Reporting definitions registered (both properties)
+
+- **14 event-scoped custom dimensions:** `deployment_env`, `runtime_mode`, `route_template`, `capability`,
+  `result`, `error_code`, `entry`, `input_source`, `edition`, `material`, `finish`, `method`, `metric_name`,
+  `metric_rating`.
+- **2 event-scoped custom metrics:** *Action duration* → `duration_ms` (milliseconds); *Web vital value* →
+  `metric_value` (standard unit). Always analyse `metric_value` within one `metric_name`: CLS is a score × 1000,
+  the other vitals are milliseconds, so a sum or average across metrics means nothing.
+- **Key event:** `tear_complete`, counted once per event, **no default monetary value**. `creation_complete` and
+  `claim_complete` are deliberately *not* key events: their names also cover `reopened`/`error` outcomes, so
+  report them as funnel steps with `result` filters instead of counting every emission as a success.
+- GA's built-in `purchase` key event exists in each property by default. **The app never emits `purchase`**
+  (it is forbidden in the catalog and checked by tests); sandbox orders are `sandbox_order` and carry no revenue.
+  Do not mark `sandbox_order` or any commerce event as a purchase or give it a value.
+- Other parameters in the dictionary (`change`, `panel`, `via`, `context`, `reason`, counts, …) are collected but
+  **not registered**, so they cannot be used in reports or explorations yet. Register a parameter before
+  building a view on it (event-scoped dimensions are limited to 50 per standard property; registration is not
+  retroactive).
+
+### Still to do in GA (pending, not performed)
+
+1. **Data retention:** configured to 2 months for event and user data, activity reset off. Recheck on release; retention changes take effect after 24 hours.
+2. **Data filters:** define *Internal traffic* (team IP ranges) and activate it; activate the *Developer traffic*
+   filter so `debug_mode` hits are excluded. Not done.
+3. **Access review:** analytics owner as property admin, others Viewer/Analyst, removal when people leave. Not
+   reviewed.
+4. **Explorations:** none built (see below).
+5. **Unwanted referrals / cross-domain:** none needed (single host); leave cross-domain linking off.
+6. **Data deletion:** GA user deletion (by client id) and data deletion requests are the removal paths.
+7. Keep enhanced measurement off: GA can re-enable it per stream, and code cannot switch it off. Re-check it in
+   every admin review.
+
+## Reports and saved explorations
+
+**None of these exist yet (pending).** Views using unregistered parameters (for example `change`, `panel`,
+`via`, `reason`, counts) need those registered first. Build them as Explorations in the production property
+(and mirror in preview for QA). All filter
+`deployment_env = production`; commerce views also show `capability`; every view excludes internal and
+developer traffic. Device category, first-user source/medium (from the sanitized referrer origin and allowlisted
+campaign tags) are GA's built-in dimensions.
+
+| View | Type | Definition |
+| --- | --- | --- |
+| Acquisition → creation | Funnel (open) | `page_view` (landing) → `intake_submit` → `creation_start` → `creation_complete` (`storage=ok`); breakdown: first-user source, device category, `input_source` |
+| Activation | Funnel (closed, 30 min) | `intake_submit` → `creation_complete` → `studio_open` (`status=ready`) → `tear_complete` → `wall_view` (`state=loaded`); elapsed time shows time-to-first-stub; breakdown `entry`, `runtime_mode` |
+| Research & reveal health | Free form | `research_complete` count by `result`, avg `duration_ms`, `error_code`; `reveal_complete` avg `duration_ms` by `skipped`; `creation_error` by `error_code` |
+| Studio adoption | Free form | `studio_edit` by `change` × `edition`/`material`/`finish`; `remix_result` by `result` × `art` × `capability`; `agent_message` by `result`; `studio_panel` by `panel` |
+| Sharing | Funnel (open) | `share` (`result=success`) → `share_landing` (`viewer=visitor`, `result=valid`) → `claim_complete` or `creation_start`. Landings in another browser are a separate GA user: the funnel shows volumes by step, not linked people |
+| Commerce intent (sandbox) | Funnel | `add_to_cart` → `view_cart` → `begin_checkout` → `add_payment_info` → `sandbox_order` (`result=placed`); `quote_expired`, `checkout_invalid` by `reason`. Title it "Sandbox — not sales" |
+| Organizer | Funnel | `organizer_step` design → `organizer_csv` (`result=parsed`) → `organizer_check` → `organizer_publish` → `claim_complete` (`flow=organizer`) |
+| Retention | Cohort exploration | Cohort: first `creation_complete`; return: any `studio_open` or `wall_view`; weekly, 8 weeks. Per browser, not per person |
+| Performance | Free form | `web_vital` by `metric_name` × `metric_rating` × `route_template` × device; `route_timing` avg `duration_ms` by `route_template` |
+| Reliability | Free form | `api_call` by `api` × `result` × `status_class` × `mode`; `storage_failure` by `store` × `op` × `reason`; `server_save` by `kind` × `result` |
+
+**Attribution limits:** link preparation is not delivery; local ownership is not identity; the same person on
+two devices is two GA users; cross-device linkage needs a future supported identifier (#9) and consent, never a
+hash of personal data.
+
+**Operational and cost analysis** uses the server log, not GA: request/attempt status, fallback rates, provider
+latency, token counts and provider-reported cost ([observability.md](observability.md)). Missing cost is
+unknown, not zero, and provider-reported cost is not billed spend.
+
+**Export pipeline:** not justified yet. GA4's free BigQuery export can be enabled later (percentiles, joins with
+operational data) without code changes; no new service is part of this change.
+
+## QA
+
+Offline (CI, no network):
+
+```sh
+npm test                                   # includes the analytics suites
+node --test tests/analytics.test.mjs tests/analytics-browser.test.mjs
+npm run lint && npm run typecheck && npm run build
+```
+
+The suites seed private values into route tokens, query strings (`?from= ?d= ?to= ?url= ?q=`), hashes,
+referrers, `document.title`, campaign tags and event params, and assert none reach the transport, the
+`dataLayer`, the script URL or cookies. They cover consent before/after/reload/withdrawal/cross-tab, no replay,
+blocked/slow tag, stale loaders, page-view de-duplication (push/replace/back/forward/Strict Mode/same template),
+schema rejection, sandbox/simulated stamping and the absence of purchase/login events.
+
+Local browser check without sending anything to Google: start with a synthetic id and **block** Google's
+hosts in DevTools (Network → Request blocking: `*googletagmanager.com*`, `*google-analytics.com*`), or run
+offline.
+
+```sh
+TICKETSTUB_ANALYTICS_ENV=preview TICKETSTUB_GA_MEASUREMENT_ID=G-TEST000000 npm run dev
+```
+
+Check: nothing is requested before "Allow"; after it exactly one (blocked) `gtag/js?id=G-TEST000000` request;
+`window.dataLayer` holds `consent default` (ads denied) and `config` with `send_page_view:false` and template
+page fields (open a share link and `/new?url=...`); the app keeps working with the script blocked. "No thanks"
+in a fresh profile: no request, no `dataLayer`, across reloads. Withdraw: `window['ga-disable-G-TEST000000']`
+is `true` and `_ga*` cookies are gone. Inspecting real `collect` payloads (`dl`, `dr`, `dt`) belongs to the live
+validation below, in the preview property.
+
+## Live validation (partly done, full journeys pending)
+
+Read the subsequent [live validation evidence](analytics-live-validation.md): Google DebugView confirmed stored sanitized `/studio/:id` and preview environment. Creation, edits, tear, wall and sandbox checkout were exercised; phone withdrawal persisted and stopped collection. Fresh tag requests after disabling cache no longer included automatic enhanced events. The earlier observations below describe the discovery, before that correction propagated.
+
+Done by the project owner in a real Chrome profile against a local build configured with the **preview** id
+(synthetic traffic; no production deployment, no third-party sources):
+
+- Before any choice, and after "No thanks": **0 requests** to Google hosts. Checked.
+- After "Allow analytics": a real `page_view` reached the preview property with the safe template location
+  (`/make`). Checked.
+- That traffic also showed GA's automatic `scroll` event and unsanitized history-based page views, which exposed
+  that enhanced measurement had not been saved as off. Those early events remain in the preview property's
+  DebugView and must not be read as the corrected configuration. It was then turned off on both saved streams (above). The `page_view` was observed **before**
+  that correction.
+
+Still pending, and required before #39 can be closed:
+
+1. Repeat the post-consent check after the stream change has propagated: only app events, no `scroll` or other
+   enhanced-measurement events, and `page_location` as templates for `/s/<token>`, `/new?url=...`,
+   `/search?q=...` and a gift link with `?to=`.
+2. Complete remaining DebugView journeys with `TICKETSTUB_GA_DEBUG=1`, on desktop and phone: walk intake → creation → studio → tear → wall, a
+   share, a claim, cart → checkout → sandbox order, organizer import → publish. Event order and parameters match
+   the dictionary; no `purchase`/`login`; registered dimensions populate.
+3. Back/forward and same-template navigation: one `page_view` each.
+4. Withdrawal requests/reload persistence checked; independently verify `_ga` cookie removal and cross-tab behavior on the deployed host.
+5. Final readback of the admin settings above, with redacted screenshots (no client ids, IPs or real stubs)
+   and the tested commit attached to #39.
+
+## Rollout and rollback
+
+- **Rollout:** finish the preview validation above; then, once a release is authorized, set
+  `TICKETSTUB_ANALYTICS_ENV=production` and `TICKETSTUB_GA_MEASUREMENT_ID=G-RVV7ZNF463` on the production host and
+  restart. No rebuild is needed. Never set the production id on preview or local hosts.
+- **Rollback:** set `TICKETSTUB_ANALYTICS_DISABLED=1` (or remove the two required variables) and restart. The
+  card, the reopen tag and the script disappear on the next page load; `track()` becomes a no-op; customer flows
+  are unaffected. Stored consent records are harmless and reused if analytics returns. To remove collected data
+  use GA's data deletion requests.
+- **Schema changes:** adding events or enum values keeps `schema_version`; renaming or changing meaning bumps it
+  and the dictionary above, and reports should filter on `schema_version` across the change.
+
+## Ownership and retention
+
+| Area | Owner |
+| --- | --- |
+| Catalog, consent, adapter, this page | Customer app (analytics core) |
+| Flow call sites | Each flow's owner (`src/customer/flows/events.ts` helpers) |
+| GA properties, admin settings, explorations, access | Project owner (CompleteTech LLC GA account); named analytics owner pending (#27) |
+| Server operational log | Server owners ([observability.md](observability.md)) |
+
+GA event and user retention is configured to two months, with activity reset off. The consent record lives in the visitor's browser until they
+clear it. No analytics data is stored by TicketStub servers.
+
+## Limitations
+
+- Full journey validation, deployment readback, data filters, access review and explorations are
+  pending (see [Status](#status-what-is-done-and-what-is-still-external)). No host is configured to collect.
+- Enhanced measurement must stay off in GA's admin; code cannot turn it off, and the create-time switch already
+  failed to persist once. If it is turned back on, outbound-click and download events would carry raw link URLs
+  (data redaction covers only the listed query keys and email shapes).
+- Only 14 parameters are registered as dimensions and 2 as metrics; the rest are collected but not reportable
+  until registered, and registration is not retroactive.
+- Web Vitals cover hard navigations only; GA does not compute percentiles.
+- Consent applies per browser profile; GA users are browsers, not people.
+- The /privacy page describes the analytics behaviour in plain words; it has not had legal review.

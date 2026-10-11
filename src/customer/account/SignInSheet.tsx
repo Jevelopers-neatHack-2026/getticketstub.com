@@ -11,6 +11,7 @@ import { play } from "@/customer/studio/feedback";
 import { EMAIL_RE, api, type LinkReason } from "./api";
 import { SAVING_OFF_LINE, useSavingOff } from "./saving";
 import { closeSignIn, updateSignIn, type SignInRequest } from "./signin";
+import { errorCode, flow } from "@/customer/flows/events";
 import s from "./account.module.css";
 
 const COPY: Record<LinkReason, { title: string; lede: string }> = {
@@ -56,12 +57,22 @@ function Form({ request }: { request: SignInRequest }) {
   async function send() {
     const to = email.trim();
     if (!EMAIL_RE.test(to)) {
+      flow("sign_in_link", { reason: request.reason, result: "invalid" });
       setError("That email doesn't look right. Check it and try again.");
       document.getElementById("signin-email")?.focus();
       return;
     }
     setError("");
-    const res = await progress.run(() => api.link(to, request.reason, request.returnTo));
+    // a link sent is not a sign-in: the session only exists once the emailed link is opened
+    const res = await progress.run(() =>
+      api.link(to, request.reason, request.returnTo).then(
+        (r) => (flow("sign_in_link", { reason: request.reason, result: r.sandbox || r.devLink ? "sandbox" : "sent" }), r),
+        (e: unknown) => {
+          flow("sign_in_link", { reason: request.reason, result: "error", error_code: errorCode(e) });
+          throw e;
+        },
+      ),
+    );
     if (res) {
       play("success", { emphasis: "subtle" });
       updateSignIn({ sent: { email: to, devLink: res.devLink } });
@@ -141,7 +152,13 @@ function Form({ request }: { request: SignInRequest }) {
       <Stamp type="submit" block disabled={progress.busy}>
         {progress.busy ? "Sending" : "Email me a link"}
       </Stamp>
-      <TearLink type="button" onClick={closeSignIn}>
+      <TearLink
+        type="button"
+        onClick={() => {
+          flow("signin_choice", { choice: "skip", reason: request.reason });
+          closeSignIn();
+        }}
+      >
         Not now
       </TearLink>
       <p className={s.small}>

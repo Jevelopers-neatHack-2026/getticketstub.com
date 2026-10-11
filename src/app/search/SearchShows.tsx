@@ -7,6 +7,7 @@ import { searchEvents } from "@/customer/studio/research/client";
 import { MarkLegend, SourceMark, Tag, Tags, TearLink } from "@/customer/desk/Desk";
 import { LeavesMark } from "@/customer/pages/ui";
 import { PICK_KEY } from "../new/NewStub";
+import { errorCode, flow } from "@/customer/flows/events";
 import styles from "./search.module.css";
 
 const FILTERS: { id: EventType | "all"; label: string }[] = [
@@ -48,9 +49,14 @@ export function SearchShows() {
         setError(null);
         try {
           const found = await searchEvents(q);
-          if (live) setResults(found);
+          if (live) {
+            setResults(found);
+            // one event per settled search (the 250 ms debounce, and only the latest query), never per keystroke or with the words
+            flow("search_results", { result: found.length ? "results" : "zero", result_count: found.length, query_kind: q ? "text" : "empty" });
+          }
         } catch (e) {
           if (live) {
+            flow("search_results", { result: "error", result_count: 0, query_kind: q ? "text" : "empty", error_code: errorCode(e) });
             setResults([]);
             if (q) setError(e instanceof Error ? e.message : "Search isn't working right now. Paste the link instead.");
           }
@@ -68,8 +74,9 @@ export function SearchShows() {
 
   const shown = filter === "all" ? results : results.filter((r) => r.type === filter);
 
-  const open = (ev: EventData) => {
+  const open = (ev: EventData, rank: number) => {
     const demo = DEMO_BY_TITLE[ev.title];
+    flow("select_item", { item_list_id: "search_results", index: rank, item_category: ev.type ?? "generic", demo: !!demo });
     if (demo) {
       router.push(`/new?demo=${demo}`);
       return;
@@ -93,7 +100,7 @@ export function SearchShows() {
           role="search"
           onSubmit={(e) => {
             e.preventDefault();
-            if (shown[0]) open(shown[0]);
+            if (shown[0]) open(shown[0], 1);
           }}
         >
           <label htmlFor={inputId} className={`desk-label ${styles.inputLabel}`}>
@@ -121,7 +128,15 @@ export function SearchShows() {
         {new Set(results.map((r) => r.type)).size > 1 ? (
           <Tags label="Event type">
             {FILTERS.filter((f) => f.id === "all" || results.some((r) => r.type === f.id)).map((f) => (
-              <Tag key={f.id} type="button" pressed={filter === f.id} onClick={() => setFilter(f.id)}>
+              <Tag
+                key={f.id}
+                type="button"
+                pressed={filter === f.id}
+                onClick={() => {
+                  if (filter !== f.id) flow("search_filter", { filter: f.id });
+                  setFilter(f.id);
+                }}
+              >
                 {f.label}
               </Tag>
             ))}
@@ -135,7 +150,7 @@ export function SearchShows() {
         <ul className={styles.results}>
           {shown.map((ev, i) => (
             <li key={`${ev.title}-${ev.dateISO ?? i}`} className={styles.item} style={{ animationDelay: `${Math.min(i, 8) * 40}ms` }}>
-              <button type="button" className={styles.row} onClick={() => open(ev)}>
+              <button type="button" className={styles.row} onClick={() => open(ev, i + 1)}>
                 <span className={styles.rowDate} aria-hidden="true">
                   {ev.dateISO ? (
                     <>
@@ -164,7 +179,14 @@ export function SearchShows() {
 
         {shown.length > 0 ? <MarkLegend marks={["simulated"]} /> : null}
 
-        <TearLink type="button" className={styles.fallback} onClick={() => router.push("/make")}>
+        <TearLink
+          type="button"
+          className={styles.fallback}
+          onClick={() => {
+            flow("search_fallback", { to: "link" });
+            router.push("/make");
+          }}
+        >
           Can&apos;t find it? Paste the link instead
           <LeavesMark />
         </TearLink>

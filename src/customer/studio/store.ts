@@ -4,6 +4,7 @@
 // so memory pages work without a backend. Storage can throw (private mode): every access is guarded.
 import type { Correction, Stub } from "./types";
 import { applyCorrection, entries, undoCorrection, type CorrectionInput } from "./facts/corrections";
+import { storageFailure } from "@/customer/flows/events";
 
 const KEY = "ticketstub.wall.v1";
 const DELETED_KEY = "ticketstub.wall.deleted.v1";
@@ -23,16 +24,21 @@ export function loadDeleted(): string[] {
   try {
     const raw = localStorage.getItem(DELETED_KEY);
     return raw ? (JSON.parse(raw) as string[]) : [];
-  } catch {
+  } catch (e) {
+    storageFailure("deleted", "read", e);
     return [];
   }
 }
 
-export function saveDeleted(ids: string[]): void {
+/** True when the ids were written. A false is already reported (without the ids). */
+export function saveDeleted(ids: string[]): boolean {
   try {
     localStorage.setItem(DELETED_KEY, JSON.stringify([...new Set(ids)]));
-  } catch {
+    return true;
+  } catch (e) {
     /* storage unavailable or full */
+    storageFailure("deleted", "write", e);
+    return false;
   }
 }
 
@@ -40,7 +46,8 @@ export function loadWall(): Stub[] {
   try {
     const raw = localStorage.getItem(KEY);
     return raw ? (JSON.parse(raw) as Stub[]) : [];
-  } catch {
+  } catch (e) {
+    storageFailure("wall", "read", e);
     return [];
   }
 }
@@ -55,29 +62,35 @@ function slim(stub: Stub): Stub {
   };
 }
 
-/** Write the wall without telling the sync (the sync's own result goes through here). */
-export function writeWall(stubs: Stub[]): void {
+/** Write the wall without telling the sync (the sync's own result goes through here). True when it was stored. */
+export function writeWall(stubs: Stub[]): boolean {
   try {
     localStorage.setItem(KEY, JSON.stringify(stubs.map(slim)));
-  } catch {
+    return true;
+  } catch (e) {
     /* storage unavailable or full: the session still works in memory */
+    storageFailure("wall", "write", e);
+    return false;
   }
 }
 
-export function saveWall(stubs: Stub[]): void {
-  writeWall(stubs);
+/** True when the wall was stored. Callers that used to ignore the result still can. */
+export function saveWall(stubs: Stub[]): boolean {
+  const ok = writeWall(stubs);
   changed();
+  return ok;
 }
 
 export function getStub(id: string): Stub | undefined {
   return loadWall().find((s) => s.id === id);
 }
 
-export function upsertStub(stub: Stub): void {
+/** Save one stub to the front of the wall. True when it is stored on this device; false means it lives in memory only. */
+export function upsertStub(stub: Stub): boolean {
   const wall = loadWall().filter((s) => s.id !== stub.id);
   const gone = loadDeleted();
   if (gone.includes(stub.id)) saveDeleted(gone.filter((id) => id !== stub.id));
-  saveWall([{ ...stub, updatedAt: Date.now() }, ...wall]);
+  return saveWall([{ ...stub, updatedAt: Date.now() }, ...wall]);
 }
 
 /** A stub's correction history, oldest first. Entries are only ever appended (an undo is a new entry). */
@@ -104,9 +117,10 @@ export function undoStubCorrection(id: string, factId: string): Stub | undefined
   return next;
 }
 
-export function removeStub(id: string): void {
+/** True when the stub is gone from storage too. */
+export function removeStub(id: string): boolean {
   saveDeleted([...loadDeleted(), id]);
-  saveWall(loadWall().filter((s) => s.id !== id));
+  return saveWall(loadWall().filter((s) => s.id !== id));
 }
 
 /** Compact, URL-safe encoding of a stub for share links (photos dropped to keep URLs short). */

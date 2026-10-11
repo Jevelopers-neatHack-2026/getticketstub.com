@@ -6,6 +6,7 @@ import { WALL_CHANGED, loadDeleted, loadWall, saveDeleted, writeWall } from "@/c
 import type { Stub } from "@/customer/studio/types";
 import { api } from "./api";
 import { isSavingOff } from "./saving";
+import { errorCode, flow } from "@/customer/flows/events";
 
 export const WALL_SYNCED = "ticketstub:wall-synced";
 const DEBOUNCE_MS = 1500;
@@ -48,6 +49,8 @@ export const isOnServer = (id: string): boolean => onServer.has(id);
 
 let running: Promise<SyncResult> | null = null;
 let again = false;
+/** Syncs run on every change and focus: a success is reported when it follows a failure (or is the first), every failure is. */
+let lastSynced: boolean | null = null;
 
 /** One merge round trip. Calls overlapping a running one are folded into a single follow-up. */
 export function syncNow(): Promise<SyncResult> {
@@ -71,8 +74,12 @@ export function syncNow(): Promise<SyncResult> {
       const sent = new Set(deleted);
       saveDeleted(loadDeleted().filter((id) => !sent.has(id)));
       window.dispatchEvent(new CustomEvent(WALL_SYNCED, { detail: { count: merged.length } }));
+      if (lastSynced !== true) flow("server_save", { kind: "sync", result: "saved" });
+      lastSynced = true;
       return { ok: true, count: merged.length };
-    } catch {
+    } catch (e) {
+      flow("server_save", { kind: "sync", result: "failed", error_code: errorCode(e) });
+      lastSynced = false;
       return { ok: false, count: local.length };
     }
   })().finally(() => {

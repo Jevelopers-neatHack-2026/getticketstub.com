@@ -18,10 +18,12 @@ import {
   existingStub,
   inputFromDemo,
   inputFromText,
-  keepStub,
+  inputSource,
+  keepStubResult,
   looksLikeLink,
   type PrintInput,
 } from "./make";
+import { errorCode, flow } from "@/customer/flows/events";
 import { useIdleSway } from "./useIdleSway";
 import s from "./StudioStart.module.css";
 
@@ -42,6 +44,8 @@ const freshId = () => Math.random().toString(36).slice(2, 10);
 /** `fill`: the section is the whole page (/make) and centres its content in the screen height. Without it, it sizes to its content, for sitting under a hero. */
 export function StudioStart({ fill = false }: { fill?: boolean } = {}) {
   const router = useRouter();
+  // where this start section sits: the whole /make page, or under the landing hero
+  const entry = fill ? "make" : "home";
   const inputId = useId();
   const noteId = useId();
   const titleId = useId();
@@ -102,21 +106,26 @@ export function StudioStart({ fill = false }: { fill?: boolean } = {}) {
   const submit = (value: string) => {
     const v = value.trim();
     if (!v) {
+      flow("intake_invalid", { entry, reason: "empty" });
       setMessage("Paste your event link first.");
       inputRef.current?.focus();
       return;
     }
-    begin({ input: inputFromText(v), stubId: freshId() });
+    const input = inputFromText(v);
+    flow("intake_submit", { entry, input_source: inputSource(input), result: "accepted" });
+    begin({ input, stubId: freshId() });
   };
 
   // Opening a demo twice reopens the stub that is already on the wall.
   const demo = (key: DemoKey) => {
     const id = demoStubId(key);
     if (existingStub(undefined, id)) {
+      flow("intake_submit", { entry, input_source: "demo", result: "reopened" });
       setPhase("feeding");
       later(() => open(id), FEED_MS);
       return;
     }
+    flow("intake_submit", { entry, input_source: "demo", result: "accepted" });
     begin({ input: inputFromDemo(key), stubId: id });
   };
 
@@ -131,14 +140,17 @@ export function StudioStart({ fill = false }: { fill?: boolean } = {}) {
     try {
       const text = (await navigator.clipboard.readText()).trim();
       if (!text) {
+        flow("intake_paste", { entry, via: "button", result: "empty" });
         setMessage(
           "Your clipboard is empty. Copy the link from your ticket email or app.",
         );
         inputRef.current?.focus();
         return;
       }
+      flow("intake_paste", { entry, via: "button", result: "success" });
       landLink(text);
     } catch {
+      flow("intake_paste", { entry, via: "button", result: "denied" });
       setMessage(
         "Your browser won't let us read the clipboard. Press and hold the line to paste.",
       );
@@ -168,8 +180,14 @@ export function StudioStart({ fill = false }: { fill?: boolean } = {}) {
               <Printing
                 input={job.input}
                 stubId={job.stubId}
-                onDone={(event) => open(keepStub(event, job.stubId))}
-                onError={(msg) => {
+                entry={entry}
+                onDone={(event) => {
+                  const kept = keepStubResult(event, job.stubId);
+                  flow("creation_complete", { entry, input_source: inputSource(job.input), result: kept.created ? "created" : "reopened", storage: kept.stored ? "ok" : "failed" });
+                  open(kept.id);
+                }}
+                onError={(msg, err) => {
+                  flow("creation_error", { entry, input_source: inputSource(job.input), error_code: errorCode(err) });
                   setPhase("idle");
                   setJob(null);
                   setMessage(
@@ -236,6 +254,7 @@ export function StudioStart({ fill = false }: { fill?: boolean } = {}) {
                         const text = e.clipboardData.getData("text").trim();
                         if (text) {
                           e.preventDefault();
+                          flow("intake_paste", { entry, via: "field", result: "success" });
                           landLink(text);
                         }
                       }}
@@ -295,7 +314,10 @@ export function StudioStart({ fill = false }: { fill?: boolean } = {}) {
               <TearLink
                 type="button"
                 className={s.search}
-                onClick={() => router.push("/search")}
+                onClick={() => {
+                  flow("cta_select", { cta: "search", context: entry });
+                  router.push("/search");
+                }}
               >
                 No link? Search for your show
                 <LeavesMark />

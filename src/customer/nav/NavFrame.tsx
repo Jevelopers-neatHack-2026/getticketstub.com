@@ -19,7 +19,8 @@ import { play, useMuted } from "@/customer/studio/feedback";
 import { AccountIcon, AdminIcon, CartIcon, ChevronIcon, HandleIcon, MakeIcon, OrganizerIcon, WallIcon } from "./icons";
 import { useDesktop, useNavOpen } from "./navState";
 import { useStaff } from "./useStaff";
-import { NAV_FREE, buildTree, chainOf, useLocation, type IconKey, type RouteNode } from "./routes";
+import { NAV_FREE, buildTree, chainOf, navItem, useLocation, type IconKey, type RouteNode } from "./routes";
+import { flow } from "@/customer/flows/events";
 import f from "./NavFrame.module.css";
 
 const ICONS: Record<IconKey, ComponentType> = {
@@ -171,6 +172,8 @@ export function NavFrame({ children, notice }: { children: ReactNode; notice?: R
         aria-current={here ? "page" : undefined}
         title={full ? undefined : n.dot ? `${n.label}: save your wall` : n.label}
         onClick={(e) => {
+          // the kind of place, and whether this device already has a wall (a returning visitor), never which stub
+          flow("nav_select", { item: navItem(n.key), has_stubs: stubs.length > 0 });
           select(n);
           if (n.key.startsWith("share:") && !e.metaKey && !e.ctrlKey && !e.shiftKey && e.button === 0) {
             // A server token is shorter and prettier than the encoded stub; use it when there is one.

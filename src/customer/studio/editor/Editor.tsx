@@ -19,7 +19,8 @@ import { HandleIcon } from "@/customer/nav/icons";
 import { PathTrack } from "@/customer/wayfinding/PathTrack";
 import { PaperButton, PaperSheet, Stamp, Tag, Tags, Tool, Tools } from "@/customer/desk/Desk";
 import { AskIcon, FlipIcon, FriendsIcon, PreviewIcon, RemixIcon } from "@/customer/desk/icons";
-import { formatDate, hiddenLabel, setEdition, setHidden, stepEdition, type Selectable } from "./ops";
+import { editChanges, formatDate, hiddenLabel, setEdition, setHidden, stepEdition, type Selectable } from "./ops";
+import { flow } from "@/customer/flows/events";
 import { FloatingToolbar } from "./FloatingToolbar";
 import { DockedToolbar } from "./Dock";
 import { ChipPopover } from "./ChipPopover";
@@ -41,6 +42,8 @@ const PANELS_KEY = "ticketstub.studio.panels.v1";
 /** Print preview comes on by itself past this zoom. */
 const AUTO_PREVIEW = 1.5;
 type SheetName = null | "styles" | "remix" | "agent" | "finish" | "facts" | "versions";
+/** How a style was dealt, for analytics: the gesture or control that committed it. */
+type DealMethod = "swipe" | "keyboard" | "grid" | "rail" | "dots";
 
 /** Width / height of each style, so the stage can be sized to the stub before it renders. */
 const ASPECT: Record<Edition, number> = { researched: 2 / 3, risograph: 2 / 3, minimal: 2 / 3, letterpress: 1.9, classic: 2.4 };
@@ -115,6 +118,15 @@ function EditorLoaded({ id }: { id: string }) {
   const router = useRouter();
   const [stub, setStub] = useState<Stub | null>(() => getStub(id) ?? null);
   const status = stub ? "ready" : "missing";
+  // The studio opened (or found nothing): once per stub visit, after mount, never per render or Strict Mode re-run.
+  const opened = useRef(false);
+  useEffect(() => {
+    if (opened.current) return;
+    opened.current = true;
+    flow("studio_open", { status, device: window.matchMedia?.("(min-width: 960px)").matches ? "desktop" : "phone" });
+  }, [status]);
+  // Set by the control that commits the next edit (a deal), read once by update().
+  const dealMethod = useRef<DealMethod | null>(null);
   const [selected, setSelected] = useState<Selectable | null>(null);
   const [flipped, setFlipped] = useState(false);
   const [chipFact, setChipFact] = useState<string | null>(null);
@@ -164,7 +176,23 @@ function EditorLoaded({ id }: { id: string }) {
     const prev = stubRef.current;
     stubRef.current = s;
     setStub(s);
-    upsertStub(s);
+    const stored = upsertStub(s);
+    // One event per committed change, named by what changed (never the values); a deal says how it was dealt.
+    if (prev) {
+      const method = dealMethod.current;
+      dealMethod.current = null;
+      for (const change of editChanges(prev, s)) {
+        const v = currentVersion(s);
+        flow("studio_edit", {
+          change,
+          method: change === "edition" ? (method ?? "other") : undefined,
+          edition: change === "edition" ? v.edition : undefined,
+          material: change === "material" ? s.material : undefined,
+          finish: change === "finish" ? s.finish : undefined,
+          storage: stored ? "ok" : "failed",
+        });
+      }
+    }
     // The server only hears about stubs it has: signed in, and a sync that carried this one has come back.
     if (prev && getAccountState().status === "in" && isOnServer(s.id)) {
       const before = prev.corrections?.length ?? 0;
@@ -182,8 +210,9 @@ function EditorLoaded({ id }: { id: string }) {
 
   /** Deal another style: the old stub slides off, the new one is set down with a thunk and a buzz. */
   const deal = useCallback(
-    (next: Stub, dir: 1 | -1, fromX = 0) => {
+    (next: Stub, dir: 1 | -1, fromX: number, method: DealMethod) => {
       if (!stub) return;
+      dealMethod.current = method;
       setDealing({ from: stub, dir, fromX, n: ++dealN.current });
       announce(`${editionLabel(currentVersion(next).edition)} style.`);
       setHint(false);
@@ -199,20 +228,27 @@ function EditorLoaded({ id }: { id: string }) {
     [stub, update, later],
   );
 
-  const dealStep = useCallback((dir: 1 | -1, fromX = 0) => stub && deal(stepEdition(stub, dir), dir, fromX), [stub, deal]);
+  const dealStep = useCallback((dir: 1 | -1, fromX: number, method: DealMethod) => stub && deal(stepEdition(stub, dir), dir, fromX, method), [stub, deal]);
 
   const dealTo = useCallback(
-    (ed: Edition) => {
+    (ed: Edition, method: DealMethod) => {
       if (!stub) return;
       const from = EDITIONS.indexOf(currentVersion(stub).edition);
       const to = EDITIONS.indexOf(ed);
       if (from === to) return;
-      deal(setEdition(stub, ed), to > from ? 1 : -1);
+      deal(setEdition(stub, ed), to > from ? 1 : -1, 0, method);
     },
     [stub, deal],
   );
 
-  const flip = useCallback(() => {
+  /** Open a sheet from a control, and say which panel opened. */
+  const openSheet = useCallback((name: "styles" | "remix" | "facts" | "versions") => {
+    flow("studio_panel", { panel: name, open: true });
+    setSheet(name);
+  }, []);
+
+  const flip = useCallback((method: "button" | "keyboard" = "button") => {
+    flow("studio_flip", { method });
     setFlipped((f) => {
       announce(f ? "Showing the front." : "Showing the back.");
       return !f;
@@ -228,6 +264,8 @@ function EditorLoaded({ id }: { id: string }) {
   }, []);
 
   const ask = useCallback((text?: string) => {
+    // a line typed into a margin note opens the agent with it; the words never leave the page
+    flow("agent_open", { via: text ? "note" : "button" });
     setAgentSeed(text ? { text, n: Date.now() } : undefined);
     setSheet("agent");
   }, []);
@@ -238,6 +276,7 @@ function EditorLoaded({ id }: { id: string }) {
   }, []);
   const togglePanel = useCallback(
     (which: keyof Panels) => {
+      flow("studio_panel", { panel: which === "rail" ? "rail" : "inspector", open: !panels[which] });
       play("toggle", { emphasis: "subtle", direction: panels[which] ? "back" : "forward" });
       setPanelState({ ...panels, [which]: !panels[which] });
     },
@@ -246,6 +285,7 @@ function EditorLoaded({ id }: { id: string }) {
   /** Focus: fold both panels, or unfold them again. */
   const toggleFocus = useCallback(() => {
     const open = panels.rail || panels.insp;
+    flow("studio_panel", { panel: "focus", open: !open });
     play("toggle", { emphasis: "subtle", direction: open ? "back" : "forward" });
     setPanelState({ rail: !open, insp: !open });
   }, [panels, setPanelState]);
@@ -253,6 +293,7 @@ function EditorLoaded({ id }: { id: string }) {
   const zoomToSelection = useCallback(() => {
     const el = areaRef.current?.querySelector<HTMLElement>("figure[data-edition] button[aria-pressed='true']");
     if (!el) return;
+    flow("studio_view", { action: "zoom_selection" });
     play("tap", { emphasis: "subtle" });
     cameraRef.current?.(el.getBoundingClientRect());
   }, []);
@@ -265,12 +306,12 @@ function EditorLoaded({ id }: { id: string }) {
       if (t && (t.closest("input, textarea, select, [contenteditable='true'], [role='radio'], [role='tab']") || t.isContentEditable)) return;
       if (e.key === "ArrowRight") {
         e.preventDefault();
-        dealStep(1);
+        dealStep(1, 0, "keyboard");
       } else if (e.key === "ArrowLeft") {
         e.preventDefault();
-        dealStep(-1);
+        dealStep(-1, 0, "keyboard");
       } else if (e.key === "f" || e.key === "F") {
-        flip();
+        flip("keyboard");
       } else if ((e.key === "z" || e.key === "Z") && desktop && selected && !flipped) {
         zoomToSelection();
       } else if (e.key === "\\" && desktop) {
@@ -314,7 +355,7 @@ function EditorLoaded({ id }: { id: string }) {
       s.suppress = true;
       setPressing(false);
       haptic([12]);
-      setSheet("styles");
+      openSheet("styles");
     }, LONG_PRESS_MS);
   };
   const onPointerMove = (e: React.PointerEvent) => {
@@ -361,7 +402,7 @@ function EditorLoaded({ id }: { id: string }) {
           node.style.transition = "";
         });
       }
-      dealStep(dx < 0 ? 1 : -1, dx);
+      dealStep(dx < 0 ? 1 : -1, dx, "swipe");
     } else if (node) {
       node.style.transform = "";
     }
@@ -436,6 +477,7 @@ function EditorLoaded({ id }: { id: string }) {
   const shareToken = useMemo(() => (stub ? encodeStub(stub) : ""), [stub]);
 
   const onTorn = () => {
+    // TearStage saves the tear and reports it; this is the editor's fallback hand-off only
     if (!stub) return;
     update({ ...stub, torn: true });
     play("pin");
@@ -450,7 +492,12 @@ function EditorLoaded({ id }: { id: string }) {
         <h1>We couldn&apos;t find that stub on this device.</h1>
         <p>Stubs are saved in this browser. Make a new one from your ticket, or open your wall.</p>
         <div className={styles.missingActions}>
-          <Stamp onClick={() => window.setTimeout(() => router.push("/make"), 200)}>
+          <Stamp
+            onClick={() => {
+              flow("cta_select", { cta: "make", context: "editor" });
+              window.setTimeout(() => router.push("/make"), 200);
+            }}
+          >
             Paste a new link
             <LeavesMark />
           </Stamp>
@@ -516,7 +563,7 @@ function EditorLoaded({ id }: { id: string }) {
 
   const toolbar = (
     <DockedToolbar container={areaRef} clip={desktop} active={!!selected && !flipped} track={`${version.id}|${selected}|${stub.material}|${desktop}`}>
-      {selected && <FloatingToolbar stub={stub} selected={selected} onChange={update} onDone={() => setSelected(null)} onRemix={() => setSheet("remix")} onZoom={desktop ? zoomToSelection : undefined} />}
+      {selected && <FloatingToolbar stub={stub} selected={selected} onChange={update} onDone={() => setSelected(null)} onRemix={() => openSheet("remix")} onZoom={desktop ? zoomToSelection : undefined} />}
     </DockedToolbar>
   );
 
@@ -534,13 +581,19 @@ function EditorLoaded({ id }: { id: string }) {
 
   const tools = (
     <Tools label="Stub tools">
-      <Tool icon={<RemixIcon />} active={sheet === "remix"} onClick={() => setSheet("remix")}>
+      <Tool icon={<RemixIcon />} active={sheet === "remix"} onClick={() => openSheet("remix")}>
         Remix
       </Tool>
-      <Tool icon={<FlipIcon />} active={flipped} onClick={flip}>
+      <Tool icon={<FlipIcon />} active={flipped} onClick={() => flip("button")}>
         Flip
       </Tool>
-      <Tool icon={<FriendsIcon />} onClick={() => router.push(`/friends/${stub.id}`)}>
+      <Tool
+        icon={<FriendsIcon />}
+        onClick={() => {
+          flow("cta_select", { cta: "friends", context: "editor" });
+          router.push(`/friends/${stub.id}`);
+        }}
+      >
         <span className={styles.toolGo}>
           Friends
           <LeavesMark />
@@ -556,6 +609,7 @@ function EditorLoaded({ id }: { id: string }) {
     if (stub.torn) {
       setSheet("finish");
     } else {
+      flow("tear_start");
       setSelected(null);
       setFlipped(false);
       setTearing(true);
@@ -565,7 +619,7 @@ function EditorLoaded({ id }: { id: string }) {
   const overlays = (
     <>
       <ChipPopover stub={stub} factId={chipFact} onChange={update} onClose={() => setChipFact(null)} />
-      <StyleGrid open={sheet === "styles"} onClose={() => setSheet(null)} stub={stub} onPick={(ed) => dealTo(ed)} />
+      <StyleGrid open={sheet === "styles"} onClose={() => setSheet(null)} stub={stub} onPick={(ed) => dealTo(ed, "grid")} />
       <RemixSheet open={sheet === "remix"} onClose={() => setSheet(null)} stub={stub} onChange={update} onDescribe={() => ask()} />
       <PaperSheet title="Ask the agent" open={sheet === "agent"} onClose={() => setSheet(null)}>
         <div className={styles.agentSheet}>
@@ -583,7 +637,16 @@ function EditorLoaded({ id }: { id: string }) {
         </div>
       </PaperSheet>
       <FinishSheet stub={stub} open={sheet === "finish"} onClose={() => setSheet(null)} />
-      {tearing && <TearStage stub={stub} onTorn={onTorn} onCancel={() => setTearing(false)} />}
+      {tearing && (
+        <TearStage
+          stub={stub}
+          onTorn={onTorn}
+          onCancel={() => {
+            flow("tear_cancel");
+            setTearing(false);
+          }}
+        />
+      )}
     </>
   );
 
@@ -600,7 +663,12 @@ function EditorLoaded({ id }: { id: string }) {
             </div>
             <div className={styles.headerActions}>
               <PathTrack current="style" stubId={stub.id} className={styles.track} />
-              <PaperButton onClick={() => router.push(`/s/${shareToken}`)}>
+              <PaperButton
+                onClick={() => {
+                  flow("cta_select", { cta: "share_page", context: "editor" });
+                  router.push(`/s/${shareToken}`);
+                }}
+              >
                 Share page
                 <LeavesMark />
               </PaperButton>
@@ -623,7 +691,7 @@ function EditorLoaded({ id }: { id: string }) {
                 </button>
               </div>
               <div className={styles.railBody} inert={!panels.rail}>
-                <StyleGridItems stub={stub} onPick={dealTo} variant="rail" />
+                <StyleGridItems stub={stub} onPick={(ed) => dealTo(ed, "rail")} variant="rail" />
               </div>
             </aside>
 
@@ -679,16 +747,36 @@ function EditorLoaded({ id }: { id: string }) {
               <div className={styles.deskFooter}>
                 <div className={styles.footTools}>{tools}</div>
                 <div className={styles.zoom} role="group" aria-label="Zoom">
-                  <PaperButton aria-label="Zoom out" onClick={() => camera.zoomBy(1 / 1.25)}>
+                  <PaperButton
+                    aria-label="Zoom out"
+                    onClick={() => {
+                      flow("studio_view", { action: "zoom_out" });
+                      camera.zoomBy(1 / 1.25);
+                    }}
+                  >
                     −
                   </PaperButton>
                   <span className={styles.zoomValue} data-cam-pct>
                     100%
                   </span>
-                  <PaperButton aria-label="Zoom in" onClick={() => camera.zoomBy(1.25)}>
+                  <PaperButton
+                    aria-label="Zoom in"
+                    onClick={() => {
+                      flow("studio_view", { action: "zoom_in" });
+                      camera.zoomBy(1.25);
+                    }}
+                  >
                     +
                   </PaperButton>
-                  <PaperButton aria-label="Fit the stub to the mat" data-cam-fit className={styles.fit} onClick={camera.fit}>
+                  <PaperButton
+                    aria-label="Fit the stub to the mat"
+                    data-cam-fit
+                    className={styles.fit}
+                    onClick={() => {
+                      flow("studio_view", { action: "fit" });
+                      camera.fit();
+                    }}
+                  >
                     Fit
                   </PaperButton>
                   <PaperButton
@@ -697,7 +785,10 @@ function EditorLoaded({ id }: { id: string }) {
                     data-auto={(zoomed && !preview) || undefined}
                     aria-label="Print preview"
                     title={preview ? "Print preview on: safe area and bleed stay on" : zoomed ? "Print preview: on by itself while zoomed in" : "Print preview: show the safe area and the bleed"}
-                    onClick={() => setPreview(!preview)}
+                    onClick={() => {
+                      flow("studio_view", { action: preview ? "preview_off" : "preview_on" });
+                      setPreview(!preview);
+                    }}
                   >
                     <PreviewIcon />
                     Preview
@@ -725,7 +816,7 @@ function EditorLoaded({ id }: { id: string }) {
               </div>
               <div className={styles.inspBody} inert={!panels.insp}>
                 <div className={styles.inspectorScroll}>
-                  <Inspector stub={stub} selected={selected} onChange={update} onDeselect={() => setSelected(null)} onRemix={() => setSheet("remix")} />
+                  <Inspector stub={stub} selected={selected} onChange={update} onDeselect={() => setSelected(null)} onRemix={() => openSheet("remix")} />
                 </div>
                 <div className={styles.inspectorTray}>
                   <Tray stub={stub} onChange={update} onTear={onTear} compact />
@@ -764,7 +855,7 @@ function EditorLoaded({ id }: { id: string }) {
         <div className={styles.caption}>
           <div className={styles.dots} role="group" aria-label="Styles">
             {EDITIONS.map((ed, i) => (
-              <button key={ed} type="button" className={styles.dot} aria-label={`${editionLabel(ed)} style`} aria-current={i === index} onClick={() => dealTo(ed)} />
+              <button key={ed} type="button" className={styles.dot} aria-label={`${editionLabel(ed)} style`} aria-current={i === index} onClick={() => dealTo(ed, "dots")} />
             ))}
           </div>
           <p className={styles.styleName}>
@@ -779,7 +870,7 @@ function EditorLoaded({ id }: { id: string }) {
         <div className={styles.toolsWrap}>{tools}</div>
 
         <div className={styles.trayWrap}>
-          <Tray stub={stub} onChange={update} onTear={onTear} onOpen={setSheet} />
+          <Tray stub={stub} onChange={update} onTear={onTear} onOpen={openSheet} />
         </div>
       </main>
       {overlays}

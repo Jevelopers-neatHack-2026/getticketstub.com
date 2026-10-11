@@ -17,6 +17,7 @@ import {
   type SelectionState,
   type VariantStatus,
 } from "@/customer/pages/capabilities";
+import { storageFailure } from "@/customer/flows/events";
 
 export { CAPABILITY_VERSION, type PrintSize, type VariantStatus };
 
@@ -183,23 +184,29 @@ export function cartTotals(items: CartItem[]) {
   return { itemsMinor, shippingMinor, totalMinor: itemsMinor + shippingMinor };
 }
 
-export function updateSeat(itemId: string, seatIndex: number, patch: Partial<CartSeat>): void {
-  saveCart(loadCart().map((c) => (c.id === itemId ? { ...c, seats: c.seats.map((x, i) => (i === seatIndex ? { ...x, ...patch } : x)) } : c)));
+export function updateSeat(itemId: string, seatIndex: number, patch: Partial<CartSeat>): boolean {
+  return saveCart(loadCart().map((c) => (c.id === itemId ? { ...c, seats: c.seats.map((x, i) => (i === seatIndex ? { ...x, ...patch } : x)) } : c)));
 }
 
+const storeOf = (key: string) => (key === CART_KEY ? "cart" : "orders");
 function read<T>(key: string): T[] {
   try {
     const raw = localStorage.getItem(key);
     return raw ? (JSON.parse(raw) as T[]) : [];
-  } catch {
+  } catch (e) {
+    storageFailure(storeOf(key), "read", e);
     return [];
   }
 }
-function write<T>(key: string, value: T[]): void {
+/** True when stored. A failure is reported (store and reason only, never the records). */
+function write<T>(key: string, value: T[]): boolean {
   try {
     localStorage.setItem(key, JSON.stringify(value));
-  } catch {
+    return true;
+  } catch (e) {
     /* storage unavailable */
+    storageFailure(storeOf(key), "write", e);
+    return false;
   }
 }
 
@@ -207,7 +214,8 @@ function write<T>(key: string, value: T[]): void {
 export class OrderBlocked extends Error {}
 
 export const loadOrders = () => read<Order>(ORDERS_KEY);
-export function addOrder(order: Omit<Order, "id" | "mode" | "createdAt">): Order {
+/** The sandbox record, as addOrder() returns it, and whether it reached this device's storage. */
+export function addOrderStored(order: Omit<Order, "id" | "mode" | "createdAt">): { order: Order; stored: boolean } {
   const mode = runtimeMode();
   const lines = order.lines.map((l) => {
     const v = variantFor(l.material, l.size, l.finish);
@@ -217,21 +225,26 @@ export function addOrder(order: Omit<Order, "id" | "mode" | "createdAt">): Order
     return { ...l, variantStatus: v?.status };
   });
   const full: Order = { currency: "USD", ...order, lines, capabilityVersion: CAPABILITY_VERSION, id: `sbx_${Math.random().toString(36).slice(2, 10)}`, mode: "sandbox", createdAt: new Date().toISOString() };
-  write(ORDERS_KEY, [full, ...loadOrders()]);
-  return full;
+  const stored = write(ORDERS_KEY, [full, ...loadOrders()]);
+  return { order: full, stored };
+}
+export function addOrder(order: Omit<Order, "id" | "mode" | "createdAt">): Order {
+  return addOrderStored(order).order;
 }
 
 export const loadCart = () => read<CartItem>(CART_KEY);
-export function saveCart(items: CartItem[]): void {
-  write(CART_KEY, items);
+/** True when the cart was stored. */
+export function saveCart(items: CartItem[]): boolean {
+  const ok = write(CART_KEY, items);
   if (typeof window !== "undefined") window.dispatchEvent(new Event(CART_EVENT));
+  return ok;
 }
 
 /** Put a removed line back where it was (the mini cart's undo). */
-export function restoreCartItem(item: CartItem, index: number): void {
+export function restoreCartItem(item: CartItem, index: number): boolean {
   const cart = loadCart().filter((c) => c.id !== item.id);
   cart.splice(Math.min(index, cart.length), 0, item);
-  saveCart(cart);
+  return saveCart(cart);
 }
 
 export function cartItemFromStub(stub: Stub, material: Material, finish: Finish, size: PrintSize): CartItem {
@@ -253,6 +266,7 @@ export function cartItemFromStub(stub: Stub, material: Material, finish: Finish,
   };
 }
 
-export function addToCart(item: CartItem): void {
-  saveCart([...loadCart().filter((c) => c.stubId !== item.stubId), item]);
+/** True when the cart was stored. */
+export function addToCart(item: CartItem): boolean {
+  return saveCart([...loadCart().filter((c) => c.stubId !== item.stubId), item]);
 }

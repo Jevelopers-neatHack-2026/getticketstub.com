@@ -3,7 +3,8 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Stub } from "../types";
 import { upsertStub } from "../store";
-import { TearGesture } from "@/customer/studio/stub/TearGesture";
+import { TearGesture, type TearMethod } from "@/customer/studio/stub/TearGesture";
+import { flow } from "@/customer/flows/events";
 import { PathTrack } from "@/customer/wayfinding/PathTrack";
 import { PaperButton } from "@/customer/desk/Desk";
 import { announce } from "@/customer/a11y/announce";
@@ -48,8 +49,10 @@ export function TearStage({ stub, onCancel }: { stub: Stub; onTorn: () => void; 
     return () => window.removeEventListener("keydown", onKey);
   }, [cancel]);
 
-  const torn = () => {
-    upsertStub({ ...stub, torn: true });
+  // The one tear completion: the gesture only says how; this saves it and reports it.
+  const torn = (method: TearMethod) => {
+    const stored = upsertStub({ ...stub, torn: true });
+    flow("tear_complete", { method, storage: stored ? "ok" : "failed" });
     announce("Torn off. Pinning it to your wall.");
     router.push(`/wall?pinned=${encodeURIComponent(stub.id)}`);
   };

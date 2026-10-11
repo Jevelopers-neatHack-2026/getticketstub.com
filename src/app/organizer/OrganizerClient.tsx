@@ -11,7 +11,8 @@ import { placeOrder, resendOrder, type Placed } from "@/customer/account/orders"
 import { FeedbackNote, ProgressNote, useProgress } from "@/customer/feedback-messages/progress";
 import { openSignIn } from "@/customer/account/signin";
 import { useAccount } from "@/customer/account/useAccount";
-import { absoluteUrl, copyText } from "@/customer/pages/share";
+import { absoluteUrl, copyLink } from "@/customer/pages/share";
+import { errorCode, flow, storageFailure } from "@/customer/flows/events";
 import { PageShell, CopyField, OnDesk, PaperLink, TearAnchor, ui } from "@/customer/pages/ui";
 import { FINISHES, SANDBOX_LABEL, defaultSize, finishMarks, finishPrices, gateFor, quote, sizesFor, type PrintSize } from "@/customer/pages/commerce";
 import { CAPABILITY_VERSION, HOLO_WORDS, SIZE_COPY, statusMark } from "@/customer/pages/capabilities";
@@ -21,6 +22,8 @@ import {
   defaultDesign,
   designStub,
   encodeDesign,
+  csvSummary,
+  mappedCounts,
   parseCsv,
   type ColumnMap,
   type GuestList,
@@ -32,6 +35,7 @@ import { PrintRun } from "./PrintRun";
 import s from "./organizer.module.css";
 
 const STEPS = ["Design", "Guest list", "Check", "Publish"] as const;
+const STEP_NAMES = ["design", "guests", "check", "publish"] as const;
 const MATERIAL_OPTIONS = MATERIALS.map((m) => ({ value: m.id, label: m.label, sub: formatMoney(m.priceMinor) }));
 
 /** A size is a tab ("Classic stub") with what its number measures beneath ("2 × 5.5 in trim"), as at checkout. */
@@ -90,7 +94,7 @@ function GuestLinks({ claims }: { claims: OrganizerEventReply["claims"] }) {
               {c.name}
               {c.seat ? <span className={s.linkSeat}> · {c.seat}</span> : null}
             </span>
-            <TearLink type="button" aria-label={`Copy ${c.name}'s link`} onClick={async () => note(`Copied ${c.name}'s link.`, await copyText(url(c.token)))}>
+            <TearLink type="button" aria-label={`Copy ${c.name}'s link`} onClick={async () => note(`Copied ${c.name}'s link.`, await copyLink(url(c.token), "organizer", "claim_link"))}>
               Copy link
             </TearLink>
           </li>
@@ -103,7 +107,7 @@ function GuestLinks({ claims }: { claims: OrganizerEventReply["claims"] }) {
       ) : null}
       <PaperButton
         type="button"
-        onClick={async () => note(`Copied ${claims.length} links as name, seat, link.`, await copyText(claims.map((c) => [c.name, c.seat ?? "", url(c.token)].join(",")).join("\n")))}
+        onClick={async () => note(`Copied ${claims.length} links as name, seat, link.`, await copyLink(claims.map((c) => [c.name, c.seat ?? "", url(c.token)].join(",")).join("\n"), "organizer", "claim_link"))}
       >
         Copy all {claims.length} as a list
       </PaperButton>
@@ -211,16 +215,26 @@ export default function OrganizerClient() {
     setDesign((x) => ({ ...x, ...p }));
   }
 
-  function loadText(text: string, name: string) {
+  /** A column picked by hand: which columns are in use, never what they are called or hold. */
+  function remap(next: ColumnMap) {
+    flow("organizer_mapping", { result: "manual", has_seat: next.seat >= 0, has_extra: next.extra >= 0 });
+    setMap(next);
+  }
+
+  function loadText(text: string, name: string, source: "file" | "sample") {
     const parsed = parseCsv(text);
+    // counts only: never a header, a cell or the file's name
+    flow("organizer_csv", { source, ...csvSummary(parsed) });
     if (parsed.headers.length === 0 || parsed.rows.length === 0) {
       setFileError("We couldn't find any guests in that file. Use a CSV with a header row, like name,seat.");
       return;
     }
+    const auto = autoMatch(parsed.headers);
+    flow("organizer_mapping", { result: "auto", has_seat: auto.seat >= 0, has_extra: auto.extra >= 0 });
     setFileError("");
     setList(parsed);
     setFileName(name);
-    setMap(autoMatch(parsed.headers));
+    setMap(auto);
     setPage(0);
     setShown(PAGE);
     setOrdered(null);
@@ -231,14 +245,20 @@ export default function OrganizerClient() {
 
   async function onFile(file: File | undefined) {
     if (!file) return;
+    let text: string;
     try {
-      loadText(await file.text(), file.name);
+      text = await file.text();
     } catch {
+      flow("organizer_csv", { source: "file", result: "error" });
       setFileError("We couldn't read that file. Try saving it as CSV.");
+      return;
     }
+    loadText(text, file.name, "file");
   }
 
   function go(i: number) {
+    flow("organizer_step", { step: STEP_NAMES[i] });
+    if (i === 2 && list) flow("organizer_check", mappedCounts(list, map.name));
     setStep(i);
     play("select", { direction: i > step ? "forward" : "back" });
   }
@@ -293,8 +313,9 @@ export default function OrganizerClient() {
       try {
         const draft: Draft = { at: Date.now(), design, list, fileName, map, material, finish, sizePick, publish };
         localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
-      } catch {
+      } catch (e) {
         /* storage full: the sign-in still works, the design just starts over */
+        storageFailure("prefs", "write", e);
       }
       openSignIn({
         reason: "claim",
@@ -306,13 +327,20 @@ export default function OrganizerClient() {
     }
     const base = { ...designStub(design, { id: `${design.setId}-base` }), material, finish };
     const res = await publishProgress.run(() =>
-      api.publishEvent(
-        design.title,
-        base,
-        guests.map((g) => ({ name: g.name, seat: g.seat })),
-      ),
+      api
+        .publishEvent(
+          design.title,
+          base,
+          guests.map((g) => ({ name: g.name, seat: g.seat })),
+        )
+        .catch((e: unknown) => {
+          flow("organizer_publish", { mode: "links", result: "error", guest_count: n, error_code: errorCode(e) });
+          throw e;
+        }),
     );
     if (!res) return;
+    // guest links kept on the server: prepared, not delivered (the organizer hands them out)
+    flow("organizer_publish", { mode: "links", result: "server", guest_count: res.claims.length });
     publishProgress.reset();
     setEvents(res);
     setPublished(true);
@@ -381,6 +409,7 @@ export default function OrganizerClient() {
                       key={ed}
                       pressed={design.edition === ed}
                       onClick={() => {
+                        if (design.edition !== ed) flow("organizer_design", { change: "edition", edition: ed });
                         const second = design.allowed[1] === ed ? design.allowed[0] : design.allowed[1];
                         patch({ edition: ed, allowed: [ed, second === ed ? (ed === "minimal" ? "classic" : "minimal") : second] });
                       }}
@@ -395,7 +424,14 @@ export default function OrganizerClient() {
                 <span className="desk-label">Guests can also pick</span>
                 <Tags label="Second style guests can pick">
                   {EDITIONS.filter((e) => e !== design.edition).map((ed) => (
-                    <Tag key={ed} pressed={design.allowed[1] === ed} onClick={() => patch({ allowed: [design.edition, ed] })}>
+                    <Tag
+                      key={ed}
+                      pressed={design.allowed[1] === ed}
+                      onClick={() => {
+                        if (design.allowed[1] !== ed) flow("organizer_design", { change: "allowed", edition: ed });
+                        patch({ allowed: [design.edition, ed] });
+                      }}
+                    >
                       {EDITION_LABEL[ed]}
                     </Tag>
                   ))}
@@ -405,10 +441,20 @@ export default function OrganizerClient() {
               <Rule kind="perf" />
 
               <div className={s.locks}>
-                <LockSwitch locked={design.locks.logo} onChange={(v) => patch({ locks: { ...design.locks, logo: v } })} hint={design.locks.logo ? "Guests can't change it" : "Guests can change it"}>
+                <LockSwitch
+                  locked={design.locks.logo}
+                  onChange={(v) => {
+                    flow("organizer_design", { change: "lock_logo", value: v });
+                    patch({ locks: { ...design.locks, logo: v } });
+                  }} hint={design.locks.logo ? "Guests can't change it" : "Guests can change it"}>
                   Lock the logo
                 </LockSwitch>
-                <LockSwitch locked={design.locks.title} onChange={(v) => patch({ locks: { ...design.locks, title: v } })} hint={design.locks.title ? "Guests can't change it" : "Guests can change it"}>
+                <LockSwitch
+                  locked={design.locks.title}
+                  onChange={(v) => {
+                    flow("organizer_design", { change: "lock_title", value: v });
+                    patch({ locks: { ...design.locks, title: v } });
+                  }} hint={design.locks.title ? "Guests can't change it" : "Guests can change it"}>
                   Lock the title
                 </LockSwitch>
               </div>
@@ -456,7 +502,7 @@ export default function OrganizerClient() {
                   Choose a CSV file
                   <input id={fileId} type="file" accept=".csv,text/csv" onChange={(e) => onFile(e.currentTarget.files?.[0])} />
                 </label>
-                <TearLink type="button" onClick={() => loadText(SAMPLE_CSV, "sample-guests.csv")}>
+                <TearLink type="button" onClick={() => loadText(SAMPLE_CSV, "sample-guests.csv", "sample")}>
                   Use a sample list
                 </TearLink>
               </div>
@@ -472,9 +518,9 @@ export default function OrganizerClient() {
                   <Rule kind="perf" />
                   <div className={s.match}>
                     <p className={ui.muted}>Match your columns to the stub. The dark tag is the one in use.</p>
-                    <ColumnTags label="Name" headers={list.headers} value={map.name} onChange={(v) => setMap((m) => ({ ...m, name: v }))} />
-                    <ColumnTags label="Seat" headers={list.headers} value={map.seat} onChange={(v) => setMap((m) => ({ ...m, seat: v }))} optional />
-                    <ColumnTags label="Extra" headers={list.headers} value={map.extra} onChange={(v) => setMap((m) => ({ ...m, extra: v }))} optional />
+                    <ColumnTags label="Name" headers={list.headers} value={map.name} onChange={(v) => remap({ ...map, name: v })} />
+                    <ColumnTags label="Seat" headers={list.headers} value={map.seat} onChange={(v) => remap({ ...map, seat: v })} optional />
+                    <ColumnTags label="Extra" headers={list.headers} value={map.extra} onChange={(v) => remap({ ...map, extra: v })} optional />
                   </div>
                   <div>
                     <p className="desk-label">First guests</p>
@@ -506,7 +552,12 @@ export default function OrganizerClient() {
                 <ul className={s.grid}>
                   {guestStubs.slice(0, shown).map((st, i) => (
                     <li key={st.id} style={{ ["--i" as string]: Math.min(i, 12) }}>
-                      <button type="button" className={s.cell} aria-pressed={i === inspect} onClick={() => (setPage(i), play("select", { emphasis: "subtle" }))}>
+                      <button type="button" className={s.cell} aria-pressed={i === inspect} onClick={() => {
+                          // which position on the sheet, never whose stub
+                          if (i !== inspect) flow("organizer_contact_select", { action: "inspect", rank: i + 1, shown_count: Math.min(shown, n), row_count: n });
+                          setPage(i);
+                          play("select", { emphasis: "subtle" });
+                        }}>
                         <StubView stub={st} size="sm" />
                         <span className={s.gName}>{guests[i].name}</span>
                         {guests[i].seat ? <span className={s.gMeta}>Seat {guests[i].seat}</span> : null}
@@ -515,7 +566,13 @@ export default function OrganizerClient() {
                   ))}
                 </ul>
                 {shown < n ? (
-                  <PaperButton type="button" onClick={() => setShown((v) => v + PAGE * 2)}>
+                  <PaperButton
+                    type="button"
+                    onClick={() => {
+                      flow("organizer_contact_select", { action: "show_more", shown_count: Math.min(shown + PAGE * 2, n), row_count: n });
+                      setShown((v) => v + PAGE * 2);
+                    }}
+                  >
                     Show {Math.min(PAGE * 2, n - shown)} more
                   </PaperButton>
                 ) : null}
@@ -647,7 +704,7 @@ export default function OrganizerClient() {
                   ) : published ? (
                     <div className={s.done}>
                       <Stamped say>Published</Stamped>
-                      <CopyField path={claimPath} label="Guest claim link" />
+                      <CopyField path={claimPath} label="Guest claim link" context="organizer" content="claim_link" />
                       <PaperLink href={claimPath}>Preview the guest page</PaperLink>
                     </div>
                   ) : (
@@ -661,7 +718,14 @@ export default function OrganizerClient() {
                         onRetry={() => void publishClaims()}
                         onSignIn={() => openSignIn({ reason: "claim", returnTo: "/organizer", title: "Sign in to publish", lede: "Your session ran out. We'll email you a link, and your design and guest list are kept." })}
                       />
-                      <TearLink type="button" onClick={() => setPublished(true)}>
+                      <TearLink
+                        type="button"
+                        onClick={() => {
+                          // one shared link made on this device: nothing goes to the server
+                          flow("organizer_publish", { mode: "links", result: "local", guest_count: n });
+                          setPublished(true);
+                        }}
+                      >
                         Share one link without guest names
                       </TearLink>
                     </>

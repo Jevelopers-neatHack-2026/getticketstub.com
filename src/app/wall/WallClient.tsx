@@ -13,7 +13,8 @@ import { WALL_SYNCED } from "@/customer/account/sync";
 import { useAccount } from "@/customer/account/useAccount";
 import { MATERIALS, formatMoney, type Stub } from "@/customer/studio/types";
 import { FINISHES, materialPrice } from "@/customer/pages/commerce";
-import { copyText, absoluteUrl, encodeWall, memoryPath, formatDate, WALL_TOKEN_MAX } from "@/customer/pages/share";
+import { copyLink, absoluteUrl, encodeWall, memoryPath, formatDate, shareLink, WALL_TOKEN_MAX, type ShareContext } from "@/customer/pages/share";
+import { errorCode, flow } from "@/customer/flows/events";
 import { useMounted } from "@/customer/pages/useMounted";
 import { LeavesMark } from "@/customer/pages/ui";
 import { PathTrack } from "@/customer/wayfinding/PathTrack";
@@ -45,17 +46,11 @@ function printPrice(st: Stub): number {
 const materialLabel = (st: Stub) => MATERIALS.find((m) => m.id === st.material)?.label ?? "";
 const finishLabel = (st: Stub) => (st.material === "digital" ? "" : (FINISHES.find((f) => f.id === st.finish)?.label ?? ""));
 
-async function shareStub(st: Stub): Promise<string> {
+async function shareStub(st: Stub, context: ShareContext): Promise<string> {
   const url = absoluteUrl(await sharePath(st));
-  if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
-    try {
-      await navigator.share({ title: st.event.title, url });
-      return "Shared.";
-    } catch {
-      /* cancelled or blocked: fall back to copying */
-    }
-  }
-  return (await copyText(url)) ? "Link copied. Anyone with the link can see this stub." : "Couldn't copy the link. Open the stub and copy it from there.";
+  // cancelled or blocked share sheet: fall back to copying (shareLink reports the one outcome)
+  const outcome = await shareLink({ title: st.event.title, url }, context, "stub", { copyOnCancel: true });
+  return outcome === "shared" ? "Shared." : outcome === "copied" ? "Link copied. Anyone with the link can see this stub." : "Couldn't copy the link. Open the stub and copy it from there.";
 }
 
 interface StubDrag {
@@ -95,6 +90,7 @@ export default function WallClient({ emailSent, pinnedId, liftId }: { emailSent:
   const boardRef = useRef<HTMLElement>(null);
   const trackRef = useRef<HTMLDivElement>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const keyMove = useRef<{ t: ReturnType<typeof setTimeout>; stored: boolean } | null>(null);
 
   const [loaded, setLoaded] = useState(false);
   if (mounted && !loaded) {
@@ -106,6 +102,14 @@ export default function WallClient({ emailSent, pinnedId, liftId }: { emailSent:
       /* storage unavailable */
     }
   }
+
+  // The wall as it was read on arrival: once per visit, after the stored wall is loaded.
+  const viewed = useRef(false);
+  useEffect(() => {
+    if (!loaded || viewed.current) return;
+    viewed.current = true;
+    flow("wall_view", { state: stubs.length ? "loaded" : "empty", stub_count: Math.min(1000, stubs.length) });
+  }, [loaded, stubs.length]);
 
   // a sync that finished (sign-in, focus, another device) hands the merged wall back to the board
   useEffect(() => {
@@ -152,7 +156,8 @@ export default function WallClient({ emailSent, pinnedId, liftId }: { emailSent:
     };
   }, [landingId]);
 
-  const openLift = useCallback((id: string) => {
+  const openLift = useCallback((id: string, via?: "pointer" | "keyboard") => {
+    if (via) flow("wall_stub_open", { via });
     const r = publicRef.current?.getBoundingClientRect();
     // keep the public switch in the light: the lamp starts below it when it's on screen
     const top = !canvasApi.current?.fullscreen() && r && r.bottom > 0 && r.top < window.innerHeight ? Math.ceil(r.bottom) + 12 : 16;
@@ -214,6 +219,11 @@ export default function WallClient({ emailSent, pinnedId, liftId }: { emailSent:
   const layoutKey = `${activeFilter}|${onCanvas.map((st) => `${st.id}:${Math.round(st.wallX ?? 0)}:${Math.round(st.wallY ?? 0)}`).join(",")}`;
   const liftedStub = lift ? (stubs.find((x) => x.id === lift.id) ?? null) : null;
 
+  function chooseFilter(f: Filter) {
+    if (f !== activeFilter) flow("wall_filter", { filter: f });
+    setFilter(f);
+  }
+
   function togglePublic(next: boolean) {
     setIsPublic(next);
     try {
@@ -224,11 +234,15 @@ export default function WallClient({ emailSent, pinnedId, liftId }: { emailSent:
     if (acct === "in") {
       api
         .setPublic(next)
-        .then((r) => setPublicToken(next ? r.token : null))
-        .catch(() => {
+        .then((r) => {
+          flow("wall_public_toggle", { public: next, result: "saved" });
+          setPublicToken(next ? r.token : null);
+        })
+        .catch((e) => {
           /* the encoded link still works; the switch tries again next time */
+          flow("wall_public_toggle", { public: next, result: "error", error_code: errorCode(e) });
         });
-    }
+    } else flow("wall_public_toggle", { public: next, result: "local" }); // signed out: the page is the encoded link on this device
   }
 
   /** "Stop sharing": the page goes private and its link is replaced, so the old one is dead for good. */
@@ -240,9 +254,13 @@ export default function WallClient({ emailSent, pinnedId, liftId }: { emailSent:
     } catch {
       /* storage unavailable */
     }
-    api.stopSharingWall().catch(() => {
-      /* the switch is off here; the server copy goes private the next time the switch is touched */
-    });
+    api
+      .stopSharingWall()
+      .then(() => flow("wall_stop_sharing", { result: "saved" }))
+      .catch((e) => {
+        /* the switch is off here; the server copy goes private the next time the switch is touched */
+        flow("wall_stop_sharing", { result: "error", error_code: errorCode(e) });
+      });
   }
 
   /** Let go of a stub drag in progress (a second finger landed: that is a pinch, not a move). */
@@ -311,7 +329,7 @@ export default function WallClient({ emailSent, pinnedId, liftId }: { emailSent:
     if (li) delete li.dataset.drag;
     const next: PlacedStub = { ...st, wallX: Math.round(d.x), wallY: Math.round(d.y), wallAngle: angle };
     setStubs((prev) => prev.map((x) => (x.id === next.id ? { ...next, updatedAt: Date.now() } : x)));
-    upsertStub(next);
+    flow("wall_reorder", { method: "drag", storage: upsertStub(next) ? "ok" : "failed" });
     play("pin");
     haptic([20]);
   }
@@ -326,13 +344,23 @@ export default function WallClient({ emailSent, pinnedId, liftId }: { emailSent:
     e.preventDefault();
     const next: PlacedStub = { ...st, wallX: Math.round((st.wallX ?? 0) + move[0]), wallY: Math.round((st.wallY ?? 0) + move[1]) };
     setStubs((prev) => prev.map((x) => (x.id === next.id ? { ...next, updatedAt: Date.now() } : x)));
-    upsertStub(next);
+    const stored = upsertStub(next);
+    // each arrow press moves and saves; the move is reported once the keys settle, not per press
+    const ok = stored && (keyMove.current?.stored ?? true);
+    if (keyMove.current) clearTimeout(keyMove.current.t);
+    keyMove.current = {
+      stored: ok,
+      t: setTimeout(() => {
+        flow("wall_reorder", { method: "keyboard", storage: keyMove.current?.stored ? "ok" : "failed" });
+        keyMove.current = null;
+      }, 800),
+    };
     play("tap", { emphasis: "subtle" });
     announce(`Moved ${move[2]}.`);
   }
 
   function remove(id: string) {
-    removeStub(id);
+    flow("wall_remove", { storage: removeStub(id) ? "ok" : "failed" });
     setStubs((prev) => prev.filter((x) => x.id !== id));
     setLift(null);
   }
@@ -346,7 +374,13 @@ export default function WallClient({ emailSent, pinnedId, liftId }: { emailSent:
           <p>
             <strong>Check your email.</strong> Your receipt is on its way.
           </p>
-          <TearLink type="button" onClick={() => setBanner(false)}>
+          <TearLink
+            type="button"
+            onClick={() => {
+              flow("wall_banner_dismiss");
+              setBanner(false);
+            }}
+          >
             Dismiss
           </TearLink>
         </div>
@@ -380,11 +414,11 @@ export default function WallClient({ emailSent, pinnedId, liftId }: { emailSent:
 
       {mounted && shownFilters.length > 1 ? (
         <Tags label="Filter by event type">
-          <Tag pressed={activeFilter === "all"} count={counts.all} onClick={() => setFilter("all")}>
+          <Tag pressed={activeFilter === "all"} count={counts.all} onClick={() => chooseFilter("all")}>
             All
           </Tag>
           {shownFilters.map((f) => (
-            <Tag key={f.id} pressed={activeFilter === f.id} count={counts[f.id]} onClick={() => setFilter(f.id)}>
+            <Tag key={f.id} pressed={activeFilter === f.id} count={counts[f.id]} onClick={() => chooseFilter(f.id)}>
               {f.label}
             </Tag>
           ))}
@@ -406,7 +440,13 @@ export default function WallClient({ emailSent, pinnedId, liftId }: { emailSent:
           <div className={s.empty}>
             <div className={s.emptySlot} aria-hidden="true" />
             <p className={s.emptyText}>Your first stub goes here.</p>
-            <Stamp type="button" onClick={() => router.push("/make")}>
+            <Stamp
+              type="button"
+              onClick={() => {
+                flow("cta_select", { cta: "make", context: "wall" });
+                router.push("/make");
+              }}
+            >
               Make your first stub
               <LeavesMark />
             </Stamp>
@@ -453,8 +493,9 @@ export default function WallClient({ emailSent, pinnedId, liftId }: { emailSent:
                   onPointerMove={stubMove}
                   onPointerUp={(e) => stubUp(e, st)}
                   onPointerCancel={cancelDrag}
-                  onClick={() => {
-                    if (!suppressClick.current) openLift(st.id);
+                  onClick={(e) => {
+                    // a click with no pointer detail came from the keyboard (Enter or Space)
+                    if (!suppressClick.current) openLift(st.id, e.detail === 0 ? "keyboard" : "pointer");
                   }}
                 >
                   {/* the button's own label names it; the printed stub inside is a picture of that */}
@@ -484,7 +525,7 @@ function PublicLink({ path, capped, onStop }: { path: string; capped: boolean; o
     <div className={s.publicLink}>
       <div className={s.copyRow}>
         <input className={s.copyInput} readOnly aria-label="Public wall link" value={url} onFocus={(e) => e.currentTarget.select()} />
-        <PaperButton type="button" onClick={async () => setStatus((await copyText(url)) ? "Link copied." : "Couldn't copy. Select the link and copy it.")}>
+        <PaperButton type="button" onClick={async () => setStatus((await copyLink(url, "wall", "wall")) ? "Link copied." : "Couldn't copy. Select the link and copy it.")}>
           Copy link
         </PaperButton>
       </div>
@@ -550,10 +591,18 @@ function NextSteps({ stub }: { stub: Stub }) {
         </div>
       ) : null}
       <div className={s.noteActions}>
-        <Stamp type="button" block onClick={async () => setStatus(await shareStub(stub))}>
+        <Stamp type="button" block onClick={async () => setStatus(await shareStub(stub, "wall"))}>
           Share your stub
         </Stamp>
-        <PaperButton type="button" block className={s.printBtn} onClick={() => router.push(`/checkout/${stub.id}`)}>
+        <PaperButton
+          type="button"
+          block
+          className={s.printBtn}
+          onClick={() => {
+            flow("cta_select", { cta: "print", context: "wall" });
+            router.push(`/checkout/${stub.id}`);
+          }}
+        >
           <span className={s.printLabel}>
             {digital ? "Get the file" : "Print it"}
             <LeavesMark />
@@ -562,11 +611,23 @@ function NextSteps({ stub }: { stub: Stub }) {
         </PaperButton>
         <p className={s.small}>{detail}</p>
         <div className={s.noteLinks}>
-          <TearLink type="button" onClick={() => router.push(`/wallet/${stub.id}`)}>
+          <TearLink
+            type="button"
+            onClick={() => {
+              flow("cta_select", { cta: "wallet", context: "wall" });
+              router.push(`/wallet/${stub.id}`);
+            }}
+          >
             Keep it in Wallet
             <LeavesMark />
           </TearLink>
-          <TearLink type="button" onClick={() => router.push(`/friends/${stub.id}`)}>
+          <TearLink
+            type="button"
+            onClick={() => {
+              flow("cta_select", { cta: "friends", context: "wall" });
+              router.push(`/friends/${stub.id}`);
+            }}
+          >
             Send matching stubs to friends
             <LeavesMark />
           </TearLink>
@@ -643,22 +704,41 @@ function Lamp({ stub, lift, onPutBack, onDelete }: { stub: Stub; lift: Lift; onP
               <Tool icon={<FlipIcon />} onClick={flip}>
                 Flip
               </Tool>
-              <Tool icon={<OpenIcon />} aria-label="Open the stub's page" onClick={() => router.push(path)}>
+              <Tool
+                icon={<OpenIcon />}
+                aria-label="Open the stub's page"
+                onClick={() => {
+                  flow("cta_select", { cta: "open_page", context: "lamp" });
+                  router.push(path);
+                }}
+              >
                 <span className={s.toolGo}>
                   Page
                   <LeavesMark />
                 </span>
               </Tool>
-              <Tool icon={<EditIcon />} onClick={() => router.push(`/studio/${stub.id}`)}>
+              <Tool
+                icon={<EditIcon />}
+                onClick={() => {
+                  flow("cta_select", { cta: "edit", context: "lamp" });
+                  router.push(`/studio/${stub.id}`);
+                }}
+              >
                 <span className={s.toolGo}>
                   Edit
                   <LeavesMark />
                 </span>
               </Tool>
-              <Tool icon={<ShareIcon />} onClick={async () => setStatus(await shareStub(stub))}>
+              <Tool icon={<ShareIcon />} onClick={async () => setStatus(await shareStub(stub, "lamp"))}>
                 Share
               </Tool>
-              <Tool icon={<PrintIcon />} onClick={() => router.push(`/checkout/${stub.id}`)}>
+              <Tool
+                icon={<PrintIcon />}
+                onClick={() => {
+                  flow("cta_select", { cta: "print", context: "lamp" });
+                  router.push(`/checkout/${stub.id}`);
+                }}
+              >
                 <span className={s.toolGo}>
                   Print
                   <LeavesMark />

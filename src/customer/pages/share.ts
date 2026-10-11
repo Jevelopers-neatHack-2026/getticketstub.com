@@ -1,6 +1,13 @@
 "use client";
 import { decodeStub, encodeStub } from "@/customer/studio/store";
 import type { Stub } from "@/customer/studio/types";
+import { flow, type EventParams } from "@/customer/flows/events";
+
+/** Where a share started (the screen), and what was shared: both bounded, never the link itself. */
+export type ShareContext = NonNullable<EventParams<"share">["context"]>;
+export type ShareContent = NonNullable<EventParams<"share">["content_type"]>;
+/** How a share ended: the share sheet finished, the person closed it, the link was copied, or nothing worked. */
+export type ShareOutcome = "shared" | "cancelled" | "copied" | "failed";
 
 export function absoluteUrl(path: string): string {
   if (typeof window === "undefined") return path;
@@ -30,6 +37,34 @@ export async function copyText(text: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/** Copy a link and report it once as a share by copy. Use this, not copyText, where a person copies a link to send. */
+export async function copyLink(url: string, context: ShareContext, content: ShareContent): Promise<boolean> {
+  const ok = await copyText(url);
+  flow("share", { method: "copy", content_type: content, context, result: ok ? "success" : "failure" });
+  return ok;
+}
+
+/**
+ * The share sheet when there is one, else (or, with `copyOnCancel`, after it is closed) a copied link. Reports exactly one
+ * `share` event: closing the sheet is a cancel, not a failure, and a resolved share sheet is the browser's word, not proof of delivery.
+ */
+export async function shareLink(data: ShareData & { url: string }, context: ShareContext, content: ShareContent, opts: { copyOnCancel?: boolean } = {}): Promise<ShareOutcome> {
+  if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
+    try {
+      await navigator.share(data);
+      flow("share", { method: "native", content_type: content, context, result: "success" });
+      return "shared";
+    } catch (err) {
+      const cancelled = (err as { name?: unknown } | null)?.name === "AbortError";
+      if (cancelled && !opts.copyOnCancel) {
+        flow("share", { method: "native", content_type: content, context, result: "cancel" });
+        return "cancelled";
+      }
+    }
+  }
+  return (await copyLink(data.url, context, content)) ? "copied" : "failed";
 }
 
 export const memoryPath = (stub: Stub) => `/s/${encodeStub(stub)}`;

@@ -9,6 +9,7 @@ import { MarkLegend, SandboxStrip, SourceMark, Stamp, TearLink } from "@/custome
 import { CloseIcon } from "@/customer/desk/icons";
 import { LeavesMark, PaperLink } from "@/customer/pages/ui";
 import { SANDBOX_LABEL, billableSeats, cartMarks, cartTotals, restoreCartItem, saveCart, type CartItem } from "@/customer/pages/commerce";
+import { flow, major, variantId } from "@/customer/flows/events";
 import { CartLineSpec } from "@/customer/studio/editor/MaterialPicker";
 import { haptic, play } from "@/customer/studio/feedback";
 import { getStub } from "@/customer/studio/store";
@@ -38,6 +39,11 @@ export function MiniCart() {
   const closeRef = useRef<HTMLButtonElement>(null);
   const drag = useRef<{ x: number; y: number; live: boolean } | null>(null);
   const swiped = useRef(false);
+  // the items as of the last render, for the open effect (which must not re-run when the cart changes)
+  const itemsRef = useRef(items);
+  useEffect(() => {
+    itemsRef.current = items;
+  });
 
   if (open && phase !== "open") setPhase("open");
   else if (!open && phase === "open") setPhase("closing");
@@ -47,6 +53,8 @@ export function MiniCart() {
 
   useEffect(() => {
     if (phase === "open") {
+      const t = cartTotals(itemsRef.current);
+      flow("view_cart", { currency: "USD", value: major(t.totalMinor), item_count: itemsRef.current.length, context: "mini_cart" });
       swiped.current = false;
       play("open", { emphasis: "subtle" });
       closeRef.current?.focus();
@@ -84,7 +92,9 @@ export function MiniCart() {
 
   const remove = (item: CartItem) => {
     setRemoved({ item, index: items.findIndex((c) => c.id === item.id) });
-    saveCart(items.filter((c) => c.id !== item.id));
+    if (saveCart(items.filter((c) => c.id !== item.id))) {
+      flow("remove_from_cart", { currency: "USD", value: major(item.unitMinor * billableSeats(item)), item_id: variantId(item.material, item.finish, item.size), quantity: billableSeats(item), context: "mini_cart" });
+    }
     haptic(8);
   };
 
@@ -196,7 +206,7 @@ export function MiniCart() {
               <TearLink
                 type="button"
                 onClick={() => {
-                  restoreCartItem(removed.item, removed.index);
+                  if (restoreCartItem(removed.item, removed.index)) flow("cart_update", { action: "remove_undo" });
                   setRemoved(null);
                 }}
               >

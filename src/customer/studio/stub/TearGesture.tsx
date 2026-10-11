@@ -23,7 +23,10 @@ const AUTO_MS = 900;
 const clamp = (v: number) => Math.min(100, Math.max(0, v));
 const reduced = () => typeof window !== "undefined" && !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
 
-export function TearGesture({ stub, onTorn }: { stub: Stub; onTorn: () => void }) {
+/** How the tear was finished: dragged along the line, with the keyboard, or by "Tear it off for me". */
+export type TearMethod = "drag" | "keyboard" | "auto";
+
+export function TearGesture({ stub, onTorn }: { stub: Stub; onTorn: (method: TearMethod) => void }) {
   const headingId = useId();
   const [p, setP] = useState(0);
   const [phase, setPhase] = useState<"idle" | "drag" | "settle" | "ripped">("idle");
@@ -32,6 +35,8 @@ export function TearGesture({ stub, onTorn }: { stub: Stub; onTorn: () => void }
   const lastHole = useRef(0);
   const lastTickAt = useRef(0);
   const done = useRef(false);
+  // whichever input last moved the tear; the parent reports the completion once, with it
+  const via = useRef<TearMethod>("drag");
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const raf = useRef<number | null>(null);
   const onTornRef = useRef(onTorn);
@@ -55,7 +60,7 @@ export function TearGesture({ stub, onTorn }: { stub: Stub; onTorn: () => void }
     setPhase("ripped");
     play("tear");
     haptic([30, 30, 60]);
-    timer.current = setTimeout(() => onTornRef.current(), reduced() ? 260 : FLY_MS);
+    timer.current = setTimeout(() => onTornRef.current(via.current), reduced() ? 260 : FLY_MS);
   }, []);
 
   const advance = useCallback(
@@ -80,6 +85,7 @@ export function TearGesture({ stub, onTorn }: { stub: Stub; onTorn: () => void }
   /** The button: tear on its own, slow then fast like a real tear. */
   const tearItOff = () => {
     if (done.current) return;
+    via.current = "auto";
     if (reduced()) {
       rip();
       return;
@@ -99,6 +105,7 @@ export function TearGesture({ stub, onTorn }: { stub: Stub; onTorn: () => void }
     if (done.current) return;
     e.preventDefault();
     e.currentTarget.setPointerCapture(e.pointerId);
+    via.current = "drag";
     drag.current = { x: e.clientX, p, id: e.pointerId };
     setPhase("drag");
   };
@@ -121,6 +128,7 @@ export function TearGesture({ stub, onTorn }: { stub: Stub; onTorn: () => void }
   };
   const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
     if (done.current) return;
+    via.current = "keyboard";
     if (e.key === "ArrowRight" || e.key === "ArrowUp") {
       e.preventDefault();
       setPhase("drag");

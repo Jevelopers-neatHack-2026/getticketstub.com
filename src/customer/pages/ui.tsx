@@ -6,7 +6,8 @@ import { PaperButton, Stamped } from "@/customer/desk/Desk";
 import { Breadcrumbs, useCrumbs } from "@/customer/nav/Breadcrumbs";
 import { play, haptic, type Cue } from "@/customer/studio/feedback";
 import { SANDBOX_LABEL } from "./commerce";
-import { absoluteUrl, copyText } from "./share";
+import { absoluteUrl, copyLink } from "./share";
+import type { ShareContent, ShareContext } from "./share";
 import s from "./ui.module.css";
 
 export { s as ui };
@@ -74,8 +75,8 @@ export function PageShell({
   );
 }
 
-/** Pointer-following pressed state for link-shaped desk buttons (the desk parts are <button> only). */
-function useLinkPress(cue: Cue, buzz: number) {
+/** Pointer-following pressed state for link-shaped desk buttons (the desk parts are <button> only). A caller's onClick still runs. */
+function useLinkPress(cue: Cue, buzz: number, onClick?: React.MouseEventHandler<HTMLAnchorElement>) {
   const [pressed, setPressed] = useState(false);
   return {
     "data-pressed": pressed,
@@ -83,7 +84,8 @@ function useLinkPress(cue: Cue, buzz: number) {
     onPointerUp: () => setPressed(false),
     onPointerLeave: () => setPressed(false),
     onPointerCancel: () => setPressed(false),
-    onClick: () => {
+    onClick: (e: React.MouseEvent<HTMLAnchorElement>) => {
+      onClick?.(e);
       play(cue, cue === "tap" ? { emphasis: "subtle" } : undefined);
       haptic(buzz);
     },
@@ -98,8 +100,8 @@ type LinkProps = Omit<ComponentProps<typeof Link>, "className"> & {
 };
 
 /** The one main action, when it goes to another page. Looks and sounds exactly like Stamp. */
-export function StampLink({ children, price, block, className, noMark, ...rest }: LinkProps & { price?: string }) {
-  const press = useLinkPress("stamp", 12);
+export function StampLink({ children, price, block, className, noMark, onClick, ...rest }: LinkProps & { price?: string }) {
+  const press = useLinkPress("stamp", 12, onClick);
   return (
     <Link {...rest} {...press} className={cx(d.stamp, block && d.block, s.linkReset, className)}>
       <span className={d.stampLabel}>
@@ -112,8 +114,8 @@ export function StampLink({ children, price, block, className, noMark, ...rest }
 }
 
 /** Secondary action to another page: card stock, same as PaperButton. */
-export function PaperLink({ children, block, className, noMark, ...rest }: LinkProps) {
-  const press = useLinkPress("tap", 6);
+export function PaperLink({ children, block, className, noMark, onClick, ...rest }: LinkProps) {
+  const press = useLinkPress("tap", 6, onClick);
   return (
     <Link {...rest} {...press} className={cx(d.paper, block && d.block, s.linkReset, className)}>
       {children}
@@ -123,9 +125,16 @@ export function PaperLink({ children, block, className, noMark, ...rest }: LinkP
 }
 
 /** Tertiary link: plain text on a dotted tear line. */
-export function TearAnchor({ children, className, noMark, ...rest }: LinkProps) {
+export function TearAnchor({ children, className, noMark, onClick, ...rest }: LinkProps) {
   return (
-    <Link {...rest} className={cx(d.tearLink, s.linkReset, s.anchorMark, className)} onClick={() => play("tap", { emphasis: "subtle" })}>
+    <Link
+      {...rest}
+      className={cx(d.tearLink, s.linkReset, s.anchorMark, className)}
+      onClick={(e) => {
+        onClick?.(e);
+        play("tap", { emphasis: "subtle" });
+      }}
+    >
       {children}
       {noMark ? null : <LeavesMark />}
     </Link>
@@ -141,8 +150,18 @@ export function SandboxBadge({ text = SANDBOX_LABEL }: { text?: string }) {
   );
 }
 
-/** Read-only link with a copy button. `path` is site-relative; the absolute URL is shown and copied. */
-export function CopyField({ path, label = "Link" }: { path: string; label?: string }) {
+/** Read-only link with a copy button. `path` is site-relative; the absolute URL is shown and copied. `context` and `content` name the copy for analytics (never the link). */
+export function CopyField({
+  path,
+  label = "Link",
+  context,
+  content,
+}: {
+  path: string;
+  label?: string;
+  context: ShareContext;
+  content: ShareContent;
+}) {
   const id = useId();
   const [status, setStatus] = useState<"" | "copied" | "failed">("");
   const [stampKey, setStampKey] = useState(0);
@@ -159,7 +178,7 @@ export function CopyField({ path, label = "Link" }: { path: string; label?: stri
         <PaperButton
           type="button"
           onClick={async () => {
-            const ok = await copyText(url);
+            const ok = await copyLink(url, context, content);
             setStatus(ok ? "copied" : "failed");
             setStampKey((k) => k + 1);
           }}

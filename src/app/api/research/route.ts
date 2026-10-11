@@ -6,6 +6,7 @@ import { HARBOUR_GAME, NEATHACK, PALE_HOURS } from "@/customer/studio/fixtures";
 import type { EventData, EventType, Fact } from "@/customer/studio/types";
 import { lookupTicketmaster, parseTicketmasterUrl, type TicketmasterUrl, type TmLookupMiss, type TmLookupOk } from "@/customer/studio/research/ticketmaster";
 import { buildEventIntelligencePackage } from "@/customer/studio/research/ticketmasterPackage";
+import { annotate, fetchFailure, observeRoute, providerObserver, recordParse, sourceTimer, type SourceName, type SourceOutcome } from "@/server/observability/measure";
 
 // Research an event from a link. Real page fetch + schema.org parse + Open-Meteo weather.
 // Every fact carries source + provenance: "live" only for values fetched in this request,
@@ -57,15 +58,43 @@ function searchFixtures(query: string): EventData[] {
 // ---------- Page fetch + parse ----------
 
 async function fetchPage(url: string): Promise<string> {
-  const res = await fetch(url, {
-    headers: { "user-agent": UA, accept: "text/html,application/xhtml+xml" },
-    redirect: "follow",
-    signal: AbortSignal.timeout(8000),
-    cache: "no-store",
-  });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const text = await res.text();
-  return text.slice(0, 2_000_000);
+  const done = sourceTimer("event_page");
+  try {
+    const res = await fetch(url, {
+      headers: { "user-agent": UA, accept: "text/html,application/xhtml+xml" },
+      redirect: "follow",
+      signal: AbortSignal.timeout(8000),
+      cache: "no-store",
+    });
+    if (!res.ok) {
+      done("http_error", res.status);
+      throw new Error(`HTTP ${res.status}`);
+    }
+    const text = await res.text();
+    done("ok", res.status);
+    return text.slice(0, 2_000_000);
+  } catch (error) {
+    done(fetchFailure(error));
+    throw error;
+  }
+}
+
+/** Fetches a source API response as JSON, measuring how the fetch ended. Undefined when it was not usable. */
+async function fetchSourceJson<T>(source: SourceName, url: string): Promise<T | undefined> {
+  const done = sourceTimer(source);
+  try {
+    const res = await fetch(url, { headers: { "user-agent": UA }, signal: AbortSignal.timeout(6000), cache: "no-store" });
+    if (!res.ok) {
+      done(res.status === 429 ? "rate_limited" : "http_error", res.status);
+      return undefined;
+    }
+    const data = (await res.json().catch(() => undefined)) as T | undefined;
+    done(data === undefined ? "bad_response" : "ok", res.status);
+    return data;
+  } catch (error) {
+    done(fetchFailure(error));
+    throw error;
+  }
 }
 
 function decodeEntities(s: string): string {
@@ -176,6 +205,7 @@ function guessDateFromText(text: string): string | undefined {
 }
 
 interface Extracted {
+  parser: "schema_org" | "title";
   event: EventData;
   text: string;
   dateConfidence: number;
@@ -208,6 +238,7 @@ function extract(html: string, url: string): Extracted | undefined {
     }
     const superEvent = str((first(node.superEvent) as Json | undefined)?.name);
     return {
+      parser: "schema_org",
       event: { type, title: performers[0] && type === "concert" ? performers[0] : name, subtitle: superEvent ?? (performers[0] && type === "concert" && performers[0] !== name ? name : undefined), venue, city, dateISO, sourceUrl: url, facts },
       text,
       dateConfidence: dateISO ? 0.9 : 0,
@@ -225,6 +256,7 @@ function extract(html: string, url: string): Extracted | undefined {
     facts.push({ id: "date", label: shortDate(dateISO), value: dateISO, source: src, sourceUrl: url, confidence: 0.5, alternatives: [dateISO, shiftDay(dateISO, -1), shiftDay(dateISO, 1)], provenance: "live" });
   }
   return {
+    parser: "title",
     event: { type: inferType([], `${title} ${desc}`), title: cleanTitle, subtitle: undefined, sourceUrl: url, dateISO, facts },
     text,
     dateConfidence: dateISO ? 0.5 : 0,
@@ -235,22 +267,24 @@ function extract(html: string, url: string): Extracted | undefined {
 
 async function weatherFact(city: string, dateISO: string, dateConfidence: number): Promise<Fact | undefined> {
   const geoUrl = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=1&language=en&format=json`;
-  const geo = await fetch(geoUrl, { headers: { "user-agent": UA }, signal: AbortSignal.timeout(6000), cache: "no-store" });
-  if (!geo.ok) return undefined;
-  const g = (await geo.json()) as { results?: { latitude: number; longitude: number; name: string }[] };
+  const g = await fetchSourceJson<{ results?: { latitude: number; longitude: number; name: string }[] }>("weather_geocode", geoUrl);
+  if (!g) return undefined;
   const place = g.results?.[0];
-  if (!place) return undefined;
+  if (!place) {
+    sourceTimer("weather_forecast")("skipped"); // the geocoder knew no such place
+    return undefined;
+  }
 
   const today = new Date().toISOString().slice(0, 10);
   const daysFromToday = Math.round((Date.parse(`${dateISO}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86_400_000);
   if (daysFromToday > 15) {
+    sourceTimer("weather_forecast")("pending");
     return { id: "weather", label: "Weather: pending", value: "Forecast opens 16 days before the date", source: "Open-Meteo", confidence: 0.3, provenance: "pending" };
   }
   const base = daysFromToday < -60 ? "https://archive-api.open-meteo.com/v1/archive" : "https://api.open-meteo.com/v1/forecast";
   const wUrl = `${base}?latitude=${place.latitude}&longitude=${place.longitude}&start_date=${dateISO}&end_date=${dateISO}&daily=temperature_2m_max,precipitation_sum&timezone=auto`;
-  const res = await fetch(wUrl, { headers: { "user-agent": UA }, signal: AbortSignal.timeout(6000), cache: "no-store" });
-  if (!res.ok) return undefined;
-  const w = (await res.json()) as { daily?: { temperature_2m_max?: (number | null)[]; precipitation_sum?: (number | null)[] } };
+  const w = await fetchSourceJson<{ daily?: { temperature_2m_max?: (number | null)[]; precipitation_sum?: (number | null)[] } }>(daysFromToday < -60 ? "weather_archive" : "weather_forecast", wUrl);
+  if (!w) return undefined;
   const t = w.daily?.temperature_2m_max?.[0];
   const p = w.daily?.precipitation_sum?.[0];
   if (t == null) return undefined;
@@ -279,7 +313,7 @@ Only include facts stated on the page. If nothing is stated, return [].
 
 PAGE TEXT:
 ${text.slice(0, 6000)}`;
-    const result = await generateText({ capability: "research", prompt, maxTokens: 600, signal });
+    const result = await generateText({ capability: "research", prompt, maxTokens: 600, signal, observe: providerObserver() });
     if (!result) return [];
     event.providerMetadata = result.metadata;
     const out = result.value;
@@ -306,6 +340,7 @@ ${text.slice(0, 6000)}`;
       });
   } catch (error) {
     if (process.env.TICKETSTUB_RESEARCH_PROVIDER === "openrouter" || (error instanceof ProviderError && error.code === "invalid_provider_configuration")) throw error instanceof ProviderError ? error : new ProviderError("invalid_provider_response");
+    annotate({ fallback: "no_enrichment", code: error instanceof ProviderError ? error.code : "invalid_provider_response" });
     return [];
   }
 }
@@ -350,26 +385,45 @@ function slugEvent(link: TicketmasterUrl): EventData | undefined {
 // ---------- Handler ----------
 
 async function readError(req: Request, status = 422) {
+  annotate({ code: "unreadable_link" });
   await recordEvent(req, "intake_rejected", { code: "unreadable_link" });
   return errorJson(status, "unreadable_link", READ_ERROR);
 }
 
 /** A provider failure in the one error envelope; the code and fixed message come from providerFailure. */
-const providerEnvelope = (failure: NonNullable<ReturnType<typeof providerFailure>>) => errorJson(failure.status, failure.body.code, failure.body.error);
+const providerEnvelope = (failure: NonNullable<ReturnType<typeof providerFailure>>) => {
+  annotate({ code: failure.body.code, dependency: "provider" });
+  return errorJson(failure.status, failure.body.code, failure.body.error);
+};
 
-export const POST = route(async (req: Request) => {
+/** The source outcome word for a Ticketmaster lookup that did not produce an event. */
+const TM_OUTCOME: Record<TmLookupMiss["reason"], SourceOutcome> = {
+  "no-api-key": "skipped",
+  "rate-limited": "rate_limited",
+  "bad-api-key": "auth_failed",
+  "not-found": "not_found",
+  timeout: "timeout",
+  "api-error": "http_error",
+  "bad-response": "bad_response",
+};
+
+export const POST = route(observeRoute("research", async (req: Request) => {
   let body: { url?: string; query?: string };
   try {
     body = (await req.json()) as { url?: string; query?: string };
   } catch {
+    annotate({ code: "bad_request" });
     await recordEvent(req, "intake_rejected", { code: "bad_request" });
     return errorJson(400, "bad_request", "Send a link or a search.");
   }
 
   if (typeof body.query === "string" && !body.url) {
     await recordEvent(req, "intake_submitted", { source: "search" });
-    return NextResponse.json({ results: searchFixtures(body.query) });
+    const results = searchFixtures(body.query);
+    annotate({ operation: "research_search", dependency: "fixture", fallback: "simulated", results: results.length });
+    return NextResponse.json({ results });
   }
+  annotate({ operation: "research_link" });
 
   const raw = typeof body.url === "string" ? body.url.trim() : "";
   if (!raw) return readError(req);
@@ -390,10 +444,14 @@ export const POST = route(async (req: Request) => {
   const tmLink = url && live ? parseTicketmasterUrl(url) : undefined;
   let tmMeta: TicketmasterMeta | undefined;
   if (tmLink) {
+    const done = sourceTimer("ticketmaster");
     const tm = await lookupTicketmaster(tmLink, { apiKey: process.env.TICKETMASTER_API_KEY });
+    done(tm.status === "ok" ? "ok" : TM_OUTCOME[tm.reason] ?? "bad_response");
     if (tm.status === "ok") {
       try {
-        return NextResponse.json(await finishTicketmaster(tm));
+        const finished = await finishTicketmaster(tm);
+        annotate({ dependency: "ticketmaster", facts: finished.facts.length });
+        return NextResponse.json(finished);
       } catch {
         tmMeta = { status: "error", reason: "bad-response", message: "Ticketmaster sent a response we could not use. Read the page instead." };
       }
@@ -416,6 +474,7 @@ export const POST = route(async (req: Request) => {
       }));
     }
     if (url) e.sourceUrl = url.toString();
+    annotate({ dependency: "fixture", fallback: process.env.TICKETSTUB_RUNTIME_MODE === "live" ? "none" : "simulated" });
     if (fixture === NEATHACK && url && process.env.TICKETSTUB_RUNTIME_MODE === "live") {
       // Enrich: confirm the page is reachable and record its live title.
       try {
@@ -426,12 +485,14 @@ export const POST = route(async (req: Request) => {
         /* fixture stands on its own */
       }
     }
+    annotate({ facts: e.facts.length });
     return NextResponse.json(withTm(e));
   }
 
   if (!url) return readError(req);
 
   if (process.env.TICKETSTUB_RUNTIME_MODE !== "live") {
+    annotate({ code: "demo_only", dependency: "demo" });
     await recordEvent(req, "intake_rejected", { code: "demo_only" });
     return errorJson(422, "demo_only", "This preview uses demo events. Try neatHack, The Pale Hours, or Harbour FC.");
   }
@@ -439,6 +500,7 @@ export const POST = route(async (req: Request) => {
   // A Ticketmaster page often refuses bots; the slug still names the event, so don't dead-end the person.
   const tmFallback = () => {
     const e = tmLink ? slugEvent(tmLink) : undefined;
+    if (e) annotate({ dependency: "ticketmaster", fallback: "slug", facts: e.facts.length });
     return e ? NextResponse.json(withTm(e)) : readError(req);
   };
 
@@ -446,8 +508,10 @@ export const POST = route(async (req: Request) => {
   try {
     const html = await fetchPage(url.toString());
     const ex = extract(html, url.toString());
+    recordParse({ parser: ex?.parser ?? "none", facts: ex?.event.facts.length ?? 0, date: !!ex?.event.dateISO });
     if (!ex) return tmFallback();
     const { event } = ex;
+    annotate({ dependency: "page" });
 
     if (!event.dateISO) {
       event.facts.push({ id: "date", label: "Date: pending", value: "pending", source: "event page", sourceUrl: url.toString(), confidence: 0.2, provenance: "pending" });
@@ -467,10 +531,11 @@ export const POST = route(async (req: Request) => {
     if (!event.facts.some((f) => f.id === "weather")) {
       event.facts.push({ id: "weather", label: "Weather: pending", value: "Weather lookup unavailable", source: "Open-Meteo", confidence: 0.2, provenance: "pending" });
     }
+    annotate({ facts: event.facts.length });
     return NextResponse.json(withTm(event));
   } catch (error) {
     const failure = providerFailure(error);
     if (failure) return providerEnvelope(failure);
     return tmFallback();
   }
-});
+}));

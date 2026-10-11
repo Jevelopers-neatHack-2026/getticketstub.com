@@ -15,6 +15,7 @@ import { FINISHES, SANDBOX_LABEL, cartItemFromStub, finishMarks, finishPrices, g
 import { CAPABILITY_VERSION, HOLO_WORDS, SIZE_COPY, statusMark } from "@/customer/pages/capabilities";
 import { addToCartAndFly } from "@/customer/cart/cartStore";
 import { useMounted, nowMs } from "@/customer/pages/useMounted";
+import { flow, major, variantId } from "@/customer/flows/events";
 import s from "./checkout.module.css";
 
 const MATERIAL_OPTIONS = MATERIALS.map((m) => ({ value: m.id, label: m.label, sub: formatMoney(m.priceMinor) }));
@@ -51,6 +52,15 @@ export default function CheckoutClient({ id }: { id: string }) {
     return () => clearInterval(t);
   }, []);
 
+  // Checkout began once the stub is found: once per visit, whatever re-renders or Strict Mode remounts do.
+  const began = useRef(false);
+  useEffect(() => {
+    if (!stub || began.current) return;
+    began.current = true;
+    const qq = quote(stub.material, stub.finish, defaultSize(stub));
+    flow("begin_checkout", { currency: "USD", value: major(qq.totalMinor), item_id: variantId(qq.material, qq.finish, qq.size), item_count: 1, context: "checkout", capability: "sandbox" });
+  }, [stub]);
+
   const material = draft?.material ?? "print";
   const finish = draft?.finish ?? "foil";
   const q = useMemo(() => quote(material, finish, size), [material, finish, size]);
@@ -58,6 +68,10 @@ export default function CheckoutClient({ id }: { id: string }) {
   const expiresAt = quoteAt + 15 * 60_000;
   const minsLeft = Math.max(0, Math.ceil((expiresAt - now) / 60_000));
   const expired = minsLeft === 0;
+  // the quote running out is reported when it happens (the 15 s clock), not on every render while it stays out
+  useEffect(() => {
+    if (expired && stub) flow("quote_expired", { context: "checkout" });
+  }, [expired, stub]);
   const sizes = sizesFor(material);
   const finishLabel = FINISHES.find((f) => f.id === finish)?.label ?? finish;
   const materialLabel = MATERIALS.find((m) => m.id === material)?.label ?? material;
@@ -68,7 +82,8 @@ export default function CheckoutClient({ id }: { id: string }) {
   const legend: MarkKind[] = ["estimated", ...(mark ? [mark] : [])];
 
   // Changing the material, finish or size is a different quote (its id names the choice and the capability version), so the clock restarts.
-  function update(next: Stub) {
+  function update(next: Stub, option: "material" | "finish") {
+    flow("product_option", { option, material: next.material, finish: next.finish, context: "checkout" });
     setDraft(next);
     setSize((cur) => (sizesFor(next.material).includes(cur) ? cur : defaultSize(next)));
     setQuoteAt(nowMs());
@@ -89,19 +104,24 @@ export default function CheckoutClient({ id }: { id: string }) {
   function pay() {
     if (!stub || !draft || paid) return;
     if (!gate.ok) {
+      flow("checkout_invalid", { reason: "variant_blocked" });
       setError(gate.message);
       return;
     }
     if (expired) {
+      flow("checkout_invalid", { reason: "quote_expired" });
       setError("This quote has run out. Refresh it to see the current price.");
       return;
     }
     if (receipt.problem) {
+      flow("checkout_invalid", { reason: "email" });
       setError(receipt.problem);
       document.getElementById("co-email")?.focus();
       return;
     }
     setPaid(true);
+    // a sandbox card: nothing is charged. The order itself is reported by placeOrder once the server answers.
+    flow("add_payment_info", { payment_type: "card", capability: "sandbox" });
     placeOrder({
       stubIds: [stub.id],
       lines: [{ title: stub.event.title, material, finish, size, totalMinor: q.totalMinor, variantStatus: q.variantStatus }],
@@ -120,10 +140,11 @@ export default function CheckoutClient({ id }: { id: string }) {
   function toCart(from: Element | null) {
     if (!stub || !draft) return;
     if (!gate.ok) {
+      flow("checkout_invalid", { reason: "variant_blocked" });
       setError(gate.message);
       return;
     }
-    addToCartAndFly(cartItemFromStub(draft, material, finish, size), draft, deskRef.current ?? from);
+    addToCartAndFly(cartItemFromStub(draft, material, finish, size), draft, deskRef.current ?? from, "checkout");
   }
 
   const e = stub.event;
@@ -155,12 +176,12 @@ export default function CheckoutClient({ id }: { id: string }) {
 
           <div className={s.group}>
             <span className="desk-label">Material</span>
-            <PunchTabs label="Material" options={MATERIAL_OPTIONS} value={material} onChange={(m: Material) => update(pickMaterial(draft, m))} />
+            <PunchTabs label="Material" options={MATERIAL_OPTIONS} value={material} onChange={(m: Material) => update(pickMaterial(draft, m), "material")} />
           </div>
 
           <div className={s.group}>
             <span className="desk-label">Finish</span>
-            <FinishSwatches value={finish} prices={finishPrices(material)} marks={finishMarks(material, size)} onChange={(f) => update(pickFinish(draft, f))} />
+            <FinishSwatches value={finish} prices={finishPrices(material)} marks={finishMarks(material, size)} onChange={(f) => update(pickFinish(draft, f), "finish")} />
             <VariantNote material={material} finish={finish} size={size} withSize={false} />
           </div>
 
@@ -172,6 +193,7 @@ export default function CheckoutClient({ id }: { id: string }) {
                 options={sizes.map(sizeOption)}
                 value={size}
                 onChange={(v) => {
+                  flow("product_option", { option: "size", material, finish, size: v, context: "checkout" });
                   setSize(v);
                   setQuoteAt(nowMs());
                   setError("");
@@ -218,6 +240,7 @@ export default function CheckoutClient({ id }: { id: string }) {
                 <TearLink
                   type="button"
                   onClick={() => {
+                    flow("quote_refresh", { context: "checkout" });
                     setQuoteAt(nowMs());
                     setError("");
                   }}

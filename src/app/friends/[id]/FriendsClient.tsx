@@ -9,6 +9,7 @@ import { PageShell, CopyField, EmptyArt, EmptyState, OnDesk, StampLink, ui } fro
 import { SANDBOX_LABEL, cartItemFromStub, quote, defaultSize } from "@/customer/pages/commerce";
 import { addToCartAndFly } from "@/customer/cart/cartStore";
 import { useMounted } from "@/customer/pages/useMounted";
+import { flow } from "@/customer/flows/events";
 import s from "./friends.module.css";
 
 type Mode = "make" | "claim";
@@ -43,18 +44,20 @@ export default function FriendsClient({ id }: { id: string }) {
 
   const friends = stub.personal.friends;
 
-  function save(nextFriends: Stub["personal"]["friends"], m: Mode = mode) {
+  function save(nextFriends: Stub["personal"]["friends"], m: Mode = mode, action: "add" | "remove" | "mode" = "mode") {
     if (!stub) return;
     const renumbered = nextFriends.map((f, i) => ({ ...f, seat: `Seat ${i + 2}`, claimed: m === "make" }));
     const next: Stub = { ...stub, setId: stub.setId ?? stub.id, personal: { ...stub.personal, friends: renumbered } };
-    upsertStub(next);
+    const stored = upsertStub(next);
+    // counts only: never the names
+    flow("friends_update", { action, friend_count: renumbered.length, mode: m, storage: stored ? "ok" : "failed" });
     setStub(next);
   }
 
   function add() {
     const n = name.trim();
     if (!n) return;
-    save([...friends, { name: n, claimed: false }]);
+    save([...friends, { name: n, claimed: false }], mode, "add");
     setName("");
     play("pin");
     haptic([12]);
@@ -91,7 +94,7 @@ export default function FriendsClient({ id }: { id: string }) {
               You · Seat 1
             </Tag>
             {friends.map((f, i) => (
-              <Tag key={`${f.name}-${i}`} onClick={() => save(friends.filter((_, j) => j !== i))} aria-label={`Remove ${f.name}`}>
+              <Tag key={`${f.name}-${i}`} onClick={() => save(friends.filter((_, j) => j !== i), mode, "remove")} aria-label={`Remove ${f.name}`}>
                 {f.name} · {f.seat ?? `Seat ${i + 2}`} ×
               </Tag>
             ))}
@@ -138,7 +141,7 @@ export default function FriendsClient({ id }: { id: string }) {
                 <h2 id="link-h" className={ui.h3}>
                   Your claim link
                 </h2>
-                <CopyField path={claimPath} label="Claim link" />
+                <CopyField path={claimPath} label="Claim link" context="friends" content="invite" />
                 <p className={ui.muted}>Anyone with the link can claim a seat in this set.</p>
               </section>
             ) : null}
@@ -146,7 +149,7 @@ export default function FriendsClient({ id }: { id: string }) {
             <Stamp
               block
               price={`${seats} × ${formatMoney(unit)}`}
-              onClick={(e) => addToCartAndFly(cartItemFromStub(stub, material, stub.finish, size), stub, e.currentTarget)}
+              onClick={(e) => addToCartAndFly(cartItemFromStub(stub, material, stub.finish, size), stub, e.currentTarget, "friends")}
             >
               Add the set to your cart
             </Stamp>

@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { registerHooks } from "node:module";
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import ts from "typescript";
 import { generateText, generateImage, providerFailure } from "../src/server/ai/providers.ts";
@@ -32,6 +34,11 @@ registerHooks({
     return nextLoad(url, context);
   },
 });
+// A fresh database and files dir per run, set before any route loads storage: art quotas and product
+// events from earlier runs (or a developer's ./data) must never decide these results.
+const scratch = mkdtempSync(join(tmpdir(), "ticketstub-providers-"));
+process.env.TICKETSTUB_DB = join(scratch, "providers.sqlite");
+process.env.TICKETSTUB_FILES = join(scratch, "files");
 const agent = await import("../src/app/api/agent/route.ts");
 const art = await import("../src/app/api/art/route.ts");
 const research = await import("../src/app/api/research/route.ts");

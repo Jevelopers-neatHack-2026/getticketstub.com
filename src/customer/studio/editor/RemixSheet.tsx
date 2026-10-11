@@ -7,6 +7,7 @@ import { play, haptic } from "@/customer/studio/feedback";
 import { PaperButton, PaperSheet, Tag, Tags, TearLink } from "@/customer/desk/Desk";
 import { addArtVersion, readImageFile } from "./ops";
 import { listVersions, restoreVersion, sameArt, versionHash } from "../versions/versions";
+import { artOutcome, clock, errorCode, flow, since, vibeOf } from "@/customer/flows/events";
 import styles from "./overlays.module.css";
 
 export const VIBES = ["Neon", "Risograph", "70s", "Minimal"] as const;
@@ -62,8 +63,12 @@ export function RemixPanel({ stub, onChange, onDescribe, onDone }: PanelProps) {
     setBusy(true);
     setError(null);
     play("remix");
+    flow("remix_request", { via: "sheet", vibe: vibeOf(vibe) });
+    const asked = clock();
     try {
       const { art, limitNote } = await remixArtNoted(stub, vibe ?? undefined);
+      // the daily cap answers with procedural art: a limited result, never reported as generated
+      flow("remix_result", { via: "sheet", result: limitNote ? "limited" : "success", ...artOutcome(art), duration_ms: since(asked) });
       if (limitNote) {
         // Procedural art is applied, and the sheet stays open so the note is read.
         onChange(addArtVersion(stub, art));
@@ -73,6 +78,7 @@ export function RemixPanel({ stub, onChange, onDescribe, onDone }: PanelProps) {
         finish(addArtVersion(stub, art));
       }
     } catch (e) {
+      flow("remix_result", { via: "sheet", result: "error", duration_ms: since(asked), error_code: errorCode(e) });
       setError(e instanceof Error ? e.message : "We couldn't remix the art. Try again.");
     } finally {
       setBusy(false);
@@ -85,8 +91,11 @@ export function RemixPanel({ stub, onChange, onDescribe, onDone }: PanelProps) {
     setError(null);
     try {
       const src = await readImageFile(file);
+      // the person's own photo as the art: uploaded, kept on this device (never the photo or its name)
+      flow("remix_result", { via: "sheet", result: "success", art: "uploaded", capability: "local" });
       finish(addArtVersion(stub, { kind: "image", src, seed: Date.now() % 100000, vibe: "photo", provenance: "live" }));
     } catch (e) {
+      flow("remix_result", { via: "sheet", result: "error", art: "uploaded", capability: "local", error_code: "bad_image" });
       setError(e instanceof Error ? e.message : "We couldn't read that photo. Try another one.");
     } finally {
       setBusy(false);

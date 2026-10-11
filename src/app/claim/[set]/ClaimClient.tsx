@@ -1,6 +1,6 @@
 "use client";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Field, MarkLegend, PaperButton, SourceMark, Stamp } from "@/customer/desk/Desk";
 import { openSignIn } from "@/customer/account/signin";
 import { useAccount } from "@/customer/account/useAccount";
@@ -12,6 +12,7 @@ import type { Stub } from "@/customer/studio/types";
 import { LeavesMark, PageShell, FriendlyError, OnDesk, QrPlaceholder, ui } from "@/customer/pages/ui";
 import { formatDate, isStub } from "@/customer/pages/share";
 import { useMounted } from "@/customer/pages/useMounted";
+import { flow } from "@/customer/flows/events";
 import s from "./claim.module.css";
 
 export default function ClaimClient({ set, from }: { set: string; from?: string }) {
@@ -49,6 +50,14 @@ export default function ClaimClient({ set, from }: { set: string; from?: string 
     return st;
   }, [event, source, set, name, seatLabel]);
 
+  // Whether the set link opened, once the page has read it (never the sender's stub or names).
+  const viewed = useRef(false);
+  useEffect(() => {
+    if (!mounted || viewed.current) return;
+    viewed.current = true;
+    flow("claim_view", { flow: "set", result: event ? "valid" : "invalid" });
+  }, [mounted, event]);
+
   if (!mounted) return <PageShell>{null}</PageShell>;
   if (!event || !preview) {
     return (
@@ -61,6 +70,7 @@ export default function ClaimClient({ set, from }: { set: string; from?: string 
   function claim() {
     const n = name.trim();
     if (!n) {
+      flow("claim_invalid", { flow: "set", reason: "name_missing" });
       setError("Add your name so it prints on your stub.");
       return;
     }
@@ -75,7 +85,8 @@ export default function ClaimClient({ set, from }: { set: string; from?: string 
     st.personal = { ...st.personal, friends: [{ name: n, seat: seatLabel, claimed: true }, ...others] };
     st.setId = set;
     st.torn = true;
-    upsertStub(st);
+    // a local claim: the stub is on this device's wall (signed in, the sync takes it to the account)
+    flow("claim_complete", { flow: "set", result: "claimed", storage: upsertStub(st) ? "ok" : "failed" });
     haptic([20]);
     router.push(`/s/${encodeStub(st)}`);
   }

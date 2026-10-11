@@ -7,6 +7,7 @@ import { openCount } from "../facts/FactsReview";
 import { selectedSummary } from "../versions/versions";
 import { MaterialPicker, ctaVerb, totalLabel } from "./MaterialPicker";
 import { TearStrip } from "./TearStrip";
+import { flow } from "@/customer/flows/events";
 import styles from "./Tray.module.css";
 
 interface Props {
@@ -48,6 +49,7 @@ export function Tray({ stub, onChange, onTear, compact, onOpen }: Props) {
         block
         price={totalLabel(stub.material, stub.finish)}
         onClick={() => {
+          flow("cta_select", { cta: "print", context: "editor" });
           // Let the stamp land before the page changes.
           window.setTimeout(() => router.push(`/checkout/${stub.id}`), 200);
         }}

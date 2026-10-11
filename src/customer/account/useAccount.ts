@@ -3,6 +3,7 @@
 import { useCallback, useSyncExternalStore } from "react";
 import { api, type Account } from "./api";
 import { useSavingOff } from "./saving";
+import { flow } from "@/customer/flows/events";
 
 /** "loading" until the first answer, so screens never flash a signed-out prompt at a signed-in person. */
 export type AccountState = { status: "loading" } | { status: "out" } | { status: "in"; account: Account };
@@ -34,8 +35,10 @@ export function refreshAccount(): Promise<void> {
 export async function signOut(): Promise<void> {
   try {
     await api.signOut();
+    flow("sign_out", { result: "done" });
   } catch {
     /* offline: the cookie stays, but this device forgets for now */
+    flow("sign_out", { result: "offline" });
   }
   set({ status: "out" });
 }

@@ -5,6 +5,7 @@ import type { Stub } from "../types";
 import { LeavesMark } from "@/customer/pages/ui";
 import { PaperButton } from "@/customer/desk/Desk";
 import { readImageFile } from "./ops";
+import { flow } from "@/customer/flows/events";
 import styles from "./overlays.module.css";
 
 interface Props {
@@ -17,6 +18,7 @@ export function Memories({ stub, onChange }: Props) {
   const ev = stub.event;
   const fileRef = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string | null>(null);
+  const noteAtFocus = useRef("");
 
   const addPhotos = async (files: FileList | null) => {
     if (!files?.length) return;
@@ -24,7 +26,9 @@ export function Memories({ stub, onChange }: Props) {
     try {
       const added = await Promise.all(Array.from(files).slice(0, 6).map((f) => readImageFile(f, 900)));
       onChange({ ...stub, photos: [...stub.photos, ...added] });
+      flow("photo_add", { via: "memories", result: "success", photo_count: stub.photos.length + added.length });
     } catch (e) {
+      flow("photo_add", { via: "memories", result: "error", photo_count: stub.photos.length });
       setError(e instanceof Error ? e.message : "We couldn't read that photo. Try another one.");
     } finally {
       if (fileRef.current) fileRef.current.value = "";
@@ -76,6 +80,11 @@ export function Memories({ stub, onChange }: Props) {
           value={stub.personal.note ?? ""}
           placeholder="Who you were with, what you'll remember"
           onChange={(e) => onChange({ ...stub, personal: { ...stub.personal, note: e.target.value } })}
+          // the note is saved on every key (as before) but reported once, when the person leaves the field: whether there is one, never what it says
+          onFocus={(e) => (noteAtFocus.current = e.currentTarget.value)}
+          onBlur={(e) => {
+            if (e.currentTarget.value !== noteAtFocus.current) flow("note_edit", { has_note: e.currentTarget.value.trim().length > 0 });
+          }}
         />
       </label>
 

@@ -10,6 +10,7 @@ import { ART_LIMIT_NOTE, askAgent, failureCopy, remixArtNoted } from "../researc
 import { MarkLegend, PaperButton, SourceMark, Tag, Tags } from "@/customer/desk/Desk";
 import { haptic, play } from "@/customer/studio/feedback";
 import { activeCorrection, applyCorrection } from "../facts/corrections";
+import { artOutcome, clock, errorCode, flow, since } from "@/customer/flows/events";
 import styles from "./AgentChat.module.css";
 
 type Msg =
@@ -18,6 +19,7 @@ type Msg =
   | { id: string; role: "user"; text: string };
 
 const SUGGESTIONS = ["Make it moodier", "Add the weather", "Use my photo"] as const;
+const SUGGESTION_KIND = { "Make it moodier": "moodier", "Add the weather": "weather", "Use my photo": "photo" } as const satisfies Record<(typeof SUGGESTIONS)[number], string>;
 
 const rid = () => Math.random().toString(36).slice(2, 10);
 
@@ -102,8 +104,12 @@ export function AgentChat(props: { stub: Stub; onChange: (s: Stub) => void; /** 
 
   const remix = async (vibe: string) => {
     setBusy("Remixing the art…");
+    // what was typed is the vibe; only "custom" is reported
+    flow("remix_request", { via: "agent", vibe: "custom" });
+    const asked = clock();
     try {
       const { art, limitNote }: { art: ArtLayer; limitNote?: string } = await remixArtNoted(stubRef.current, vibe);
+      flow("remix_result", { via: "agent", result: limitNote ? "limited" : "success", ...artOutcome(art), duration_ms: since(asked) });
       const s = stubRef.current;
       const cur = currentVersion(s);
       const v: DesignVersion = {
@@ -124,6 +130,7 @@ export function AgentChat(props: { stub: Stub; onChange: (s: Stub) => void; /** 
         art.provenance,
       );
     } catch (e) {
+      flow("remix_result", { via: "agent", result: "error", duration_ms: since(asked), error_code: errorCode(e) });
       say(failureCopy(e, "We couldn't remix the art. Try again in a moment."));
     } finally {
       setBusy(undefined);
@@ -135,10 +142,12 @@ export function AgentChat(props: { stub: Stub; onChange: (s: Stub) => void; /** 
     const i = facts.findIndex((f) => f.id === "weather");
     const f = facts[i];
     if (!f || f.provenance === "pending") {
+      flow("agent_message", { intent: "weather", result: "pending" });
       say("No weather for this date yet. It stays pending until we can confirm it.", "simulated", "pending");
       return;
     }
     updateFact(i, { kept: true });
+    flow("agent_message", { intent: "weather", result: "rules" });
     say(`Added the weather: ${f.label}. Source: ${f.source}.`, "simulated", f.provenance);
   };
 
@@ -149,8 +158,10 @@ export function AgentChat(props: { stub: Stub; onChange: (s: Stub) => void; /** 
       const data = await readPhoto(file);
       const s = stubRef.current;
       commit({ ...s, photos: [...s.photos, data] });
+      flow("photo_add", { via: "agent", result: "success", photo_count: s.photos.length + 1 });
       say("Added your photo to the stub. It stays on this device.");
     } catch {
+      flow("photo_add", { via: "agent", result: "error", photo_count: stubRef.current.photos.length });
       say("We couldn't read that photo. Try a JPG or PNG.");
     } finally {
       setBusy(undefined);
@@ -164,6 +175,7 @@ export function AgentChat(props: { stub: Stub; onChange: (s: Stub) => void; /** 
     const t = text.toLowerCase();
     if (/\bweather\b|\brain\b|\btemperature\b/.test(t) && !/\bmood|remix|art\b/.test(t)) return addWeather();
     if (/\bphoto\b|\bpicture\b|\bimage of mine\b/.test(t)) {
+      flow("agent_message", { intent: "photo", result: "rules" });
       say("Choose a photo to add to your stub.");
       fileRef.current?.click();
       return;
@@ -172,14 +184,18 @@ export function AgentChat(props: { stub: Stub; onChange: (s: Stub) => void; /** 
       setBusy("Thinking…");
       try {
         const live = await askAgent(stubRef.current, text);
+        // a live model reply, or the rules when no model answers (204): never the question or the reply
+        flow("agent_message", { intent: "question", result: live ? "live" : "rules" });
         if (live) return say(live.reply, "live");
         return say("I can keep facts, fix unsure ones and remix the art. Try “Make it moodier”.");
       } catch (error) {
+        flow("agent_message", { intent: "question", result: "error", error_code: errorCode(error) });
         return say(failureCopy(error, "The agent is unavailable. Try again in a moment."));
       } finally {
         setBusy(undefined);
       }
     }
+    flow("agent_message", { intent: "remix", result: "rules" });
     return remix(text);
   };
 
@@ -284,7 +300,14 @@ export function AgentChat(props: { stub: Stub; onChange: (s: Stub) => void; /** 
       <div className={styles.foot}>
         <Tags label="Suggestions">
           {SUGGESTIONS.map((s) => (
-            <Tag key={s} disabled={!!busy} onClick={() => void handle(s)}>
+            <Tag
+              key={s}
+              disabled={!!busy}
+              onClick={() => {
+                flow("agent_suggestion", { suggestion: SUGGESTION_KIND[s] });
+                void handle(s);
+              }}
+            >
               {s}
             </Tag>
           ))}

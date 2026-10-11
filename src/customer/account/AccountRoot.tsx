@@ -8,8 +8,12 @@ import { messageFor } from "@/customer/feedback-messages/messages";
 import { SignInSheet } from "./SignInSheet";
 import { openSignIn, useSignInRequest } from "./signin";
 import { startSync, syncNow } from "./sync";
-import { refreshAccount, useAccount } from "./useAccount";
+import { getAccountState, refreshAccount, useAccount } from "./useAccount";
+import { flow } from "@/customer/flows/events";
 import s from "./account.module.css";
+
+/** The emailed link's return is reported once per page load, even when a remount (Strict Mode) runs the effect again. */
+let returnReported = false;
 
 type Slip = { id: number; kind: "saved"; text: string } | { id: number; kind: "expired" } | { id: number; kind: "offline" };
 
@@ -40,6 +44,8 @@ export function AccountRoot() {
     const rest = q.toString();
     window.history.replaceState(null, "", `${window.location.pathname}${rest ? `?${rest}` : ""}${window.location.hash}`);
     if (came === "expired") {
+      if (!returnReported) flow("sign_in_return", { result: "expired" });
+      returnReported = true;
       // after hydration, so the server's markup and the first client render agree
       void Promise.resolve().then(() => setSlip({ id: Date.now(), kind: "expired" }));
       return;
@@ -47,6 +53,9 @@ export function AccountRoot() {
     let live = true;
     void (async () => {
       await refreshAccount();
+      // signed in only when the server's /api/auth/me says so, not because the address carries ?signedIn=1
+      if (!returnReported) flow("sign_in_return", { result: getAccountState().status === "in" ? "signed_in" : "not_signed_in" });
+      returnReported = true;
       const r = await syncNow();
       if (!live) return;
       haptic([14]);

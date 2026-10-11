@@ -2,6 +2,7 @@
 // Who asked for the sign-in sheet and why. Screens call openSignIn(); AccountRoot renders the one sheet.
 import { useSyncExternalStore } from "react";
 import type { LinkReason } from "./api";
+import { flow } from "@/customer/flows/events";
 
 export interface SignInRequest {
   reason: LinkReason;
@@ -19,6 +20,8 @@ let current: SignInRequest | null = null;
 const listeners = new Set<() => void>();
 
 export function openSignIn(req: SignInRequest) {
+  // a choice to start signing in, never a sign-in: that is only known when the emailed link comes back
+  if (!current) flow("signin_choice", { choice: "sign_in", reason: req.reason });
   current = req;
   listeners.forEach((l) => l());
 }
@@ -54,6 +57,7 @@ export function savePromptDismissed(): boolean {
   }
 }
 export function dismissSavePrompt(): void {
+  flow("signin_choice", { choice: "skip", reason: "save" });
   try {
     sessionStorage.setItem(DISMISS_KEY, "1");
   } catch {

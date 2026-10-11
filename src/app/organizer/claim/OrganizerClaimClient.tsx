@@ -1,6 +1,6 @@
 "use client";
 import { useRouter } from "next/navigation";
-import { useId, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import d from "@/customer/desk/Desk.module.css";
 import { Field, MarkLegend, PunchTabs, Rule, Stamp, TearLink } from "@/customer/desk/Desk";
 import { StubView } from "@/customer/studio/stub/StubView";
@@ -12,6 +12,7 @@ import { decodeDesign, designEvent, designStub } from "@/customer/pages/organize
 import { photoToDataUrl } from "@/customer/pages/storyImage";
 import { useMounted } from "@/customer/pages/useMounted";
 import { Padlock } from "../LockSwitch";
+import { flow } from "@/customer/flows/events";
 import s from "./orgclaim.module.css";
 
 const EDITION_LABEL: Record<Edition, string> = {
@@ -38,6 +39,14 @@ export default function OrganizerClaimClient({ token }: { token?: string }) {
   const chosen = edition ?? design?.allowed[0] ?? "researched";
   const preview = useMemo(() => (design ? withGuestName(designStub(design, { id: "claim-preview", edition: chosen }), name.trim() || "Your name") : null), [design, name, chosen]);
 
+  // Whether the organizer's link opened, once it is read (never the design it carries).
+  const viewed = useRef(false);
+  useEffect(() => {
+    if (!mounted || viewed.current) return;
+    viewed.current = true;
+    flow("claim_view", { flow: "organizer", result: design ? "valid" : "invalid" });
+  }, [mounted, design]);
+
   if (!mounted) return <PageShell>{null}</PageShell>;
   if (!design || !preview) {
     return (
@@ -52,6 +61,7 @@ export default function OrganizerClaimClient({ token }: { token?: string }) {
   function claim() {
     const n = name.trim();
     if (!n) {
+      flow("claim_invalid", { flow: "organizer", reason: "name_missing" });
       setError("Add your name so it prints on your stub.");
       return;
     }
@@ -62,7 +72,8 @@ export default function OrganizerClaimClient({ token }: { token?: string }) {
     st.wallAngle = Math.round((Math.random() * 8 - 4) * 10) / 10;
     st.personal = { ...st.personal, note: note.trim() || undefined };
     st.photos = photo ? [photo] : [];
-    upsertStub(st);
+    // the attendee's stub is on this device's wall: a local claim, not an account or identity
+    flow("claim_complete", { flow: "organizer", result: "claimed", storage: upsertStub(st) ? "ok" : "failed" });
     haptic([20]);
     router.push(`/s/${encodeStub(st)}`);
   }
@@ -143,7 +154,10 @@ export default function OrganizerClaimClient({ token }: { token?: string }) {
                   onChange={async (e) => {
                     const f = e.currentTarget.files?.[0];
                     if (f) {
-                      setPhoto(await photoToDataUrl(f));
+                      const url = await photoToDataUrl(f);
+                      // whether a photo could be read, never the photo or its file name
+                      flow("photo_add", { via: "organizer_claim", result: url ? "success" : "error", photo_count: url ? 1 : 0 });
+                      setPhoto(url);
                       play("drop");
                     }
                   }}

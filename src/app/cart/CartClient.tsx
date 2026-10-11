@@ -12,6 +12,7 @@ import { useOrderFlow } from "@/customer/account/useOrderFlow";
 import { CART_EVENT, SANDBOX_LABEL, billableSeats, cartItemState, cartMarks, cartTotals, loadCart, saveCart, type CartItem, type CartSeat } from "@/customer/pages/commerce";
 import { CAPABILITY_VERSION, orderGate, runtimeMode, variantFor } from "@/customer/pages/capabilities";
 import { useMounted } from "@/customer/pages/useMounted";
+import { flow, major, variantId } from "@/customer/flows/events";
 import s from "./cart.module.css";
 
 function seatStatus(seat: CartSeat): string {
@@ -41,6 +42,16 @@ export default function CartClient() {
     setStubs(Object.fromEntries(cart.map((c) => [c.stubId, getStub(c.stubId)])));
   }
 
+  // One view per visit, once the stored cart is read (not on every render, not again on a Strict Mode remount).
+  const viewed = useRef(false);
+  useEffect(() => {
+    if (!loaded || viewed.current) return;
+    viewed.current = true;
+    const cart = loadCart();
+    flow("view_cart", { currency: "USD", value: major(cartTotals(cart).totalMinor), item_count: cart.length, context: "cart" });
+  }, [loaded]);
+  const checkoutBegun = useRef(false);
+
   // The mini cart edits the same cart: follow it, until the order is placed (then this page keeps its receipt).
   useEffect(() => {
     if (!loaded) return;
@@ -59,9 +70,12 @@ export default function CartClient() {
   }, [loaded]);
 
   function remove(id: string) {
+    const gone = items.find((c) => c.id === id);
     const next = items.filter((c) => c.id !== id);
     setItems(next);
-    saveCart(next);
+    if (saveCart(next) && gone) {
+      flow("remove_from_cart", { currency: "USD", value: major(gone.unitMinor * billableSeats(gone)), item_id: variantId(gone.material, gone.finish, gone.size), quantity: billableSeats(gone), context: "cart" });
+    }
   }
 
   // Every line goes back through the capability map before it can be paid: a line saved before the map, or under another
@@ -73,17 +87,26 @@ export default function CartClient() {
 
   function pay() {
     if (paid) return;
+    if (!checkoutBegun.current) {
+      checkoutBegun.current = true;
+      const t = cartTotals(items);
+      flow("begin_checkout", { currency: "USD", value: major(t.totalMinor), item_id: items.length === 1 ? variantId(items[0].material, items[0].finish, items[0].size) : undefined, item_count: items.length, context: "cart", capability: "sandbox" });
+    }
     if (hold) {
+      flow("checkout_invalid", { reason: stale.length > 0 ? "choose_again" : "variant_blocked" });
       setEmailError(hold);
       return;
     }
     if (receipt.problem) {
+      flow("checkout_invalid", { reason: "email" });
       setEmailError(receipt.problem);
       document.getElementById("cart-email")?.focus();
       return;
     }
     paidRef.current = true;
     setPaid(true);
+    // a sandbox card: nothing is charged. placeOrder reports the order once the server answers.
+    flow("add_payment_info", { payment_type: "card", capability: "sandbox" });
     const totals = cartTotals(items);
     placeOrder({
       stubIds: items.map((i) => i.stubId),

@@ -2,7 +2,7 @@
 // A guest's own claim link from an organizer: their stub, already named. A magic link signs them in,
 // then one tap puts the stub on their wall.
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { MarkLegend, PaperButton, Stamp, Stamped, TearLink } from "@/customer/desk/Desk";
 import { ApiError, api, type ClaimInfo } from "@/customer/account/api";
 import { messageFor } from "@/customer/feedback-messages/messages";
@@ -15,6 +15,7 @@ import { upsertStub } from "@/customer/studio/store";
 import { LeavesMark, PageShell, FriendlyError, OnDesk, ui } from "@/customer/pages/ui";
 import { formatDate } from "@/customer/pages/share";
 import { useMounted } from "@/customer/pages/useMounted";
+import { errorCode, flow } from "@/customer/flows/events";
 import s from "../../[set]/claim.module.css";
 
 type Load = { state: "loading" } | { state: "ready"; info: ClaimInfo } | { state: "missing" } | { state: "offline"; code: string };
@@ -26,6 +27,16 @@ export default function GuestClaimClient({ token }: { token: string }) {
   const [load, setLoad] = useState<Load>({ state: "loading" });
   const progress = useProgress();
   const [done, setDone] = useState(false);
+
+  // What the link turned out to be, once it is known (never the guest's name or seat).
+  const viewed = useRef(false);
+  useEffect(() => {
+    if (load.state === "loading" || viewed.current) return;
+    viewed.current = true;
+    if (load.state === "missing") flow("claim_view", { flow: "guest", result: "invalid", error_code: "not_found" });
+    else if (load.state === "offline") flow("claim_view", { flow: "guest", result: "error", error_code: errorCode(load.code) });
+    else flow("claim_view", { flow: "guest", result: load.info.expired ? "expired" : load.info.claimed ? "claimed" : "valid" });
+  }, [load]);
 
   useEffect(() => {
     let live = true;
@@ -65,9 +76,15 @@ export default function GuestClaimClient({ token }: { token: string }) {
   const first = info.guestName.split(/\s+/)[0] || info.guestName;
 
   async function claim() {
-    const res = await progress.run(() => api.claim(token));
+    const res = await progress.run(() =>
+      api.claim(token).catch((e: unknown) => {
+        flow("claim_complete", { flow: "guest", result: "error", error_code: errorCode(e) });
+        throw e;
+      }),
+    );
     if (!res) return;
-    upsertStub({ ...res.stub, torn: true });
+    // claimed on the server (the account has it); storage says whether this device kept its copy
+    flow("claim_complete", { flow: "guest", result: "claimed", storage: upsertStub({ ...res.stub, torn: true }) ? "ok" : "failed" });
     haptic([20]);
     setDone(true);
     setTimeout(() => router.push(`/wall?pinned=${encodeURIComponent(res.stub.id)}`), 900);
@@ -124,7 +141,13 @@ export default function GuestClaimClient({ token }: { token: string }) {
               <Stamp type="button" block onClick={() => openSignIn({ reason: "claim", returnTo: `/claim/g/${encodeURIComponent(token)}` })}>
                 Email me a link
               </Stamp>
-              <TearLink type="button" onClick={() => router.push("/make")}>
+              <TearLink
+                type="button"
+                onClick={() => {
+                  flow("cta_select", { cta: "make_own", context: "claim" });
+                  router.push("/make");
+                }}
+              >
                 Make a stub of my own
                 <LeavesMark />
               </TearLink>
