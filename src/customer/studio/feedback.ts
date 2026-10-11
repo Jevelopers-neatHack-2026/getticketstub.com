@@ -515,6 +515,8 @@ export type PrintVoice = "chatter" | "ticks" | "roller";
 export const PRINT_VOICES: PrintVoice[] = ["chatter", "ticks", "roller"];
 const VOICE_KEY = "ticketstub.printVoice";
 let printNodes: { gain: GainNode; stop: (t: number) => void } | null = null;
+/** Bumped by every print request and every stopPrint, so a print still waiting on resume() can tell it was cancelled. */
+let printGen = 0;
 const PRINT_LEVEL = 0.035;
 /** An unscheduled print (no feed schedule given) stops itself after this long, whatever happens. */
 const PRINT_MAX_S = 8;
@@ -668,6 +670,7 @@ function startPrint(c: AudioContext, schedule?: PrintBurst[], voiceOpt?: PrintVo
 
 /** Fade the printer out (no-op when not printing). */
 export function stopPrint(): void {
+  printGen++;
   try {
     if (!ctx || !printNodes) return;
     const t = ctx.currentTime;
@@ -689,8 +692,11 @@ export function play(cue: Cue, opts: PlayOptions = {}): void {
   try {
     const c = getCtx();
     if (!c) return;
+    // A print stopped (or replaced) while the context was still resuming must not start late.
+    const gen = name === "print" ? ++printGen : 0;
     const go = () => {
       if (muted || c.state !== "running") return;
+      if (name === "print" && gen !== printGen) return;
       render(c, name, opts);
       if (name === "print") startPrint(c, opts.schedule, opts.voice);
     };
