@@ -7,24 +7,24 @@ reporting definitions, QA and rollback. Server operational measurement is a sepa
 policy: [observability.md](observability.md). The stub lifecycle event log (`ticketstub.event/1`) is in
 [../architecture/events.md](../architecture/events.md).
 
-## Status: what is done and what is still external
+## Status
 
-As of 2026-10-11. **#39 is not complete**: the final live readback and the items marked pending below are open.
+As of 2026-10-11. The hosted rollout record, its procedural proof, the saved reports and the evidence index are in
+[analytics-rollout.md](analytics-rollout.md). Final release approval for the rollout follow-up is recorded on its PR.
 
 | | State |
 | --- | --- |
-| Catalog, runtime validation, URL sanitization, consent, GA4 adapter, page views, Web Vitals, route timing | Implemented in this repository |
-| Offline tests (no network, synthetic ids) | `tests/analytics.test.mjs`, `tests/analytics-browser.test.mjs` and the flow/observability suites; run by `npm test` and CI |
-| GA4 properties and web streams | **Created** (production and preview, separate properties). See [GA4 setup record](#ga4-setup-record) |
-| Stream and property privacy settings | **Done and read back after saving**: enhanced measurement off, data redaction on, Google signals off, user-provided data off, granular location/device off, ad personalization off. Details and caveats in the record |
-| Custom dimensions (14), custom metrics (2), key event `tear_complete` | **Registered** on both properties |
-| Data retention | Two months for events and users; activity reset off, saved on both properties; preview verified after reload |
-| Data filters (internal/developer traffic), access review, saved explorations | **Pending.** |
-| Deployment configuration | **Not set anywhere.** No deployment, including the public host, has these ids configured; no release is authorized. The code's default stays off |
-| Live validation in the preview property | **Partly done, final readback pending.** See [Live validation](#live-validation-partly-done-full-journeys-pending) |
-
-Until the final live readback is done and its redacted evidence attached to #39, nothing here is proof that
-Google stores what this page describes. The offline tests prove what the page hands to `gtag.js`.
+| Catalog, runtime validation, URL sanitization, consent, GA4 adapter, page views, Web Vitals, route timing | Implemented; deployed on both hosts at application commit `0f9baa5`. The `/wall?pinned` fix is verified offline; the current release commit, deployment and hosted verification are recorded on issue #39 ([details](analytics-rollout.md#hosts-and-versions)) |
+| Offline checks (no network, synthetic id) | `npm test` 282 unit tests after integrating main `ae9a77a` (257 implementation +11 ops report +3 wall page-view +11 upstream checks), `scripts/check-analytics-order.mjs` 43 checks and `scripts/check-analytics-journeys.mjs` 281 checks (140 phone, 141 desktop), recorded on Node 22; all wired into CI (`.github/workflows/runtime.yml`), whose result is recorded on the pull request |
+| GA4 properties, web streams, privacy settings | Separate production and preview properties; enhanced measurement off on both (preview's was found on again, corrected on 2026-10-11 and re-read on the saved stream); no Measurement Protocol secrets or connected tags; redaction on; signals, user-provided data, granular location/device and ad personalization off ([record](#ga4-setup-record)) |
+| Custom definitions | 31 event-scoped dimensions, 2 metrics and key event `tear_complete` (no default value) on both properties |
+| Data retention | Two months for events and users, activity reset off, both properties |
+| Data filters | *TicketStub developer QA* and the default *Internal Traffic* filter in **Testing** (they label, they do not exclude). IP-based internal filtering **deferred by the owner** ([decision](analytics-rollout.md#filters-decision)) |
+| Saved reports | 13 views in three read-only shared workspaces: 12 in production, 1 QA view in Preview; definitions re-read after saving, checked against the catalog ([definitions](analytics-rollout.md#saved-reports)) |
+| Host configuration | Preview `G-M2ELMGCNKW` (debug on), production `G-RVV7ZNF463`; after-publish restore of Preview done and verified ([procedure and proof](analytics-rollout.md#after-every-publish-restore-and-verify-preview)) |
+| Hosted checks | Consent (0 requests before a choice, after denial, reload and withdrawal), ids per host, private-value removal, phone activation, desktop sharing/organizer/claims ([record](analytics-rollout.md#hosted-verification-2026-10-11)) |
+| GA stored data | Preview DebugView stored the hosted events (128 in 30 minutes, with `deployment_env=preview` and sanitized `page_location`); production Realtime showed live events including key event `tear_complete`. Counts include QA traffic |
+| Ownership and access | CompleteTech LLC (existing admin account). Read-only review on 2026-10-11: each property has exactly one user, *Complete Tech*, Administrator; no grants or role changes. Reviewed quarterly and on personnel or provider changes ([ownership](analytics-rollout.md#ownership-and-access)) |
 
 ## Architecture
 
@@ -67,8 +67,9 @@ needs a restart, not a rebuild. Nothing uses a `NEXT_PUBLIC_` name and nothing i
 Rules:
 
 - **Missing or malformed configuration means no analytics**: no consent card, no script, `track()` is a no-op.
-  This is the default for local development, CI and every current deployment: the measurement ids in the
-  [setup record](#ga4-setup-record) are documented here, not hardcoded and not configured on any host.
+  This is the default for local development and CI. The ids are not hardcoded; the two hosts get them from
+  their own environment settings ([analytics-rollout.md](analytics-rollout.md#host-configuration)). Publishing on
+  the current host copies production settings into Preview, so Preview's must be restored after every publish.
 - Automated tests (`NODE_ENV=test`) never collect, whatever is set.
 - **Environment isolation:** production and preview use **separate GA4 properties** (see the record); every hit carries
   `deployment_env`, and reports must filter on it. Preview, demo and sandbox activity is additionally labelled
@@ -134,6 +135,9 @@ it was on:
   `/search?q=b`) counts as a new view;
 - the same pathname + query twice in a row (React Strict Mode double effects, remounts, re-renders) counts once;
   the identity used for this is the raw pathname + query and **never leaves the runtime module**;
+- one narrow exception, in the follow-up and **not yet deployed**: on `/wall` the `pinned` parameter is ignored in
+  that identity, so the tear flow's landing on `/wall?pinned=<id>` and the wall's cleanup to `/wall` are one view.
+  Any other wall query, other ids and queries, and back/forward still count. The deployed `0f9baa5` counts two;
 - hash-only changes are not navigations.
 
 **Every URL is reduced to a known route template before anything is sent.** Share links embed serialized stubs
@@ -332,8 +336,10 @@ Runtime-only events (not available to `track()`):
   the hard-navigation landing load; CLS and INP may be reported when the page is hidden, so their
   `route_template` is the page current at report time. Soft navigations get `route_timing` only.
 - Same consent as everything else: reports before consent are dropped.
-- GA aggregates `metric_value` as a sum/average; it does not compute percentiles. For p75 per metric use the
-  `metric_rating` distribution in explorations, or a BigQuery export if one is approved later. Establish a
+- The *Web vital value* custom metric (`metric_value`) aggregates as a **sum**: explorations show totals, not
+  averages or percentiles. An average is the total divided by the event count, within one `metric_name` (never
+  across names: CLS is × 1000, the rest are milliseconds). For a p75 view use the `metric_rating` distribution,
+  or a BigQuery export if one is approved later. Establish a
   baseline over at least two weeks of consented production traffic before setting alert thresholds.
 - Server/API durations and provider latency are in the operational log ([observability.md](observability.md)),
   with the browser-observed side in `api_call`.
@@ -358,8 +364,8 @@ load is treated as failed for the rest of the page:
 ## GA4 setup record
 
 Done by the project owner in the Google Analytics web interface on 2026-10-11 (no API, no scripted changes).
-Measurement, property and stream ids are public identifiers; there are no secrets here. Evidence screenshots are
-kept with the #39 working notes (stream details of production, home of preview), not in the repository.
+Measurement, property and stream ids are public identifiers; there are no secrets here. Redacted rollout evidence
+is in [`evidence/analytics-2026-10-11/`](evidence/analytics-2026-10-11/) ([index](analytics-rollout.md#evidence)).
 
 | | Production | Preview |
 | --- | --- | --- |
@@ -367,7 +373,7 @@ kept with the #39 working notes (stream details of production, home of preview),
 | Property | *TicketStub — Production*, id `558390557` | *TicketStub — Preview*, id `558454273` |
 | Web stream | *TicketStub Production Web*, id `16107672790` | *TicketStub Preview and Development Web*, id `16107767122` |
 | Measurement id (`TICKETSTUB_GA_MEASUREMENT_ID`) | `G-RVV7ZNF463` with `TICKETSTUB_ANALYTICS_ENV=production` | `G-M2ELMGCNKW` with `TICKETSTUB_ANALYTICS_ENV=preview` |
-| Stream URL | `https://getticketstub.com` | `https://getticketstub.com` (a label only; GA does not restrict collection by it. Preview and local hosts use this separate id) |
+| Stream URL | `https://getticketstub.com` | `https://gvk66o79l1.preview.c38.airoapp.ai` (a label only; GA does not restrict collection by it) |
 | Time zone / currency | America/New_York, USD | same |
 | Tag | Manual installation of this app's own tag | same |
 
@@ -379,7 +385,7 @@ kept with the #39 working notes (stream details of production, home of preview),
 
 | Setting | State | How it was verified |
 | --- | --- | --- |
-| Enhanced measurement | **Off** on both saved streams | The switch chosen while creating the streams **did not persist**: real browser traffic to preview showed an automatic `scroll` event. It was then turned off on each saved stream ("Turn off" confirmation) and a reload showed it off on both |
+| Enhanced measurement | **Off** on both saved streams | The switch chosen while creating the streams **did not persist**: real browser traffic to preview showed an automatic `scroll` event. It was then turned off on each saved stream and a reload showed it off. During the hosted rollout (2026-10-11) the **preview** stream was found **on** again; it was turned off and confirmed after an uncached reload. Production was confirmed off. Re-check both in every review |
 | Data redaction | On for both streams: email redaction, plus query parameter redaction for `url`, `q`, `from`, `d`, `to`, `token`, `email`, `name`, `note` | Stream settings readback. A second line of defence only: the app already removes every query string before sending |
 | Google signals | Off on both | Data collection page readback ("Turn on" offered) |
 | User-provided data collection | Off on both | Data collection page readback |
@@ -389,9 +395,13 @@ kept with the #39 working notes (stream details of production, home of preview),
 
 ### Reporting definitions registered (both properties)
 
-- **14 event-scoped custom dimensions:** `deployment_env`, `runtime_mode`, `route_template`, `capability`,
-  `result`, `error_code`, `entry`, `input_source`, `edition`, `material`, `finish`, `method`, `metric_name`,
-  `metric_rating`.
+- **31 event-scoped custom dimensions** on both properties. The first 14: `deployment_env`, `runtime_mode`,
+  `route_template`, `capability`, `result`, `error_code`, `entry`, `input_source`, `edition`, `material`,
+  `finish`, `method`, `metric_name`, `metric_rating`. Added during the rollout (display name → parameter):
+  Storage outcome → `storage`, Editor status → `status`, Flow state → `state`, Studio change → `change`, Studio
+  panel → `panel`, API endpoint → `api`, Response class → `status_class`, Storage area → `store`, Storage
+  operation → `op`, Bounded reason → `reason`, Organizer step → `step`, Product flow → `flow`, Viewer role →
+  `viewer`, Reveal skipped → `skipped`, Art provenance → `art`, Action origin → `via`, Panel opened → `open`.
 - **2 event-scoped custom metrics:** *Action duration* → `duration_ms` (milliseconds); *Web vital value* →
   `metric_value` (standard unit). Always analyse `metric_value` within one `metric_name`: CLS is a score × 1000,
   the other vitals are milliseconds, so a sum or average across metrics means nothing.
@@ -401,45 +411,31 @@ kept with the #39 working notes (stream details of production, home of preview),
 - GA's built-in `purchase` key event exists in each property by default. **The app never emits `purchase`**
   (it is forbidden in the catalog and checked by tests); sandbox orders are `sandbox_order` and carry no revenue.
   Do not mark `sandbox_order` or any commerce event as a purchase or give it a value.
-- Other parameters in the dictionary (`change`, `panel`, `via`, `context`, `reason`, counts, …) are collected but
-  **not registered**, so they cannot be used in reports or explorations yet. Register a parameter before
+- Other parameters in the dictionary (for example `context`, `cta`, `kind`, `mode`, `content_type`, counts) are
+  collected but **not registered**, so they cannot be used in reports or explorations yet. Register a parameter before
   building a view on it (event-scoped dimensions are limited to 50 per standard property; registration is not
   retroactive).
 
-### Still to do in GA (pending, not performed)
+### Ongoing GA administration
 
-1. **Data retention:** configured to 2 months for event and user data, activity reset off. Recheck on release; retention changes take effect after 24 hours.
-2. **Data filters:** define *Internal traffic* (team IP ranges) and activate it; activate the *Developer traffic*
-   filter so `debug_mode` hits are excluded. Not done.
-3. **Access review:** analytics owner as property admin, others Viewer/Analyst, removal when people leave. Not
-   reviewed.
-4. **Explorations:** none built (see below).
-5. **Unwanted referrals / cross-domain:** none needed (single host); leave cross-domain linking off.
-6. **Data deletion:** GA user deletion (by client id) and data deletion requests are the removal paths.
-7. Keep enhanced measurement off: GA can re-enable it per stream, and code cannot switch it off. Re-check it in
-   every admin review.
+1. **Filters:** developer QA and default Internal Traffic filters stay in **Testing** (labelling only). IP-based
+   internal filtering is deferred by the owner; activating any filter permanently drops matching data, so it needs
+   an explicit decision ([analytics-rollout.md](analytics-rollout.md#filters-decision)).
+2. **Access:** quarterly review and on personnel or provider changes; no access grants were made in the rollout.
+3. **Enhanced measurement:** keep it off. GA can re-enable it per stream (it happened once on preview) and code
+   cannot switch it off; check it in every review.
+4. **Cross-domain linking:** none needed (single host); leave it off.
+5. **Data deletion:** GA user deletion (by client id) and data deletion requests are the removal paths.
 
 ## Reports and saved explorations
 
-**None of these exist yet (pending).** Views using unregistered parameters (for example `change`, `panel`,
-`via`, `reason`, counts) need those registered first. Build them as Explorations in the production property
-(and mirror in preview for QA). All filter
-`deployment_env = production`; commerce views also show `capability`; every view excludes internal and
-developer traffic. Device category, first-user source/medium (from the sanitized referrer origin and allowlisted
-campaign tags) are GA's built-in dimensions.
-
-| View | Type | Definition |
-| --- | --- | --- |
-| Acquisition → creation | Funnel (open) | `page_view` (landing) → `intake_submit` → `creation_start` → `creation_complete` (`storage=ok`); breakdown: first-user source, device category, `input_source` |
-| Activation | Funnel (closed, 30 min) | `intake_submit` → `creation_complete` → `studio_open` (`status=ready`) → `tear_complete` → `wall_view` (`state=loaded`); elapsed time shows time-to-first-stub; breakdown `entry`, `runtime_mode` |
-| Research & reveal health | Free form | `research_complete` count by `result`, avg `duration_ms`, `error_code`; `reveal_complete` avg `duration_ms` by `skipped`; `creation_error` by `error_code` |
-| Studio adoption | Free form | `studio_edit` by `change` × `edition`/`material`/`finish`; `remix_result` by `result` × `art` × `capability`; `agent_message` by `result`; `studio_panel` by `panel` |
-| Sharing | Funnel (open) | `share` (`result=success`) → `share_landing` (`viewer=visitor`, `result=valid`) → `claim_complete` or `creation_start`. Landings in another browser are a separate GA user: the funnel shows volumes by step, not linked people |
-| Commerce intent (sandbox) | Funnel | `add_to_cart` → `view_cart` → `begin_checkout` → `add_payment_info` → `sandbox_order` (`result=placed`: kept by the server or on the device); report `result=not_persisted` separately as lost orders (no value); `quote_expired`, `checkout_invalid` by `reason`. Title it "Sandbox — not sales" |
-| Organizer | Funnel | `organizer_step` (`step=design`, `via=open`; drafts resumed after sign-in enter at `step=publish`, `via=restore`) → `organizer_csv` (`result=parsed`) → `organizer_check` → `organizer_publish` → `claim_complete` (`flow=organizer`) |
-| Retention | Cohort exploration | Cohort: first `creation_complete`; return: any `studio_open` or `wall_view`; weekly, 8 weeks. Per browser, not per person |
-| Performance | Free form | `web_vital` by `metric_name` × `metric_rating` × `route_template` × device; `route_timing` avg `duration_ms` by `route_template` |
-| Reliability | Free form | `api_call` by `api` × `result` × `status_class` × `mode`; `storage_failure` by `store` × `op` × `reason`; `server_save` by `kind` × `result` |
+The saved workspaces and their exact definitions (13 views: activation, sandbox commerce, acquisition,
+organizer, two sharing funnels, studio, research and reveal, performance, reliability, acquisition sources, studio
+panels in production, plus one Preview QA view) are recorded in [analytics-rollout.md](analytics-rollout.md#saved-reports),
+with how to read the summed metrics. The production views filter `deployment_env = production`, the QA view
+`deployment_env = preview`;
+commerce views are sandbox and carry no revenue. Parameters that are not registered as dimensions (for example
+`context`, `cta`, counts) cannot be used in views until registered, and registration is not retroactive.
 
 **Attribution limits:** link preparation is not delivery; local ownership is not identity; the same person on
 two devices is two GA users; cross-device linkage needs a future supported identifier (#9) and consent, never a
@@ -447,19 +443,23 @@ hash of personal data.
 
 **Operational and cost analysis** uses the server log, not GA: request/attempt status, fallback rates, provider
 latency, token counts and provider-reported cost ([observability.md](observability.md)). Missing cost is
-unknown, not zero, and provider-reported cost is not billed spend.
+unknown, not zero, and provider-reported cost is not billed spend. The production sample recorded during the
+rollout is in [analytics-rollout.md](analytics-rollout.md#operational-sample-production-2026-10-11); the report
+tool is in [analytics-ops-reporting.md](analytics-ops-reporting.md).
 
-**Export pipeline:** not justified yet. GA4's free BigQuery export can be enabled later (percentiles, joins with
-operational data) without code changes; no new service is part of this change.
+**Export pipeline:** not justified for prototype traffic. GA4's free BigQuery export can be enabled later
+(percentiles, joins with operational data) without code changes; no new service was added.
 
 ## QA
 
 Offline (CI, no network):
 
 ```sh
-npm test                                   # includes the analytics suites
+npm test                                   # 282 unit tests after integrating main ae9a77a
 node --test tests/analytics.test.mjs tests/analytics-browser.test.mjs
 npm run lint && npm run typecheck && npm run build
+node scripts/check-analytics-order.mjs     # 43 checks, after the build
+node scripts/check-analytics-journeys.mjs  # 281 checks (140 phone, 141 desktop), after the build
 ```
 
 The suites seed private values into route tokens, query strings (`?from= ?d= ?to= ?url= ?q=`), hashes,
@@ -481,11 +481,22 @@ and reads `window.dataLayer`. It fails unless, after consent, SPA navigations `/
 `wall_view`, `studio_open`) exactly once with the destination's template; the navigating click (`nav_select`)
 keeps the source page; back and forward give one `page_view` each; every event carries the template of the
 latest `page_view` before it; no seeded value appears; and a remembered "Allow" on a hard load sends `page_view`
-then `studio_open`, both stamped. Recorded run on 2026-10-11, this worktree: 33 checks passed on Node 22.23.3
-and Node 24. With the page-view observer switched back to a passive effect (the code Astra reviewed at
+then `studio_open`, both stamped. First recorded run on 2026-10-11: 33 checks passed on Node 22.23.3 and Node 24;
+with the `/wall?pinned` checks added in the follow-up the script has 43, all passing on Node 22. With the page-view observer switched back to a passive effect (the code Astra reviewed at
 `3da2c7b`), 6 checks fail: `organizer_step`, `wall_view` and `studio_open` arrive before the destination's
 `page_view`, stamped with `/make`. This is local evidence with a stub tag; real Google requests are recorded
 separately in [analytics-live-validation.md](analytics-live-validation.md).
+
+Customer journeys in the same offline setup, at phone and desktop sizes:
+
+```sh
+npm run build && node scripts/check-analytics-journeys.mjs
+```
+
+It walks consent, creation, search, sharing, claims, commerce, organizer and entry journeys through the rendered
+UI with a stub tag; what it covers and its recorded results are in
+[analytics-journey-validation.md](analytics-journey-validation.md). CI runs both browser checks after the
+production build, offline, with the synthetic id (`.github/workflows/runtime.yml`).
 
 Local browser check without sending anything to Google: start with a synthetic id and **block** Google's
 hosts in DevTools (Network → Request blocking: `*googletagmanager.com*`, `*google-analytics.com*`), or run
@@ -502,39 +513,29 @@ in a fresh profile: no request, no `dataLayer`, across reloads. Withdraw: `windo
 is `true` and `_ga*` cookies are gone. Inspecting real `collect` payloads (`dl`, `dr`, `dt`) belongs to the live
 validation below, in the preview property.
 
-## Live validation (partly done, full journeys pending)
+## Live validation
 
-Read the subsequent [live validation evidence](analytics-live-validation.md): Google DebugView confirmed stored sanitized `/studio/:id` and preview environment. Creation, edits, tear, wall and sandbox checkout were exercised; phone withdrawal persisted and stopped collection. Fresh tag requests after disabling cache no longer included automatic enhanced events. The earlier observations below describe the discovery, before that correction propagated.
-
-Done by the project owner in a real Chrome profile against a local build configured with the **preview** id
-(synthetic traffic; no production deployment, no third-party sources):
-
-- Before any choice, and after "No thanks": **0 requests** to Google hosts. Checked.
-- After "Allow analytics": a real `page_view` reached the preview property with the safe template location
-  (`/make`). Checked.
-- That traffic also showed GA's automatic `scroll` event and unsanitized history-based page views, which exposed
-  that enhanced measurement had not been saved as off. Those early events remain in the preview property's
-  DebugView and must not be read as the corrected configuration. It was then turned off on both saved streams (above). The `page_view` was observed **before**
-  that correction.
-
-Still pending, and required before #39 can be closed:
-
-1. Repeat the post-consent check after the stream change has propagated: only app events, no `scroll` or other
-   enhanced-measurement events, and `page_location` as templates for `/s/<token>`, `/new?url=...`,
-   `/search?q=...` and a gift link with `?to=`.
-2. Complete remaining DebugView journeys with `TICKETSTUB_GA_DEBUG=1`, on desktop and phone: walk intake → creation → studio → tear → wall, a
-   share, a claim, cart → checkout → sandbox order, organizer import → publish. Event order and parameters match
-   the dictionary; no `purchase`/`login`; registered dimensions populate.
-3. Back/forward and same-template navigation: one `page_view` each.
-4. Withdrawal requests/reload persistence checked; independently verify `_ga` cookie removal and cross-tab behavior on the deployed host.
-5. Final readback of the admin settings above, with redacted screenshots (no client ids, IPs or real stubs)
-   and the tested commit attached to #39.
+- **Local builds with the real preview id** (before the hosted rollout): consent, ordering, remembered consent,
+  sandbox checkout privacy and the corrections made during review are recorded in
+  [analytics-live-validation.md](analytics-live-validation.md). That session also found that enhanced measurement had
+  not been saved as off: early preview events include GA's automatic `scroll` and unsanitized history page views,
+  and must not be read as the corrected configuration.
+- **Hosted, 2026-10-11** (both hosts, application `0f9baa5`): 0 Google requests before a choice, after denial,
+  reload and withdrawal; only the host's id and environment after consent; private values removed from
+  `page_location`; a phone activation stored in Preview DebugView; desktop sharing, organizer and claim journeys;
+  production Realtime receiving events. Details, limits and evidence:
+  [analytics-rollout.md](analytics-rollout.md#hosted-verification-2026-10-11).
+- **Offline, every change:** the unit suites and both browser checks in CI cover every customer flow at phone and
+  desktop sizes, including error paths, with a synthetic id and no network
+  ([analytics-journey-validation.md](analytics-journey-validation.md)).
 
 ## Rollout and rollback
 
-- **Rollout:** finish the preview validation above; then, once a release is authorized, set
-  `TICKETSTUB_ANALYTICS_ENV=production` and `TICKETSTUB_GA_MEASUREMENT_ID=G-RVV7ZNF463` on the production host and
-  restart. No rebuild is needed. Never set the production id on preview or local hosts.
+- **Rollout:** done on both hosts at application commit `0f9baa5`
+  ([analytics-rollout.md](analytics-rollout.md)). Never set the production id on preview or local hosts.
+- **After every publish**, restore Preview's four analytics overrides in two saves, restart Preview and verify
+  both hosts ([procedure and recorded proof](analytics-rollout.md#after-every-publish-restore-and-verify-preview)):
+  publishing copies production settings into Preview.
 - **Rollback:** set `TICKETSTUB_ANALYTICS_DISABLED=1` (or remove the two required variables) and restart. The
   card, the reopen tag and the script disappear on the next page load; `track()` becomes a no-op; customer flows
   are unaffected. Stored consent records are harmless and reused if analytics returns. To remove collected data
@@ -546,23 +547,35 @@ Still pending, and required before #39 can be closed:
 
 | Area | Owner |
 | --- | --- |
+| GA properties, admin settings, saved reports, access | CompleteTech LLC, through its existing admin account (shown in GA as *Complete Tech*). No access grants were made; saved workspaces are shared read-only with existing property users |
+| Hosting settings (both hosts) | CompleteTech LLC, existing hosting account |
 | Catalog, consent, adapter, this page | Customer app (analytics core) |
 | Flow call sites | Each flow's owner (`src/customer/flows/events.ts` helpers) |
-| GA properties, admin settings, explorations, access | Project owner (CompleteTech LLC GA account); named analytics owner pending (#27) |
 | Server operational log | Server owners ([observability.md](observability.md)) |
 
-GA event and user retention is configured to two months, with activity reset off. The consent record lives in the visitor's browser until they
+Access to both properties and the hosting settings is reviewed **quarterly** and whenever personnel or a provider
+changes; each review also re-checks enhanced measurement, the filter states and Preview's overrides. GA event and
+user retention is two months, activity reset off. The consent record lives in the visitor's browser until they
 clear it. No analytics data is stored by TicketStub servers.
 
 ## Limitations
 
-- Full journey validation, deployment readback, data filters, access review and explorations are
-  pending (see [Status](#status-what-is-done-and-what-is-still-external)). No host is configured to collect.
-- Enhanced measurement must stay off in GA's admin; code cannot turn it off, and the create-time switch already
-  failed to persist once. If it is turned back on, outbound-click and download events would carry raw link URLs
-  (data redaction covers only the listed query keys and email shapes).
-- Only 14 parameters are registered as dimensions and 2 as metrics; the rest are collected but not reportable
-  until registered, and registration is not retroactive.
-- Web Vitals cover hard navigations only; GA does not compute percentiles.
-- Consent applies per browser profile; GA users are browsers, not people.
+- Production data from 2026-10-11 includes synthetic QA traffic (Preview briefly used production settings after the
+  publish, before the restore). It was not purged; no organic baseline is claimed for that day.
+- No IP-based internal traffic filter (deferred by the owner). Filters are in Testing: they label QA traffic and
+  exclude nothing.
+- Enhanced measurement must stay off in GA's admin; code cannot turn it off, and it has already been found on again
+  once. If it is turned back on, outbound-click and download events would carry raw link URLs (data redaction covers
+  only the listed query keys and email shapes).
+- Historical custom reports were not yet populated on 2026-10-11 (processing delay; newly registered dimensions).
+  Saved views read empty until then ([views](analytics-rollout.md#saved-reports)).
+- Baseline hosted evidence predates the `/wall?pinned` page-view correction. The post-merge release proof on
+  issue #39 records the deployed correction and hosted recheck.
+- 31 parameters are registered as dimensions and 2 as metrics; the rest are collected but not reportable until
+  registered, and registration is not retroactive. The metrics are sums; GA gives no percentiles.
+- Hosted checks covered the journeys recorded in the rollout; other flows and error paths are verified offline.
+- Web Vitals cover hard navigations only.
+- Consent applies per browser profile; GA users are browsers, not people; there is no identity or cross-device
+  linkage. Commerce is a sandbox and wallet passes are simulated, so there is no `purchase`, revenue or pass
+  issuance until real payments and identity exist.
 - The /privacy page describes the analytics behaviour in plain words; it has not had legal review.

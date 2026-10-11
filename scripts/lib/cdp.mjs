@@ -28,6 +28,9 @@ export async function launchBrowser() {
     exe,
     [
       "--headless=new",
+      // Background audits must not play sound or take over the user's media keys.
+      "--mute-audio",
+      "--disable-features=HardwareMediaKeyHandling",
       "--disable-gpu",
       "--no-first-run",
       "--no-default-browser-check",

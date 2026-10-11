@@ -240,6 +240,23 @@ export function updateConsent(next: ConsentState): void {
 }
 
 /**
+ * Query parameters that are transient UI state on one route, not part of what the visitor is looking at.
+ * The tear flow lands on /wall?pinned=<id> and the wall then replaces the address with /wall: one visit.
+ * Only these exact (route template, parameter) pairs are ignored; every other id or query still counts.
+ */
+const TRANSIENT_PARAMS: Readonly<Record<string, readonly string[]>> = { "/wall": ["pinned"] };
+
+/** The in-memory identity of a navigation (never sent). */
+function pageKey(pathname: string, search: string): string {
+  const query = search.replace(/^\?/, "");
+  const transient = TRANSIENT_PARAMS[sanitizePath(pathname).template];
+  if (!transient || !query) return `${pathname}?${query}`;
+  const params = new URLSearchParams(query);
+  for (const name of transient) params.delete(name);
+  return `${pathname}?${params.toString()}`;
+}
+
+/**
  * Record an accepted navigation. The same pathname+search twice in a row is one view (Strict Mode,
  * remounts, re-renders); anything else is a new view, including back/forward and a different id on
  * the same template. Recorded even without consent so the page is known; sent only with it.
@@ -247,7 +264,7 @@ export function updateConsent(next: ConsentState): void {
  */
 export function recordPageView(pathname: string, search = ""): boolean {
   try {
-    const key = `${pathname}?${search.replace(/^\?/, "")}`;
+    const key = pageKey(pathname, search);
     if (page && page.key === key) return false;
     readEnv();
     const landing = page === null;

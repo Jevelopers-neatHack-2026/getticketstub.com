@@ -1,5 +1,10 @@
 # Analytics live validation — 2026-10-11
 
+The sections below are **local-build** evidence from before the hosted rollout. The hosted rollout on the
+preview and production hosts (application commit `0f9baa5`) — host settings, the after-publish restore and its
+proof, hosted consent/privacy/journey checks, data stored in GA DebugView and Realtime, saved reports and evidence —
+is recorded in [analytics-rollout.md](analytics-rollout.md).
+
 Root orchestration exercised a local production build on Node 22.23.3 in Chrome using the real **Preview** measurement ID `G-M2ELMGCNKW`, demo runtime, debug enabled. This is local-build evidence, not evidence of a deployed release. No personal visitor data or raw network trace is attached.
 
 ## Observed
@@ -20,9 +25,13 @@ Both properties have enhanced measurement disabled on the saved stream, email re
 
 Disabling enhanced measurement during stream creation did not persist. Earlier test traffic included automatic scroll and unsanitized history page views. Root disabled it on each **saved** stream, confirmed the change after reload, then disabled browser cache and reloaded the tag. Fresh requests had only the application's manual page views. The earlier test events remain in Preview DebugView; they must not be mistaken for the corrected configuration. Verify fresh requests before enabling any deployed collection: cached Google configuration can outlive an admin change.
 
-## Remaining release validation
+## Open items at the time, and where they were completed
 
-Final source checks/build and Astra review are tracked in the implementation PR. Full phone and desktop coverage of sharing, claims, organizer import/publish, all option handlers, same-template navigation and deployed-host behavior remains to be exercised. Internal/developer traffic filters, saved explorations, access ownership review and deployment variables remain external rollout work. Keep issue #39 open until its release acceptance evidence is complete.
+At the time of these local checks, hosted phone and desktop journeys, deployed-host behaviour, filters, saved
+explorations, ownership and deployment settings were still open. They were completed in the hosted rollout and are
+recorded in [analytics-rollout.md](analytics-rollout.md); full phone and desktop coverage of every flow and option
+handler runs offline in [analytics-journey-validation.md](analytics-journey-validation.md). IP-based internal
+filtering was deferred by the owner.
 
 Final build regression: production smoke passed all eight pages/assets and demo API/blocked external research/art/agent/404 checks. Gift wrap/delivery choices and wallet provider choice were clicked in Chrome; the real preview transport emitted `gift_option`, `wallet_option`, and `nav_select` with safe template locations. Collection was turned off again after QA. Full tests passed 240/240 twice each on Node 22.23.3 and Node 24.15.0 after isolating provider test storage; lint/typecheck and production build passed.
 

@@ -9,6 +9,9 @@
 //     with the destination's template.
 //  2. A navigating click keeps the page it was clicked on (nav_select is stamped with the source page).
 //  3. Back and forward each give one page_view; returning to the same URL is not double counted.
+//  3b. Tear -> wall: router.push("/wall?pinned=<id>") then the wall's own history.replaceState("/wall") cleanup is
+//     one /wall page_view (and one wall_view), whose location carries no pinned id; a later real return to the
+//     wall is still counted.
 //  4. Throughout the run, every event carries the route_template of the latest page_view before it, and no
 //     seeded private value appears in the dataLayer.
 //  5. A remembered "Allow" on a hard load of /studio/<demo>: page_view first, then studio_open, both stamped.
@@ -150,6 +153,33 @@ try {
   await sleep(1500);
   const views = since(await events(), from).filter((e) => e.name === "page_view").map((e) => e.p.route_template);
   check("back and forward: one page_view each", JSON.stringify(views) === JSON.stringify(["/make", "/studio/:id"]), JSON.stringify(views));
+
+  // Tear -> wall, as TearFlow does it: push /wall?pinned=<id>; WallClient then replaces the address with /wall.
+  from = (await events()).length;
+  check(
+    "tear -> wall: push /wall?pinned=<id>",
+    await page.eval(`(() => { if (!window.next?.router?.push) return false; window.next.router.push("/wall?pinned=${DEMO}"); return true; })()`),
+  );
+  check("tear -> wall: arrived at /wall", await at("/wall"));
+  check("tear -> wall: the wall cleaned ?pinned from the address", await page.waitFor(`location.pathname === "/wall" && location.search === ""`, 15000), await page.eval("location.search"));
+  await sleep(1500);
+  const tear = since(await events(), from);
+  const tearOrder = tear.map((e) => `${e.name}@${e.p.route_template}`).join(", ");
+  const tearViews = tear.filter((e) => e.name === "page_view");
+  check("tear -> wall: push + replace cleanup is one /wall page_view", tearViews.length === 1 && tearViews[0].p.route_template === "/wall", tearOrder);
+  check("tear -> wall: wall_view exactly once, after it", tear.filter((e) => e.name === "wall_view").length === 1 && tear.findIndex((e) => e.name === "wall_view") > tear.findIndex((e) => e.name === "page_view"), tearOrder);
+  check("tear -> wall: page_location is the template, no pinned id", tearViews[0]?.p.page_location === `${base}/wall`, tearViews[0]?.p.page_location);
+  check("tear -> wall: the pinned stub id is in no event", !JSON.stringify(tear).includes("pinned") && !JSON.stringify(tear).includes(DEMO), tearOrder);
+  // A real visit away and back is still a view: only the transient ?pinned is ignored.
+  from = (await events()).length;
+  await page.eval("history.back()");
+  check(`tear -> wall: back to /studio/${DEMO}`, await at(`/studio/${DEMO}`));
+  await sleep(1200);
+  await page.eval("history.forward()");
+  check("tear -> wall: forward to /wall", await at("/wall"));
+  await sleep(1500);
+  const again = since(await events(), from).filter((e) => e.name === "page_view").map((e) => e.p.route_template);
+  check("tear -> wall: back and forward after the cleanup count one page_view each", JSON.stringify(again) === JSON.stringify(["/studio/:id", "/wall"]), JSON.stringify(again));
 
   // The run as a whole: every event belongs to the latest page_view before it.
   const all = await events();

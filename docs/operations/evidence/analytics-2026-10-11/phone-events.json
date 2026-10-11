@@ -1,0 +1,272 @@
+[
+  {
+    "event": "nav_select",
+    "route": "/wall",
+    "result": null,
+    "env": "preview",
+    "storage": null,
+    "state": null,
+    "status": null,
+    "debug": "true"
+  },
+  {
+    "event": "web_vital",
+    "route": "/wall",
+    "result": null,
+    "env": "preview",
+    "storage": null,
+    "state": null,
+    "status": null,
+    "debug": "true"
+  },
+  {
+    "event": "page_view",
+    "route": "/make",
+    "result": null,
+    "env": "preview",
+    "storage": null,
+    "state": null,
+    "status": null,
+    "debug": "true"
+  },
+  {
+    "event": "route_timing",
+    "route": "/make",
+    "result": null,
+    "env": "preview",
+    "storage": null,
+    "state": null,
+    "status": null,
+    "debug": "true"
+  },
+  {
+    "event": "web_vital",
+    "route": "/make",
+    "result": null,
+    "env": "preview",
+    "storage": null,
+    "state": null,
+    "status": null,
+    "debug": "true"
+  },
+  {
+    "event": "web_vital",
+    "route": "/make",
+    "result": null,
+    "env": "preview",
+    "storage": null,
+    "state": null,
+    "status": null,
+    "debug": "true"
+  },
+  {
+    "event": "web_vital",
+    "route": "/make",
+    "result": null,
+    "env": "preview",
+    "storage": null,
+    "state": null,
+    "status": null,
+    "debug": "true"
+  },
+  {
+    "event": "intake_submit",
+    "route": "/make",
+    "result": "accepted",
+    "env": "preview",
+    "storage": null,
+    "state": null,
+    "status": null,
+    "debug": "true"
+  },
+  {
+    "event": "web_vital",
+    "route": "/make",
+    "result": null,
+    "env": "preview",
+    "storage": null,
+    "state": null,
+    "status": null,
+    "debug": "true"
+  },
+  {
+    "event": "creation_start",
+    "route": "/make",
+    "result": null,
+    "env": "preview",
+    "storage": null,
+    "state": null,
+    "status": null,
+    "debug": "true"
+  },
+  {
+    "event": "reveal_complete",
+    "route": "/make",
+    "result": null,
+    "env": "preview",
+    "storage": null,
+    "state": null,
+    "status": null,
+    "debug": "true"
+  },
+  {
+    "event": "creation_complete",
+    "route": "/make",
+    "result": "created",
+    "env": "preview",
+    "storage": "ok",
+    "state": null,
+    "status": null,
+    "debug": "true"
+  },
+  {
+    "event": "page_view",
+    "route": "/studio/:id",
+    "result": null,
+    "env": "preview",
+    "storage": null,
+    "state": null,
+    "status": null,
+    "debug": "true"
+  },
+  {
+    "event": "studio_open",
+    "route": "/studio/:id",
+    "result": null,
+    "env": "preview",
+    "storage": null,
+    "state": null,
+    "status": "ready",
+    "debug": "true"
+  },
+  {
+    "event": "route_timing",
+    "route": "/studio/:id",
+    "result": null,
+    "env": "preview",
+    "storage": null,
+    "state": null,
+    "status": null,
+    "debug": "true"
+  },
+  {
+    "event": "web_vital",
+    "route": "/studio/:id",
+    "result": null,
+    "env": "preview",
+    "storage": null,
+    "state": null,
+    "status": null,
+    "debug": "true"
+  },
+  {
+    "event": "web_vital",
+    "route": "/studio/:id",
+    "result": null,
+    "env": "preview",
+    "storage": null,
+    "state": null,
+    "status": null,
+    "debug": "true"
+  },
+  {
+    "event": "web_vital",
+    "route": "/studio/:id",
+    "result": null,
+    "env": "preview",
+    "storage": null,
+    "state": null,
+    "status": null,
+    "debug": "true"
+  },
+  {
+    "event": "tear_start",
+    "route": "/studio/:id",
+    "result": null,
+    "env": "preview",
+    "storage": null,
+    "state": null,
+    "status": null,
+    "debug": "true"
+  },
+  {
+    "event": "tear_complete",
+    "route": "/studio/:id",
+    "result": null,
+    "env": "preview",
+    "storage": "ok",
+    "state": null,
+    "status": null,
+    "debug": "true"
+  },
+  {
+    "event": "page_view",
+    "route": "/wall",
+    "result": null,
+    "env": "preview",
+    "storage": null,
+    "state": null,
+    "status": null,
+    "debug": "true"
+  },
+  {
+    "event": "route_timing",
+    "route": "/wall",
+    "result": null,
+    "env": "preview",
+    "storage": null,
+    "state": null,
+    "status": null,
+    "debug": "true"
+  },
+  {
+    "event": "wall_view",
+    "route": "/wall",
+    "result": null,
+    "env": "preview",
+    "storage": null,
+    "state": "loaded",
+    "status": null,
+    "debug": "true"
+  },
+  {
+    "event": "page_view",
+    "route": "/wall",
+    "result": null,
+    "env": "preview",
+    "storage": null,
+    "state": null,
+    "status": null,
+    "debug": "true"
+  },
+  {
+    "event": "web_vital",
+    "route": "/wall",
+    "result": null,
+    "env": "preview",
+    "storage": null,
+    "state": null,
+    "status": null,
+    "debug": "true"
+  },
+  {
+    "event": "web_vital",
+    "route": "/wall",
+    "result": null,
+    "env": "preview",
+    "storage": null,
+    "state": null,
+    "status": null,
+    "debug": "true"
+  },
+  {
+    "event": "web_vital",
+    "route": "/wall",
+    "result": null,
+    "env": "preview",
+    "storage": null,
+    "state": null,
+    "status": null,
+    "debug": "true"
+  }
+]

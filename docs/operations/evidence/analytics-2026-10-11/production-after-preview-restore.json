@@ -1,0 +1,34 @@
+[
+  {
+    "tid": "G-RVV7ZNF463",
+    "en": "page_view",
+    "dl": "https://getticketstub.com/make",
+    "gcs": "G101",
+    "ep.deployment_env": "production",
+    "ep.route_template": "/make"
+  },
+  {
+    "tid": "G-RVV7ZNF463",
+    "en": "web_vital",
+    "dl": "https://getticketstub.com/make",
+    "gcs": "G101",
+    "ep.deployment_env": "production",
+    "ep.route_template": "/make"
+  },
+  {
+    "tid": "G-RVV7ZNF463",
+    "en": "web_vital",
+    "dl": "https://getticketstub.com/make",
+    "gcs": "G101",
+    "ep.deployment_env": "production",
+    "ep.route_template": "/make"
+  },
+  {
+    "tid": "G-RVV7ZNF463",
+    "en": "server_save",
+    "dl": "https://getticketstub.com/make",
+    "gcs": "G101",
+    "ep.deployment_env": "production",
+    "ep.route_template": "/make"
+  }
+]

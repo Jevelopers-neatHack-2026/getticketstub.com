@@ -662,6 +662,48 @@ describe("runtime: page views", () => {
     assertNoSeeds(t.sent);
   });
 
+  test("tear → wall: push /wall?pinned=<id> then the wall's replace to /wall is one view, without the id", async () => {
+    runtime.recordPageView("/studio/SEEDTOKEN7f3a");
+    await grantAndLoad();
+    assert.equal(runtime.recordPageView("/wall", "pinned=SEEDTOKEN7f3a"), true); // router.push from TearFlow
+    assert.equal(runtime.recordPageView("/wall", ""), false); // WallClient's history.replaceState cleanup
+    assert.equal(runtime.recordPageView("/wall", "?"), false); // a Strict Mode re-run on the cleaned address
+    const v = views();
+    assert.deepEqual(v.map((p) => p.route_template), ["/studio/:id", "/wall"]);
+    assert.equal(v[1].page_location, `${ORIGIN}/wall`);
+    assert.equal(v[1].page_referrer, `${ORIGIN}/studio/:id`);
+    assertNoSeeds(t.sent);
+  });
+
+  test("a landing on /wall?pinned=<id> keeps no id and its cleanup is not a second view", async () => {
+    runtime.recordPageView("/wall", "pinned=SEEDTOKEN7f3a&utm_source=newsletter");
+    await grantAndLoad();
+    assert.equal(runtime.recordPageView("/wall", "utm_source=newsletter"), false);
+    assert.equal(runtime.recordPageView("/wall", "pinned=other&pinned=SEEDTOKEN7f3a&utm_source=newsletter"), false); // any pinned value(s)
+    const v = views();
+    assert.equal(v.length, 1);
+    assert.equal(v[0].page_location, `${ORIGIN}/wall?utm_source=newsletter`);
+    assertNoSeeds(t.sent);
+  });
+
+  test("only /wall's pinned is ignored: real back/forward, other /wall params and other routes still count", async () => {
+    runtime.recordPageView("/wall", "pinned=SEEDTOKEN7f3a");
+    await grantAndLoad();
+    assert.equal(runtime.recordPageView("/wall"), false);
+    assert.equal(runtime.recordPageView("/studio/SEEDTOKEN7f3a"), true); // open a stub
+    assert.equal(runtime.recordPageView("/wall"), true); // back: a real return to the wall
+    assert.equal(runtime.recordPageView("/wall", "view=grid"), true); // another /wall parameter is real state
+    assert.equal(runtime.recordPageView("/wall", "view=grid&pinned=SEEDTOKEN7f3a"), false); // ... pinned alone is not
+    assert.equal(runtime.recordPageView("/wall", "view=list"), true);
+    assert.equal(runtime.recordPageView("/search", "q=SEEDQUERY19c&pinned=a"), true);
+    assert.equal(runtime.recordPageView("/search", "q=SEEDQUERY19c"), true); // pinned matters off /wall
+    assert.equal(runtime.recordPageView("/studio/SEEDTOKEN7f3a", "pinned=a"), true);
+    assert.equal(runtime.recordPageView("/studio/SEEDTOKEN7f3a"), true);
+    assert.equal(runtime.recordPageView("/studio/bbbSEEDTOKEN7f3a"), true); // same template, different id
+    assert.equal(views().length, 10);
+    assertNoSeeds(t.sent);
+  });
+
   test("the internal page key never leaves the runtime", async () => {
     runtime.recordPageView("/studio/SEEDTOKEN7f3a", "?from=SEEDTOKEN7f3a");
     await grantAndLoad();
