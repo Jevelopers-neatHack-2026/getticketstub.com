@@ -28,8 +28,10 @@ const SEEDS = ["SEEDTOKEN7f3a", "SEEDQUERY19c", "Jane Doe", "jane.doe@example.co
 function fakeTransport() {
   const t = {
     loads: 0, sent: [], pauses: 0, resumes: 0, settle: null, fail: null, throwOnSend: false,
-    load() {
+    loadedWith: null,
+    load(page) {
       t.loads++;
+      t.loadedWith = page;
       return new Promise((resolve, reject) => { t.settle = resolve; t.fail = reject; });
     },
     send(name, params) {
@@ -56,6 +58,12 @@ async function grantAndLoad() {
   runtime.updateConsent("granted");
   t.settle?.();
   await flush();
+}
+/** Grant on a recorded page (the app always has one), load the tag, then forget that page's own view. */
+async function loadOnPage(path = "/wall") {
+  runtime.recordPageView(path);
+  await grantAndLoad();
+  t.sent.length = 0;
 }
 const names = () => t.sent.map(([n]) => n);
 const views = () => t.sent.filter(([n]) => n === "page_view").map(([, p]) => p);
@@ -469,8 +477,105 @@ describe("runtime: consent", () => {
     assert.equal(t.loads, 1);
   });
 
-  test("the buffer while loading is bounded", async () => {
+  test("a failed load shuts the transport down; withdrawal after it pauses again; a regrant does not revive it", async () => {
+    runtime.recordPageView("/wall");
     runtime.updateConsent("granted");
+    t.fail(new Error("timeout"));
+    await flush();
+    assert.equal(t.pauses, 1, "fail closed on load failure");
+    runtime.updateConsent("denied");
+    assert.equal(t.pauses, 2, "withdrawal in the failed phase still pauses");
+    runtime.updateConsent("granted");
+    track("tear_start");
+    await flush();
+    assert.equal(t.resumes, 0);
+    assert.equal(t.loads, 1);
+    assert.deepEqual(t.sent, []);
+  });
+
+  test("a load that throws synchronously also shuts the transport down", () => {
+    runtime.resetAnalyticsForTests();
+    let pauses = 0;
+    runtime.configureAnalytics({
+      config: CONFIG, origin: ORIGIN, referrer: "",
+      transport: () => ({ load() { throw new Error("csp"); }, send() {}, pause() { pauses++; }, resume() {} }),
+    });
+    runtime.recordPageView("/wall");
+    runtime.updateConsent("granted");
+    assert.equal(pauses, 1);
+    runtime.updateConsent("denied");
+    assert.equal(pauses, 2);
+  });
+
+  test("a remembered grant before the first page waits: the tag is configured only with a sanitized page", async () => {
+    // Analytics.tsx's runtime effect runs before the page-view observer: consent arrives first.
+    runtime.updateConsent("granted");
+    track("tear_start"); // a page's mount effect before the page-view observer: held, unstamped
+    assert.equal(t.loads, 0, "no tag without a page");
+    runtime.recordPageView("/new", "?url=https%3A%2F%2Fprivate.example%2FSEEDURL55e");
+    assert.equal(t.loads, 1);
+    assert.deepEqual(t.loadedWith, { page_location: `${ORIGIN}/new`, page_referrer: "", page_title: "Printing" });
+    track("tear_cancel"); // after the page, while loading: buffered with the sanitized page
+    assert.deepEqual(t.sent, []);
+    t.settle();
+    await flush();
+    assert.deepEqual(names(), ["page_view", "tear_start", "tear_cancel"]);
+    assert.ok(t.sent.every(([, p]) => p.page_location === `${ORIGIN}/new` && p.route_template === "/new"));
+    assertNoSeeds(t.sent);
+  });
+
+  test("events before consent are never held for the first page, even if consent follows", async () => {
+    track("tear_start"); // no consent yet
+    runtime.updateConsent("granted");
+    track("studio_flip", { method: "button" }); // after consent, before the page: held
+    runtime.recordPageView("/studio/SEEDTOKEN7f3a");
+    t.settle();
+    await flush();
+    assert.deepEqual(names(), ["page_view", "studio_flip"]);
+    assert.equal(t.sent[1][1].route_template, "/studio/:id");
+    assertNoSeeds(t.sent);
+  });
+
+  test("what is held before the first page is bounded and never sent with empty page fields", async () => {
+    runtime.updateConsent("granted");
+    for (let i = 0; i < 100; i++) track("tear_start");
+    runtime.recordPageView("/wall");
+    t.settle();
+    await flush();
+    assert.equal(names().filter((n) => n === "tear_start").length, runtime.MAX_PENDING);
+    assert.equal(names()[0], "page_view");
+    assert.ok(t.sent.every(([, p]) => p.page_location === `${ORIGIN}/wall` && p.page_title === "Wall"));
+  });
+
+  test("a blocked tag on the first page drops what was held for it", async () => {
+    runtime.updateConsent("granted");
+    track("tear_start");
+    runtime.recordPageView("/wall");
+    t.fail(new Error("blocked"));
+    await flush();
+    assert.deepEqual(t.sent, []);
+    assert.equal(t.pauses, 1);
+  });
+
+  test("withdrawing before the first page loads nothing, and a later page does not start the tag", async () => {
+    runtime.updateConsent("granted");
+    track("tear_start");
+    runtime.updateConsent("denied");
+    runtime.recordPageView("/wall");
+    await flush();
+    assert.equal(t.loads, 0);
+    assert.equal(t.pauses, 0);
+    runtime.updateConsent("granted"); // a page is known now: load with it
+    assert.equal(t.loads, 1);
+    assert.equal(t.loadedWith.page_location, `${ORIGIN}/wall`);
+    t.settle();
+    await flush();
+    assert.deepEqual(names(), ["page_view"]); // the event from the withdrawn grant is gone
+  });
+
+  test("the buffer while loading is bounded", async () => {
+    runtime.recordPageView("/wall");
+    runtime.updateConsent("granted"); // the page view is the first of the bounded buffer
     for (let i = 0; i < 100; i++) track("tear_start");
     t.settle();
     await flush();
@@ -524,8 +629,8 @@ describe("runtime: page views", () => {
   });
 
   test("push, replace, back and forward each count once; the referrer is the previous template", async () => {
-    await grantAndLoad();
     runtime.recordPageView("/");
+    await grantAndLoad();
     runtime.recordPageView("/new", "?url=SEEDURL55e"); // push
     runtime.recordPageView("/studio/SEEDTOKEN7f3a"); // replace (new URL)
     runtime.recordPageView("/new", "?url=SEEDURL55e"); // back
@@ -537,8 +642,8 @@ describe("runtime: page views", () => {
   });
 
   test("Strict Mode double effects and remounts on the same URL count once", async () => {
-    await grantAndLoad();
     assert.equal(runtime.recordPageView("/wall"), true);
+    await grantAndLoad();
     assert.equal(runtime.recordPageView("/wall"), false);
     assert.equal(runtime.recordPageView("/wall", ""), false);
     assert.equal(runtime.recordPageView("/wall", "?"), false);
@@ -546,8 +651,8 @@ describe("runtime: page views", () => {
   });
 
   test("same template, different id or query: separate views with the same safe location", async () => {
-    await grantAndLoad();
     runtime.recordPageView("/studio/aaaSEEDTOKEN7f3a");
+    await grantAndLoad();
     runtime.recordPageView("/studio/bbbSEEDTOKEN7f3a");
     runtime.recordPageView("/search", "?q=SEEDQUERY19c");
     runtime.recordPageView("/search", "?q=SEEDQUERY19c2");
@@ -582,7 +687,7 @@ describe("track helpers", () => {
 
   test("trackOnce sends a key once per page load, even across consent", async () => {
     trackOnce("creation:1", "creation_complete", { result: "created" }); // before consent: dropped, key spent
-    await grantAndLoad();
+    await loadOnPage();
     trackOnce("creation:1", "creation_complete", { result: "created" });
     trackOnce("creation:2", "creation_complete", { result: "created" });
     trackOnce("creation:2", "creation_complete", { result: "created" });
@@ -599,7 +704,7 @@ describe("track helpers", () => {
   });
 
   test("no purchase, login, sign-up or wallet issuance is ever sent", async () => {
-    await grantAndLoad();
+    await loadOnPage();
     for (const name of ["purchase", "refund", "login", "sign_up", "wallet_pass_issued"]) track(name, { value: 10, currency: "USD" });
     track("sandbox_order", { method: "card", result: "placed", receipt: "local", line_count: 1, value: 49, currency: "USD" });
     track("wallet_select", { provider: "apple" });
@@ -647,7 +752,7 @@ describe("GA shaping, vitals and timing", () => {
   test("route timing and vitals respect consent like every other event", async () => {
     setup();
     runtime.trackInternal("web_vital", { metric_name: "LCP", metric_value: 1000 });
-    await grantAndLoad();
+    await loadOnPage();
     runtime.trackInternal("route_timing", { duration_ms: 120, navigation_type: "push" });
     assert.deepEqual(names(), ["route_timing"]);
   });

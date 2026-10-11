@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useId, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { FinishSwatches, Field, PaperButton, PunchTabs, Rule, MarkLegend, SandboxStrip, SourceMark, Stamp, Stamped, Tag, Tags, TearLink } from "@/customer/desk/Desk";
 import d from "@/customer/desk/Desk.module.css";
 import { StubView } from "@/customer/studio/stub/StubView";
@@ -25,6 +25,8 @@ import {
   csvSummary,
   mappedCounts,
   parseCsv,
+  reportOpeningStep,
+  reportStepMove,
   type ColumnMap,
   type GuestList,
   type OrganizerDesign,
@@ -35,7 +37,6 @@ import { PrintRun } from "./PrintRun";
 import s from "./organizer.module.css";
 
 const STEPS = ["Design", "Guest list", "Check", "Publish"] as const;
-const STEP_NAMES = ["design", "guests", "check", "publish"] as const;
 const MATERIAL_OPTIONS = MATERIALS.map((m) => ({ value: m.id, label: m.label, sub: formatMoney(m.priceMinor) }));
 
 /** A size is a tab ("Classic stub") with what its number measures beneath ("2 × 5.5 in trim"), as at checkout. */
@@ -166,8 +167,11 @@ export default function OrganizerClient() {
   const [resumed, setResumed] = useState(false);
 
   // Back from the emailed link: put the design, the guest list and the choices back as they were.
+  const opened = useRef(false);
   useEffect(() => {
     const d = takeDraft();
+    // the step the wizard settles on, reported once (Strict Mode's second run finds no draft and is ignored)
+    reportOpeningStep(opened, !!d);
     if (!d) return;
     /* eslint-disable react-hooks/set-state-in-effect */
     setDesign(d.design);
@@ -257,7 +261,7 @@ export default function OrganizerClient() {
   }
 
   function go(i: number) {
-    flow("organizer_step", { step: STEP_NAMES[i] });
+    reportStepMove(step, i);
     if (i === 2 && list) flow("organizer_check", mappedCounts(list, map.name));
     setStep(i);
     play("select", { direction: i > step ? "forward" : "back" });

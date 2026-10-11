@@ -137,13 +137,13 @@ test property (not available to this work: no measurement id, no live traffic).
 | same | the 15-minute quote ran out (the clock's tick); "Refresh the quote" | `quote_expired`, `quote_refresh` | context=`checkout` | quotes are fixtures | tsc, B, GA |
 | same, `src/app/cart/CartClient.tsx` | Pay refused: blocked variant, expired quote, choose again, bad email | `checkout_invalid` | reason | — | tsc, B, GA |
 | same | Pay accepted (sandbox card chosen) | `add_payment_info` | payment_type=`card` | sandbox; no payment details exist | tsc, B, GA |
-| `src/customer/account/orders.ts` `placeOrder` (checkout, cart, organizer print run) | after the server answered, or wasn't asked (saving off) | `sandbox_order` | method, result (`placed`/`blocked`), receipt (`server`/`local`), line_count, value, currency, storage (the local record), error_code | sandbox; never `purchase`, never revenue | T |
+| `src/customer/account/orders.ts` `placeOrder` (checkout, cart, organizer print run) | after the server answered, or wasn't asked (saving off) | `sandbox_order` | method, result (`placed` when the server kept it or the local record was stored; `not_persisted` when neither, sent without value/currency; `blocked`), receipt (`server`/`local`), line_count, value, currency, storage (the local record), error_code (why the server didn't keep it, incl. `storage_unavailable` when saving is off) | sandbox; never `purchase`, never revenue | T (server receipt, refused, quota+server, quota+refused, saving off, saving off+quota, gift print) |
 | same `resendOrder` | the retry answered (no second record) | `sandbox_order_retry` | result, error_code | sandbox | T |
 | `src/app/cart/CartClient.tsx` | the stored cart read, once per visit; first Pay press | `view_cart`; `begin_checkout` (context=`cart`) | currency, value, item_count (+ item_id for one line) | sandbox | tsc, B, GA |
 | same, `src/customer/cart/MiniCart.tsx` | a line removed and stored; the mini cart opened; Undo | `remove_from_cart`; `view_cart` (context=`mini_cart`); `cart_update` (action=`remove_undo`) | currency, value, item_id, quantity, context | sandbox | tsc, B, GA |
 | `src/app/cart/unclaimed/[id]/UnclaimedClient.tsx`, `src/app/gift/[id]/GiftClient.tsx` | the seat decision stored | `seat_decision` | decision (`seat_only`/`gift`/`drop`) | a simulated refund for drop | tsc, B, GA |
 | `src/app/gift/[id]/GiftClient.tsx` | no name; print blocked; link made (server or local); failed | `gift_prepare` | delivery, wrap, has_message, result (`invalid`/`blocked`/`prepared`/`error`), storage (`server`/`local`), error_code | preparation, never delivery | tsc, B, GA |
-| same | a print gift: local sandbox record | `sandbox_order` | method=`gift_print`, receipt=`local` | sandbox | tsc (via `reportOrder`), B |
+| same | a print gift: local sandbox record | `sandbox_order` | method=`gift_print`, receipt=`local`, result `placed` only if stored, else `not_persisted` | sandbox | T (`reportOrder`), B |
 | same | `/api/gift` answered | `server_save` | kind=`gift` | — | tsc, B, GA |
 | same | "Stop this gift link" answered | `gift_revoke` | result, error_code | — | tsc, B, GA |
 | `src/app/gift/[id]/GiftClient.tsx` | delivery tab or wrap switch changed before sending | `gift_option` | option (`delivery`/`wrap`), delivery, wrap | the choice only | T (catalog), B, GA |
@@ -154,7 +154,7 @@ test property (not available to this work: no measurement id, no live traffic).
 
 | File | Boundary | Event | Fields | Capability | Verified |
 |---|---|---|---|---|---|
-| `src/app/organizer/OrganizerClient.tsx` | a step opened | `organizer_step` | step | — | tsc, B, GA |
+| `src/app/organizer/OrganizerClient.tsx`, `src/customer/pages/organizer.ts` (`reportOpeningStep`, `reportStepMove`) | the wizard settled when it opened (once per mount, guarded by a ref so Strict Mode's second effect run, which no longer finds the draft, adds nothing); each move between steps | `organizer_step` | step, via (`open` = Design, `restore` = Publish after sign-in, `nav`) | — | T (opening once, restore, moves, no self-moves), B, GA |
 | same | style, second style, logo/title lock chosen | `organizer_design` | change, edition, value | — | tsc, B, GA |
 | same, `src/customer/pages/organizer.ts` `csvSummary` | a CSV read (file, drop or sample) or unreadable | `organizer_csv` | source, result (`parsed`/`empty`/`no_rows`/`error`), row_count, column_count | parsed on the device | T |
 | same | columns matched automatically on load; a column picked by hand | `organizer_mapping` | result (`auto`/`manual`), has_seat, has_extra | — | tsc, B, GA |

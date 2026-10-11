@@ -89,12 +89,15 @@ Basic consent mode: optional analytics loads and sends **only after the visitor 
   block the page; it stays until answered.
 - **Before an answer, and after "No thanks":** no `gtag.js`, no `dataLayer`, no cookie, no request. Events and
   page views are dropped, not stored: **there is no backlog and nothing is replayed** after a later "Allow".
-- **On "Allow":** the tag is injected once and the page the visitor is on at that moment gets one page view.
+- **On "Allow":** the tag is injected once (as soon as a page has been recorded) and the page the visitor is on
+  at that moment gets one page view.
   Earlier pages and actions stay unmeasured. Events tracked after consent while the tag is still loading wait in
   a small buffer (25) that is discarded if consent is withdrawn or the tag never arrives.
 - **Persistence:** the choice is stored as `{"v":1,"decision":"granted"|"denied"}` under
   `ticketstub.analytics-consent.v1` and applies on every reload and in every tab (`storage` events). If storage
-  is unavailable the answer holds for the current page only and the card asks again next visit.
+  is unavailable the answer holds for the current page only and the card asks again next visit. A choice made in
+  the page always wins over what is stored: if saving a "No thanks" fails, an older stored "Allow" does not come
+  back on the next read or remount. Only a genuine change from another tab replaces it.
 - **Reopen / withdraw:** a small "Analytics" tag (bottom right, with its state in its accessible name) reopens
   the card at any time; any page can also call `openConsentPreferences()` from
   `@/customer/analytics/consent` (the /privacy page's "Analytics choices" button does). The reopened card takes focus, Escape
@@ -153,8 +156,16 @@ and `/new?url=` / `?q=` carry what someone typed; none of that can reach a provi
   navigations it is the previous page's template URL.
 - `page_title` comes from the fixed table, never `document.title` (which can contain a stub's event title).
 - These three fields are set on the tag config, updated with `gtag('set', ...)` at every page view, and added
-  to **every event**, so `gtag.js` never falls back to `document.location`, `document.referrer` or
-  `document.title`, even for its own automatic events.
+  to **every event the app sends**, so those hits never fall back to `document.location`, `document.referrer` or
+  `document.title`. The tag is not configured until the first page has been recorded, so no tag config and no
+  app hit goes out with empty page fields. With a remembered "Allow", `<Analytics>` applies the settings and the
+  stored choice in a layout effect, which React runs before any page's (passive) mount effects; post-consent events those effects send before the
+  first page is recorded (`studio_open`, `wall_view`, `intake_submit`, …) are held (at most 25), then stamped with
+  that first page's sanitized fields and released after its `page_view`. Events from before consent are never held.
+- **This does not protect hits `gtag.js` builds by itself.** Enhanced measurement (history-based page views,
+  scrolls, outbound clicks, site search, downloads) reads the real URL; preview traffic before the stream was
+  corrected showed raw history page views. Enhanced measurement must stay off in the GA stream settings, and
+  the `gtag('set')` call is defence in depth only, not a guarantee.
 - `src/app` pages are checked by a test: a new page without a template fails `npm test`.
 
 ## What every event carries
@@ -262,7 +273,7 @@ destination is GA4 for all of them.
 | `checkout_invalid` | checkout | custom | `reason`: email\|variant_blocked\|choose_again\|empty\|quote_expired | — | `app/cart/CartClient.tsx`, `app/checkout/[id]/CheckoutClient.tsx` | Checkout refused: email, blocked variant, choose again, empty, quote expired |
 | `quote_expired` | checkout | custom | `context`: checkout\|cart | — | `app/checkout/[id]/CheckoutClient.tsx` | A quote expired |
 | `quote_refresh` | checkout | custom | `context`: checkout\|cart | — | `app/checkout/[id]/CheckoutClient.tsx` | A quote was refreshed |
-| `sandbox_order` | checkout | custom | `method`: apple_pay\|google_pay\|card\|gift_print\|organizer_print; `result`: placed\|blocked; `receipt`: server\|local; `line_count`: int 0–1000; `value`: money; `currency`: USD; `capability`: sandbox; `storage`: ok\|failed; `error_code`: enum(42) | capability=sandbox | `customer/account/orders.ts` | A sandbox order record was persisted (server or local receipt). Never purchase |
+| `sandbox_order` | checkout | custom | `method`: apple_pay\|google_pay\|card\|gift_print\|organizer_print; `result`: placed\|blocked\|not_persisted; `receipt`: server\|local; `line_count`: int 0–1000; `value`: money; `currency`: USD; `capability`: sandbox; `storage`: ok\|failed; `error_code`: enum(42) | capability=sandbox | `customer/account/orders.ts`, `app/gift/[id]/GiftClient.tsx` | One per sandbox order attempt. `placed` = kept by the server (`receipt=server`, even if `storage=failed` here) or stored on this device; `not_persisted` = no server receipt and the local write failed (no `value`/`currency`); `blocked` = refused in live mode, no record. Never purchase |
 | `sandbox_order_retry` | checkout | custom | `result`: server\|local; `error_code`: enum(42) | capability=sandbox | `customer/account/orders.ts` | A sandbox order retried (server or local) |
 | `seat_decision` | cart | custom | `decision`: seat_only\|gift\|drop | — | `app/cart/unclaimed/[id]/UnclaimedClient.tsx`, `app/gift/[id]/GiftClient.tsx` | Unclaimed-seat decision: seat only, gift, drop |
 | `gift_prepare` | gift | custom | `delivery`: link\|print; `wrap`: bool; `has_message`: bool; `result`: prepared\|invalid\|blocked\|error; `storage`: server\|local; `error_code`: enum(42) | — | `app/gift/[id]/GiftClient.tsx` | Gift link/print prepared (or refused). Preparation is not delivery |
@@ -270,7 +281,7 @@ destination is GA4 for all of them.
 | `gift_revoke` | gift | custom | `result`: saved\|error; `error_code`: enum(42) | — | `app/gift/[id]/GiftClient.tsx` | Gift link revoked |
 | `wallet_select` | wallet | custom | `provider`: apple\|google; `capability`: simulated | capability=simulated | `app/wallet/[id]/WalletClient.tsx` | Wallet provider chosen. Passes are simulated; nothing is issued |
 | `wallet_option` | wallet | custom | `provider`: apple\|google | — | `app/wallet/[id]/WalletClient.tsx` | Wallet tab switched before adding; a preference, not a pass |
-| `organizer_step` | organizer | custom | `step`: design\|guests\|check\|publish\|done | — | `app/organizer/OrganizerClient.tsx` | Organizer wizard step reached |
+| `organizer_step` | organizer | custom | `step`: design\|guests\|check\|publish\|done; `via`: open\|restore\|nav | — | `app/organizer/OrganizerClient.tsx`, `customer/pages/organizer.ts` | Wizard step on screen: once when it opens (`open` = Design; `restore` = Publish after a draft came back from sign-in; Strict Mode safe), then each move between steps (`nav`) |
 | `organizer_design` | organizer | custom | `change`: edition\|allowed\|lock_logo\|lock_title\|organizer_name\|title; `edition`: researched\|letterpress\|risograph\|minimal\|classic; `value`: bool | — | `app/organizer/OrganizerClient.tsx` | Organizer design choice (which field changed; never its value) |
 | `organizer_csv` | organizer | custom | `source`: file\|paste\|sample; `result`: parsed\|empty\|no_rows\|error; `row_count`: int 0–1000; `column_count`: int 0–100 | — | `app/organizer/OrganizerClient.tsx` | CSV parsed: source, result, row and column counts (never contents, headers or file names) |
 | `organizer_mapping` | organizer | custom | `result`: auto\|manual; `has_seat`: bool; `has_extra`: bool | — | `app/organizer/OrganizerClient.tsx` | Column mapping completed (auto/manual, seat/extra columns present) |
@@ -327,8 +338,19 @@ Runtime-only events (not available to `track()`):
 ## Failure isolation
 
 `track()` and every runtime entry point catch everything; a throwing transport, a blocked script, missing
-storage or SSR never reaches a customer action. A blocked or slow tag (10 s timeout) drops what was waiting and
-everything after it for that page; a late arrival gets nothing stale. With no configuration nothing is mounted.
+storage or SSR never reaches a customer action. With no configuration nothing is mounted.
+
+**Fail closed when the tag cannot load.** If `gtag.js` errors, is blocked, or has not loaded within 10 s, the
+load is treated as failed for the rest of the page:
+
+- the buffer is dropped and nothing tracked afterwards is queued or sent;
+- the transport is shut down as on withdrawal: `window['ga-disable-<id>'] = true`,
+  `gtag('consent','update',{analytics_storage:'denied'})` is pushed, GA cookies are cleared, and the script
+  element's load/error handlers are removed and the element detached;
+- if the slow script still executes later, it finds the tag disabled and analytics storage denied, so it sends
+  no hit and sets no cookie (`gtag.js` checks both when it runs);
+- a withdrawal in this failed state shuts it down again, and a later "Allow" in the same page does not
+  re-enable the tag or load a second script. The next page load starts fresh.
 
 ## GA4 setup record
 
@@ -410,8 +432,8 @@ campaign tags) are GA's built-in dimensions.
 | Research & reveal health | Free form | `research_complete` count by `result`, avg `duration_ms`, `error_code`; `reveal_complete` avg `duration_ms` by `skipped`; `creation_error` by `error_code` |
 | Studio adoption | Free form | `studio_edit` by `change` × `edition`/`material`/`finish`; `remix_result` by `result` × `art` × `capability`; `agent_message` by `result`; `studio_panel` by `panel` |
 | Sharing | Funnel (open) | `share` (`result=success`) → `share_landing` (`viewer=visitor`, `result=valid`) → `claim_complete` or `creation_start`. Landings in another browser are a separate GA user: the funnel shows volumes by step, not linked people |
-| Commerce intent (sandbox) | Funnel | `add_to_cart` → `view_cart` → `begin_checkout` → `add_payment_info` → `sandbox_order` (`result=placed`); `quote_expired`, `checkout_invalid` by `reason`. Title it "Sandbox — not sales" |
-| Organizer | Funnel | `organizer_step` design → `organizer_csv` (`result=parsed`) → `organizer_check` → `organizer_publish` → `claim_complete` (`flow=organizer`) |
+| Commerce intent (sandbox) | Funnel | `add_to_cart` → `view_cart` → `begin_checkout` → `add_payment_info` → `sandbox_order` (`result=placed`: kept by the server or on the device); report `result=not_persisted` separately as lost orders (no value); `quote_expired`, `checkout_invalid` by `reason`. Title it "Sandbox — not sales" |
+| Organizer | Funnel | `organizer_step` (`step=design`, `via=open`; drafts resumed after sign-in enter at `step=publish`, `via=restore`) → `organizer_csv` (`result=parsed`) → `organizer_check` → `organizer_publish` → `claim_complete` (`flow=organizer`) |
 | Retention | Cohort exploration | Cohort: first `creation_complete`; return: any `studio_open` or `wall_view`; weekly, 8 weeks. Per browser, not per person |
 | Performance | Free form | `web_vital` by `metric_name` × `metric_rating` × `route_template` × device; `route_timing` avg `duration_ms` by `route_template` |
 | Reliability | Free form | `api_call` by `api` × `result` × `status_class` × `mode`; `storage_failure` by `store` × `op` × `reason`; `server_save` by `kind` × `result` |
@@ -440,7 +462,7 @@ npm run lint && npm run typecheck && npm run build
 The suites seed private values into route tokens, query strings (`?from= ?d= ?to= ?url= ?q=`), hashes,
 referrers, `document.title`, campaign tags and event params, and assert none reach the transport, the
 `dataLayer`, the script URL or cookies. They cover consent before/after/reload/withdrawal/cross-tab, no replay,
-blocked/slow tag, stale loaders, page-view de-duplication (push/replace/back/forward/Strict Mode/same template),
+blocked/slow tag failing closed (including timeout → withdrawal → late script execution), remembered grants waiting for the first sanitized page, stale loaders, page-view de-duplication (push/replace/back/forward/Strict Mode/same template),
 schema rejection, sandbox/simulated stamping and the absence of purchase/login events.
 
 Local browser check without sending anything to Google: start with a synthetic id and **block** Google's

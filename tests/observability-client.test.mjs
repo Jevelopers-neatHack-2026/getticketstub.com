@@ -51,10 +51,21 @@ beforeEach(() => {
     origin: "https://example.test", referrer: "",
   });
 });
+// What the layout's page observer does on a real navigation: the runtime sends nothing until a sanitized page
+// is known. The private parts of these URLs (stub ids, pasted links, queries) are seeded so they can be checked.
+const visit = (pathname, search = "") => runtime.recordPageView(pathname, search);
+const visitStudio = () => visit(`/studio/stub_${SEED}`);
 afterEach(() => { globalThis.fetch = originalFetch; runtime.resetAnalyticsForTests(); });
 
 const calls = () => sent.filter(([n]) => n === "api_call").map(([, p]) => p);
 const pick = (p) => ({ api: p.api, result: p.result, status_class: p.status_class, error_code: p.error_code, mode: p.mode });
+/** api_call events carry the page's template, never its path or query, and follow that page's view. */
+const onPage = (template) => {
+  const firstCall = sent.findIndex(([n]) => n === "api_call");
+  const view = sent.findIndex(([n]) => n === "page_view");
+  assert.ok(view >= 0 && view < firstCall, "page_view precedes api_call");
+  for (const p of calls()) assert.equal(p.route_template, template);
+};
 const clean = () => {
   const all = JSON.stringify(sent);
   for (const bad of [SEED, "unreadable_link", "provider_authentication_failed", "art_limit", "/api/"]) assert.ok(!all.includes(bad), bad);
@@ -62,6 +73,7 @@ const clean = () => {
 };
 
 test("nothing is sent before consent, and nothing is replayed after it", async () => {
+  visit("/search", `?q=${SEED}`);
   globalThis.fetch = async () => Response.json({ results: [] });
   await client.searchEvents(`query ${SEED}`);
   await grant();
@@ -69,6 +81,7 @@ test("nothing is sent before consent, and nothing is replayed after it", async (
 });
 
 test("research success, server rejection and network failure are bounded and timed", async () => {
+  visit("/new", `?url=https%3A%2F%2Fexample.com%2F%3Fq%3D${SEED}`);
   await grant();
   globalThis.fetch = async () => Response.json({ results: [] });
   await client.searchEvents(`query ${SEED}`);
@@ -85,10 +98,12 @@ test("research success, server rejection and network failure are bounded and tim
     { api: "research", result: "failure", status_class: "2xx", error_code: "parse", mode: undefined },
   ]);
   for (const p of calls()) assert.ok(Number.isInteger(p.duration_ms) && p.duration_ms >= 0 && p.attempt === 1);
+  onPage("/new");
   clean();
 });
 
 test("agent 204 is a fallback, a live reply is live, a provider error maps to provider_config", async () => {
+  visitStudio();
   await grant();
   globalThis.fetch = async () => new Response(null, { status: 204 });
   assert.equal(await client.askAgent(stub, `hi ${SEED}`), undefined);
@@ -101,10 +116,12 @@ test("agent 204 is a fallback, a live reply is live, a provider error maps to pr
     { api: "agent", result: "success", status_class: "2xx", error_code: undefined, mode: "live" },
     { api: "agent", result: "failure", status_class: "5xx", error_code: "provider_config", mode: undefined },
   ]);
+  onPage("/studio/:id");
   clean();
 });
 
 test("art: live, simulated, daily-limit fallback and unknown server failure", async () => {
+  visitStudio();
   await grant();
   globalThis.fetch = async () => Response.json({ kind: "image", src: "data:image/png;base64,AAAA", seed: 1, provenance: "live" });
   await client.remixArtNoted(stub, `vibe ${SEED}`);
@@ -120,6 +137,20 @@ test("art: live, simulated, daily-limit fallback and unknown server failure", as
     { api: "art", result: "fallback", status_class: "4xx", error_code: "rate_limited", mode: "fallback" },
     { api: "art", result: "failure", status_class: "5xx", error_code: "http_5xx", mode: undefined },
   ]);
+  onPage("/studio/:id");
+  clean();
+});
+
+test("duration is the real round trip, and each call is one event", async () => {
+  visitStudio();
+  await grant();
+  globalThis.fetch = () => new Promise((r) => setTimeout(() => r(new Response(null, { status: 204 })), 40));
+  await client.askAgent(stub, "hi");
+  await client.askAgent(stub, "hi");
+  const [a, b] = calls();
+  assert.equal(calls().length, 2);
+  assert.ok(a.duration_ms >= 35 && a.duration_ms < 5_000, `duration ${a.duration_ms}`);
+  assert.ok(b.duration_ms >= 35);
   clean();
 });
 

@@ -279,12 +279,23 @@ describe("sandbox orders", () => {
     assert.equal(events("sandbox_order").length, 2);
   });
 
-  test("a record storage refused is reported as not stored, not as a stored order", async () => {
+  test("a full quota with a server receipt is still placed: the server keeps it, and storage says this device didn't", async () => {
     localStorage.mode = "quota";
     reply = () => ({ status: 200, body: { order: { ...draft(), id: "sbx_q", mode: "sandbox", createdAt: "x" } } });
     await orders.placeOrder(draft());
-    assert.equal(events("sandbox_order")[0].storage, "failed");
+    assert.deepEqual(events("sandbox_order"), [{ method: "card", result: "placed", receipt: "server", line_count: 1, value: 61, currency: "USD", capability: "sandbox", storage: "failed" }]);
     assert.deepEqual(events("storage_failure"), [{ store: "orders", op: "write", reason: "quota" }]);
+  });
+
+  test("a full quota and a refused server is not_persisted, with no value: nothing kept the order", async () => {
+    localStorage.mode = "quota";
+    reply = () => ({ status: 500, body: { error: { code: "internal", message: SEEDS.message } } });
+    const placed = await orders.placeOrder(draft());
+    assert.equal(placed.receipt, false);
+    localStorage.mode = "ok";
+    assert.deepEqual(commerce.loadOrders(), [], "no record exists on the device");
+    assert.deepEqual(events("sandbox_order"), [{ method: "card", result: "not_persisted", receipt: "local", line_count: 1, capability: "sandbox", storage: "failed", error_code: "internal" }]);
+    assert.equal(events("sandbox_order").filter((e) => e.result === "placed").length, 0);
   });
 
   test("a live-mode block is reported as blocked, with no record and no order", async () => {
@@ -393,8 +404,24 @@ describe("account outcomes", () => {
     await accountShare.sharePath(privateStub());
     assert.deepEqual(fetches, [], "nothing is sent to a server that can't save");
     assert.deepEqual(events(), [
-      { method: "card", result: "placed", receipt: "local", line_count: 1, value: 61, currency: "USD", capability: "sandbox", storage: "ok" },
+      { method: "card", result: "placed", receipt: "local", line_count: 1, value: 61, currency: "USD", capability: "sandbox", storage: "ok", error_code: "storage_unavailable" },
       { kind: "share", result: "off" },
+    ]);
+    // saving off and a full quota (Astra's case): no server, no local record, so not placed and no value
+    sent = [];
+    localStorage.mode = "quota";
+    await orders.placeOrder(draft());
+    localStorage.mode = "ok";
+    assert.equal(commerce.loadOrders().length, 1, "only the earlier order is on the device");
+    assert.deepEqual(events("sandbox_order"), [{ method: "card", result: "not_persisted", receipt: "local", line_count: 1, capability: "sandbox", storage: "failed", error_code: "storage_unavailable" }]);
+  });
+
+  test("a print gift that storage refused is not_persisted (the gift path uses the same report)", () => {
+    orders.reportOrder({ stubIds: ["g"], lines: [{ title: SEEDS.title, material: "print", finish: "foil", size: "classic", totalMinor: 4900 }], totalMinor: 4900, method: "gift-print" }, "local", false);
+    orders.reportOrder({ stubIds: ["g"], lines: [{ title: SEEDS.title, material: "print", finish: "foil", size: "classic", totalMinor: 4900 }], totalMinor: 4900, method: "gift-print" }, "local", true);
+    assert.deepEqual(events("sandbox_order"), [
+      { method: "gift_print", result: "not_persisted", receipt: "local", line_count: 1, capability: "sandbox", storage: "failed" },
+      { method: "gift_print", result: "placed", receipt: "local", line_count: 1, value: 49, currency: "USD", capability: "sandbox", storage: "ok" },
     ]);
   });
 });
@@ -454,6 +481,40 @@ describe("organizer guest list", () => {
       { source: "file", result: "parsed", row_count: 3, column_count: 3 },
       { row_count: 3, missing_name_count: 1 },
     ]);
+  });
+});
+
+/* ---------- the organizer wizard's steps ---------- */
+
+describe("organizer steps", () => {
+  test("a fresh wizard reports Design once, even when Strict Mode runs the opening effect twice", () => {
+    const seen = { current: false };
+    organizer.reportOpeningStep(seen, false);
+    organizer.reportOpeningStep(seen, false); // Strict Mode's second run
+    organizer.reportStepMove(0, 1);
+    organizer.reportStepMove(1, 2);
+    organizer.reportStepMove(2, 2); // the step already shown is not a move
+    organizer.reportStepMove(2, 1); // Back
+    assert.deepEqual(events("organizer_step"), [
+      { step: "design", via: "open" },
+      { step: "guests", via: "nav" },
+      { step: "check", via: "nav" },
+      { step: "guests", via: "nav" },
+    ]);
+  });
+
+  test("a draft restored after sign-in opens on Publish once; the second Strict Mode run (draft already taken) adds no Design", () => {
+    const seen = { current: false };
+    organizer.reportOpeningStep(seen, true); // first run took the draft
+    organizer.reportOpeningStep(seen, false); // second run finds none
+    organizer.reportStepMove(3, 2);
+    assert.deepEqual(events("organizer_step"), [
+      { step: "publish", via: "restore" },
+      { step: "check", via: "nav" },
+    ]);
+    // a remount (a new visit) is a new opening
+    organizer.reportOpeningStep({ current: false }, false);
+    assert.equal(events("organizer_step").length, 3);
   });
 });
 

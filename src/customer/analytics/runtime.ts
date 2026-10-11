@@ -10,7 +10,8 @@ import { clearGaCookies, createGtagTransport, type PageContext, type Transport }
 import { sanitizeLocation, sanitizePath, sanitizeReferrer } from "./routes";
 import { validateEvent, validateInternalEvent, type SafeParams, type Validation } from "./validate";
 
-type Phase = "idle" | "loading" | "ready" | "failed";
+/** waiting: consent given but no page recorded yet, so the tag is not configured until it can be given a sanitized page. */
+type Phase = "idle" | "waiting" | "loading" | "ready" | "failed";
 
 interface Page {
   /** Raw pathname + search: identifies a navigation for de-duplication. Never leaves this module. */
@@ -60,16 +61,28 @@ function pageContext(): PageContext {
   return { page_location: page?.location ?? "", page_referrer: page?.referrer ?? "", page_title: page?.title ?? "" };
 }
 
-function deliver(name: string, params: SafeParams) {
-  if (!config || !transport || consent !== "granted") return;
-  const full: SafeParams = {
+/** The runtime's own fields for the current page. Only called once a page is known. */
+function stamp(params: SafeParams): SafeParams {
+  return {
     ...params,
     schema_version: SCHEMA_VERSION,
-    deployment_env: config.environment,
-    runtime_mode: config.runtimeMode,
+    deployment_env: config?.environment ?? "",
+    runtime_mode: config?.runtimeMode ?? "",
     route_template: page?.template ?? "",
     ...pageContext(),
   };
+}
+
+function deliver(name: string, params: SafeParams) {
+  if (!config || !transport || consent !== "granted") return;
+  if (!page) {
+    // Consent is given but the first page is not recorded yet (page components' mount effects run before
+    // the page-view observer). Hold the validated event, unstamped: it gets the sanitized page once that is
+    // known, and is never sent with empty page fields (gtag.js would fill them from document.location).
+    if (phase === "waiting" && pending.length < MAX_PENDING) pending.push({ name, params });
+    return;
+  }
+  const full = stamp(params);
   if (phase === "loading") {
     if (pending.length < MAX_PENDING) pending.push({ name, params: full });
     return;
@@ -96,16 +109,32 @@ function sendPageView() {
   accept("page_view", validateInternalEvent("page_view"));
 }
 
+/** The tag could not load: shut the transport down so nothing it queued can run later. */
+function failLoad(t: Transport) {
+  phase = "failed";
+  pending = [];
+  try {
+    t.pause();
+  } catch {
+    /* ignore */
+  }
+}
+
 function startLoad() {
   if (!config || !transport) return;
+  // Never configure the tag without a sanitized page: empty page fields would let gtag.js fall back to
+  // document.location (raw share tokens, typed URLs). Wait for recordPageView instead.
+  if (!page) {
+    phase = "waiting";
+    return;
+  }
   const mine = transport;
   phase = "loading";
   let promise: Promise<void>;
   try {
     promise = mine.load(pageContext());
   } catch {
-    phase = "failed";
-    pending = [];
+    failLoad(mine);
     return;
   }
   promise.then(
@@ -127,8 +156,7 @@ function startLoad() {
     () => {
       if (transport !== mine || phase !== "loading") return;
       // Blocked or too slow: nothing waits for it, and a late arrival gets nothing stale.
-      phase = "failed";
-      pending = [];
+      failLoad(mine);
     },
   );
 }
@@ -140,7 +168,7 @@ function applyConsent(next: ConsentState) {
   pending = [];
   if (next === "granted") {
     pageSent = false;
-    if (phase === "idle") startLoad();
+    if (phase === "idle" || phase === "waiting") startLoad();
     else if (phase === "ready" || phase === "loading") {
       try {
         transport.resume(pageContext());
@@ -152,7 +180,9 @@ function applyConsent(next: ConsentState) {
     sendPageView();
   } else if (prev === "granted") {
     pageSent = false;
-    if (phase === "ready" || phase === "loading") {
+    if (phase === "waiting") phase = "idle"; // nothing was loaded or configured yet
+    // Every phase after a load began, including a failed one: a slow script must find the tag disabled.
+    else if (phase !== "idle") {
       try {
         transport.pause();
       } catch {
@@ -174,7 +204,7 @@ export function configureAnalytics(opts: ConfigureOptions): void {
       next.measurementId === config.measurementId && next.environment === config.environment &&
       next.runtimeMode === config.runtimeMode && next.debug === config.debug;
     if (same) return;
-    if (config && transport && consent === "granted" && phase !== "idle") transport.pause();
+    if (config && transport && consent === "granted" && phase !== "idle" && phase !== "waiting") transport.pause();
     config = next;
     makeTransport = opts.transport ?? makeTransport ?? ((c) => createGtagTransport(c));
     transport = next && makeTransport ? makeTransport(next) : null;
@@ -232,7 +262,16 @@ export function recordPageView(pathname: string, search = ""): boolean {
       referrer: landing ? sanitizeReferrer(landingReferrer, origin) : (page?.base ?? ""),
     };
     pageSent = false;
-    sendPageView();
+    if (phase === "waiting") {
+      // The first sanitized page is known: configure the tag with it, measure it, then release what was
+      // held for it, stamped with this page (the page those events happened on).
+      const early = pending;
+      pending = [];
+      startLoad();
+      sendPageView();
+      // startLoad may have failed synchronously; only a loading tag gets them. early is already bounded.
+      if ((phase as Phase) === "loading") for (const e of early) pending.push({ name: e.name, params: stamp(e.params) });
+    } else sendPageView();
     return true;
   } catch {
     return false;

@@ -4,7 +4,7 @@
 // reports Web Vitals and route timing. With no configuration it renders nothing and sends nothing.
 import { usePathname, useSearchParams } from "next/navigation";
 import { useReportWebVitals } from "next/web-vitals";
-import { Suspense, useEffect } from "react";
+import { Suspense, useEffect, useLayoutEffect } from "react";
 import { isAnalyticsConfig, type AnalyticsConfig } from "./config";
 import { readConsent, subscribeConsent } from "./consent";
 import { ConsentControls } from "./ConsentControls";
@@ -37,9 +37,16 @@ function Vitals() {
   return null;
 }
 
+/**
+ * Settings and the stored choice are applied in a layout effect: React runs every layout effect of a commit
+ * before any passive effect, so the runtime is configured (and a remembered "Allow" applied) before page
+ * components' mount effects send studio_open, wall_view and the like, although this component sits after the
+ * page in the layout. Nothing happens during render. Events sent before the first page view is recorded are
+ * held by the runtime and stamped with that page.
+ */
 function Runtime({ config }: { config: AnalyticsConfig }) {
   const { measurementId, environment, runtimeMode, debug } = config;
-  useEffect(() => {
+  useLayoutEffect(() => {
     configureAnalytics({ config: { measurementId, environment, runtimeMode, debug } });
     if (process.env.NODE_ENV !== "production") {
       setRejectHandler((name, reason) => console.warn(`[analytics] dropped ${name}: ${reason}`));

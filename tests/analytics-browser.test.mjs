@@ -40,7 +40,9 @@ function fakeBrowser(storage = new Map()) {
     activeElement: null,
     createElement(tag) {
       assert.equal(tag, "script");
-      return { tagName: "SCRIPT", dataset: {}, async: false, src: "", onload: null, onerror: null };
+      const el = { tagName: "SCRIPT", dataset: {}, async: false, src: "", onload: null, onerror: null, removed: false };
+      el.remove = () => { el.removed = true; };
+      return el;
     },
     head: { appendChild(el) { scripts.push(el); return el; } },
   };
@@ -184,8 +186,20 @@ describe("accept", () => {
     assert.equal(consent.readConsent(), "granted");
 
     b = fakeBrowser(storage); // reload: fresh window, same storage
-    unsubscribe = boot(b);
+    // The real mount order: configure and the remembered grant first, the page-view observer after.
+    runtime.resetAnalyticsForTests();
+    runtime.configureAnalytics({ config: CONFIG });
+    runtime.updateConsent(consent.readConsent());
+    unsubscribe = consent.subscribeConsent(runtime.updateConsent);
+    assert.equal(b.scripts.length, 0, "no tag before a sanitized page is known");
+    assert.equal(b.window.dataLayer, undefined);
+    runtime.recordPageView(b.window.location.pathname, b.window.location.search);
     assert.equal(b.scripts.length, 1);
+    const cfg = layer(b.window).find((a) => a[0] === "config")[2];
+    assert.equal(cfg.page_location, "https://getticketstub.example/s/:token");
+    assert.equal(cfg.page_title, "Share page");
+    assert.equal(cfg.page_referrer, "https://mail.example.com/");
+    assertNoSeeds(b);
     b.scripts[0].onload();
     await flush();
     assert.deepEqual(events(b.window).map((a) => a[1]), ["page_view"]);
@@ -272,8 +286,37 @@ describe("reject and withdraw", () => {
   });
 });
 
+/**
+ * What gtag.js does when it finally executes: replay the dataLayer, honour ga-disable-<id> and the latest
+ * analytics_storage consent, and only then set the _ga cookie and send hits. Returns the hits it sent.
+ */
+function runLateGtag(b, id = "G-TEST000000") {
+  let storage = "denied";
+  const hits = [];
+  for (const a of layer(b.window)) {
+    if (a[0] === "consent" && a[2]?.analytics_storage) storage = a[2].analytics_storage;
+    const collecting = storage === "granted" && b.window[`ga-disable-${id}`] !== true;
+    if (!collecting) continue;
+    if (a[0] === "config" || a[0] === "event") {
+      b.cookies.jar.set("_ga", "GA1.1.late.1");
+      hits.push(a[0] === "event" ? a[1] : "config");
+    }
+  }
+  return hits;
+}
+
 describe("blocked or slow tag", () => {
-  test("a blocked script drops what waited and queues nothing after", async () => {
+  test("control: the late-execution model does collect when the tag is enabled and granted", async () => {
+    const b = fakeBrowser();
+    unsubscribe = boot(b);
+    consent.setConsent("granted");
+    b.scripts[0].onload();
+    await flush();
+    assert.ok(runLateGtag(b).includes("page_view"));
+    assert.equal(b.cookies.jar.has("_ga"), true);
+  });
+
+  test("a blocked script drops what waited, queues nothing after, and a late run collects nothing", async () => {
     const b = fakeBrowser();
     unsubscribe = boot(b);
     consent.setConsent("granted");
@@ -282,12 +325,14 @@ describe("blocked or slow tag", () => {
     await flush();
     track("tear_cancel");
     runtime.recordPageView("/wall");
-    b.scripts[0].onload?.(); // a late arrival after failure
-    await flush();
+    assert.equal(b.scripts[0].onload, null); // no handler left to resurrect it
+    assert.equal(b.window["ga-disable-G-TEST000000"], true);
     assert.deepEqual(events(b.window), []);
+    assert.deepEqual(runLateGtag(b), []);
+    assert.equal(b.cookies.jar.has("_ga"), false);
   });
 
-  test("a tag that never loads times out and drops its buffer", async (t) => {
+  test("timeout fails closed: tag disabled, consent denied, script detached; a late run sends nothing", async (t) => {
     t.mock.timers.enable({ apis: ["setTimeout"] });
     const b = fakeBrowser();
     unsubscribe = boot(b);
@@ -296,10 +341,58 @@ describe("blocked or slow tag", () => {
     t.mock.timers.tick(gtag.LOAD_TIMEOUT_MS + 1);
     t.mock.timers.reset();
     await flush();
-    b.scripts[0].onload();
-    await flush();
+    const [script] = b.scripts;
+    assert.equal(b.window["ga-disable-G-TEST000000"], true);
+    assert.deepEqual(layer(b.window).filter((a) => a[0] === "consent").at(-1), ["consent", "update", { analytics_storage: "denied" }]);
+    assert.equal(script.onload, null);
+    assert.equal(script.onerror, null);
+    assert.equal(script.removed, true);
     track("tear_cancel");
+    runtime.recordPageView("/wall");
     assert.deepEqual(events(b.window), []);
+    assert.deepEqual(runLateGtag(b), []); // the slow script finally executes
+    assert.equal(b.cookies.jar.has("_ga"), false);
+  });
+
+  test("timeout, then withdrawal, then late execution: nothing is collected and nothing re-enables it", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const b = fakeBrowser();
+    unsubscribe = boot(b);
+    consent.setConsent("granted");
+    t.mock.timers.tick(gtag.LOAD_TIMEOUT_MS + 1);
+    t.mock.timers.reset();
+    await flush();
+    const updatesBefore = layer(b.window).filter((a) => a[0] === "consent" && a[1] === "update").length;
+
+    consent.setConsent("denied"); // withdrawal while the runtime is in its failed phase
+    const updates = layer(b.window).filter((a) => a[0] === "consent" && a[1] === "update");
+    assert.equal(updates.length, updatesBefore + 1, "withdrawal pauses the transport even after a failed load");
+    assert.deepEqual(updates.at(-1)[2], { analytics_storage: "denied" });
+    assert.equal(b.window["ga-disable-G-TEST000000"], true);
+    assert.deepEqual(runLateGtag(b), []);
+
+    consent.setConsent("granted"); // a fresh grant in the same page does not revive a failed tag
+    track("tear_start");
+    runtime.recordPageView("/cart");
+    await flush();
+    assert.equal(b.scripts.length, 1);
+    assert.equal(b.window["ga-disable-G-TEST000000"], true);
+    assert.deepEqual(events(b.window), []);
+    assert.deepEqual(runLateGtag(b), []);
+    assert.equal(b.cookies.jar.has("_ga"), false);
+  });
+
+  test("withdrawal while the tag is still loading, then a late load: disabled, nothing sent", async () => {
+    const b = fakeBrowser();
+    unsubscribe = boot(b);
+    consent.setConsent("granted");
+    track("tear_start");
+    consent.setConsent("denied");
+    assert.equal(b.window["ga-disable-G-TEST000000"], true);
+    b.scripts[0].onload(); // arrives after withdrawal
+    await flush();
+    assert.deepEqual(events(b.window), []);
+    assert.deepEqual(runLateGtag(b), []);
   });
 });
 
@@ -326,6 +419,41 @@ describe("consent store", () => {
     assert.equal(consent.readConsent(), "denied");
     fakeBrowser(); // next visit: nothing was stored, so the question comes back
     assert.equal(consent.readConsent(), "unset");
+  });
+
+  test("a denial whose save fails still wins over an older stored grant, on read and on remount", async () => {
+    const storage = new Map([[consent.CONSENT_KEY, JSON.stringify({ v: 1, decision: "granted" })]]);
+    const b = fakeBrowser(storage);
+    unsubscribe = boot(b);
+    b.scripts[0].onload();
+    await flush();
+    b.window.localStorage.setItem = () => { throw new Error("QuotaExceededError"); }; // reads still work
+    consent.setConsent("denied");
+    assert.equal(storage.get(consent.CONSENT_KEY), JSON.stringify({ v: 1, decision: "granted" })); // the old grant is still stored
+    assert.equal(consent.readConsent(), "denied");
+    assert.equal(b.window["ga-disable-G-TEST000000"], true);
+    const n = events(b.window).length;
+
+    // remount in the same page (as <Analytics> does): it must not regrant from storage
+    unsubscribe();
+    runtime.configureAnalytics({ config: { ...CONFIG, debug: true } }); // a settings change rebuilds the runtime
+    runtime.updateConsent(consent.readConsent());
+    unsubscribe = consent.subscribeConsent(runtime.updateConsent);
+    track("tear_start");
+    runtime.recordPageView("/wall");
+    await flush();
+    assert.equal(events(b.window).length, n);
+    assert.equal(b.scripts.length, 1);
+  });
+
+  test("a genuine change in another tab replaces this page's choice", () => {
+    const storage = new Map();
+    const b = fakeBrowser(storage);
+    unsubscribe = boot(b);
+    consent.setConsent("denied");
+    storage.set(consent.CONSENT_KEY, JSON.stringify({ v: 1, decision: "granted" }));
+    b.window.dispatchEvent({ type: "storage", key: consent.CONSENT_KEY });
+    assert.equal(consent.readConsent(), "granted");
   });
 
   test("openConsentPreferences asks the panel to open", () => {

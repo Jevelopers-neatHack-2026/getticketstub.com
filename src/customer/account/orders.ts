@@ -19,11 +19,25 @@ type Draft = Omit<Order, "id" | "mode" | "createdAt">;
 const METHOD = { "apple-pay": "apple_pay", "google-pay": "google_pay", card: "card", "gift-print": "gift_print", "organizer-print": "organizer_print" } as const satisfies Record<Order["method"], string>;
 
 /**
- * One `sandbox_order` per placed order, once it is known where the receipt lives. Never a purchase and never revenue:
- * nothing was charged. `storage` says whether the local record reached this device's storage.
+ * One `sandbox_order` per order attempt, once it is known where the receipt lives. Never a purchase and never revenue:
+ * nothing was charged. `placed` means the order is kept somewhere: by the server (whatever happened locally) or in this
+ * device's storage. With no server receipt and a local write that failed, nothing kept it: that is `not_persisted`,
+ * with no value, so a funnel filtered on `placed` never counts an order that exists only in memory.
  */
 export function reportOrder(draft: Draft, receipt: "server" | "local", stored: boolean, err?: unknown): void {
-  flow("sandbox_order", { method: METHOD[draft.method], result: "placed", receipt, line_count: count(draft.lines.length), value: major(draft.totalMinor), currency: "USD", capability: "sandbox", storage: stored ? "ok" : "failed", error_code: err === undefined ? undefined : errorCode(err) });
+  const kept = receipt === "server" || stored;
+  flow("sandbox_order", {
+    method: METHOD[draft.method],
+    result: kept ? "placed" : "not_persisted",
+    receipt,
+    line_count: count(draft.lines.length),
+    value: kept ? major(draft.totalMinor) : undefined,
+    currency: kept ? "USD" : undefined,
+    capability: "sandbox",
+    storage: stored ? "ok" : "failed",
+    // why the server didn't keep it, when it was asked (or saving is off); storage says what this device did
+    error_code: err === undefined ? undefined : errorCode(err),
+  });
 }
 
 export async function placeOrder(draft: Draft): Promise<Placed> {
@@ -38,7 +52,7 @@ export async function placeOrder(draft: Draft): Promise<Placed> {
   const local = made.order;
   // Signed out with no email there is nobody to send a receipt to, and with saving off nobody to keep it: the order stays on this device.
   if (isSavingOff()) {
-    reportOrder(draft, "local", made.stored);
+    reportOrder(draft, "local", made.stored, "storage_unavailable");
     return { order: local, receipt: false };
   }
   try {

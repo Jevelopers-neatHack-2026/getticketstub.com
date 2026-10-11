@@ -1,8 +1,10 @@
 // The GA4 adapter. Nothing here runs until the runtime has consent: no script, no dataLayer, no
 // cookie. After consent it injects gtag.js once, configures it for manual, sanitized page views with
-// Google signals and ad features off, and sends only what the runtime hands it. Every hit carries an
-// explicit page_location/page_referrer/page_title so gtag never falls back to document.location,
-// document.referrer or document.title (which can hold share tokens, typed input or stub titles).
+// Google signals and ad features off, and sends only what the runtime hands it. The config and every hit
+// the runtime sends carry an explicit sanitized page_location/page_referrer/page_title, so those hits never
+// fall back to document.location, document.referrer or document.title (which can hold share tokens, typed
+// input or stub titles). Hits gtag.js builds by itself are not covered: enhanced measurement must stay off
+// in the GA stream. If the script is blocked or times out, the tag is disabled for the rest of the page.
 import type { AnalyticsConfig } from "./config";
 import type { SafeParams } from "./validate";
 
@@ -16,7 +18,7 @@ export interface Transport {
   /** Inject and configure the tag. Resolves when it has loaded; rejects if blocked or too slow. */
   load(page: PageContext): Promise<void>;
   send(name: string, params: SafeParams): void;
-  /** Withdrawal: stop collection now and remove GA's first-party cookies. */
+  /** Withdrawal or load failure: stop collection now and remove GA's first-party cookies. Idempotent. */
   pause(): void;
   /** Consent given again in the same page after a withdrawal. */
   resume(page: PageContext): void;
@@ -73,6 +75,8 @@ export function createGtagTransport(config: AnalyticsConfig, win: Window = windo
   const doc = win.document;
   const disableKey = `ga-disable-${config.measurementId}` as const;
   let loading: Promise<void> | null = null;
+  /** The script failed or timed out: the tag stays disabled for the rest of this page, even if it runs late. */
+  let dead = false;
 
   // gtag.js reads the Arguments object, not an array, from the dataLayer.
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -83,6 +87,14 @@ export function createGtagTransport(config: AnalyticsConfig, win: Window = windo
 
   function setPage(page: PageContext) {
     gtag("set", { ...page });
+  }
+
+  // Stop collection now. gtag.js reads ga-disable-<id> and the consent state when it runs, so a script
+  // that arrives after this (a slow tag past its timeout) still sends nothing and sets no cookie.
+  function disable() {
+    w[disableKey] = true;
+    if (w.dataLayer) gtag("consent", "update", { analytics_storage: "denied" });
+    clearGaCookies(doc, win.location.hostname);
   }
 
   return {
@@ -120,8 +132,19 @@ export function createGtagTransport(config: AnalyticsConfig, win: Window = windo
           if (settled) return;
           settled = true;
           clearTimeout(timer);
-          if (err) reject(err);
-          else resolve();
+          script.onload = null;
+          script.onerror = null;
+          if (err) {
+            // Fail closed: blocked or too slow means off for this page, not "maybe later".
+            dead = true;
+            disable();
+            try {
+              script.remove?.();
+            } catch {
+              /* already detached */
+            }
+            reject(err);
+          } else resolve();
         }
         script.async = true;
         script.src = `${GTAG_ORIGIN}/gtag/js?id=${encodeURIComponent(config.measurementId)}`;
@@ -133,17 +156,18 @@ export function createGtagTransport(config: AnalyticsConfig, win: Window = windo
       return loading;
     },
     send(name, params) {
-      // Keep the tag-wide page fields current too, so anything gtag sends on its own (an enhanced
-      // measurement event left on by mistake) carries the sanitized page instead of the real one.
+      if (dead) return;
+      // Keep the tag-wide page fields current as well. This narrows what gtag.js could attach to hits it
+      // builds itself, but it is NOT a guarantee: enhanced measurement (history page views, scrolls,
+      // outbound clicks) can read the real URL and must stay off in the GA stream settings.
       if (name === "page_view") setPage({ page_location: String(params.page_location), page_referrer: String(params.page_referrer), page_title: String(params.page_title) });
       gtag("event", name, toGaParams(name, params));
     },
     pause() {
-      w[disableKey] = true;
-      if (w.dataLayer) gtag("consent", "update", { analytics_storage: "denied" });
-      clearGaCookies(doc, win.location.hostname);
+      disable();
     },
     resume(page) {
+      if (dead) return;
       w[disableKey] = false;
       gtag("consent", "update", { analytics_storage: "granted" });
       setPage(page);

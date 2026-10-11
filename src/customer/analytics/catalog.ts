@@ -163,7 +163,7 @@ export const EVENTS = {
   quote_expired: ev("checkout", { context: oneOf("checkout", "cart") }),
   quote_refresh: ev("checkout", { context: oneOf("checkout", "cart") }),
   /** A sandbox order record was persisted (server or local receipt). Never a purchase, never revenue. */
-  sandbox_order: { ...ev("checkout", { method: PAYMENT, result: oneOf("placed", "blocked"), receipt: oneOf("server", "local"), line_count: COUNT, value: money, currency: USD, capability: SANDBOX, storage: STORAGE, error_code: ERROR_CODE }), fixed: { capability: "sandbox" } },
+  sandbox_order: { ...ev("checkout", { method: PAYMENT, result: oneOf("placed", "blocked", "not_persisted"), receipt: oneOf("server", "local"), line_count: COUNT, value: money, currency: USD, capability: SANDBOX, storage: STORAGE, error_code: ERROR_CODE }), fixed: { capability: "sandbox" } },
   sandbox_order_retry: { ...ev("checkout", { result: oneOf("server", "local"), error_code: ERROR_CODE }), fixed: { capability: "sandbox" } },
   seat_decision: ev("cart", { decision: oneOf("seat_only", "gift", "drop") }),
   /** A gift link or print was prepared. Preparation is not delivery. */
@@ -177,7 +177,8 @@ export const EVENTS = {
   wallet_option: ev("wallet", { provider: oneOf("apple", "google") }),
 
   // Organizer (never CSV values, headers, file names or attendee details)
-  organizer_step: ev("organizer", { step: oneOf("design", "guests", "check", "publish", "done") }),
+  /** The step on screen: `open` when the wizard first settles (Design, or Publish for a draft restored after sign-in), `nav` for a move between steps. */
+  organizer_step: ev("organizer", { step: oneOf("design", "guests", "check", "publish", "done"), via: oneOf("open", "restore", "nav") }),
   organizer_design: ev("organizer", { change: oneOf("edition", "allowed", "lock_logo", "lock_title", "organizer_name", "title"), edition: EDITION, value: bool }),
   organizer_csv: ev("organizer", { source: oneOf("file", "paste", "sample"), result: oneOf("parsed", "empty", "no_rows", "error"), row_count: COUNT, column_count: int(100) }),
   organizer_mapping: ev("organizer", { result: oneOf("auto", "manual"), has_seat: bool, has_extra: bool }),

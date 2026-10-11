@@ -11,7 +11,11 @@ export const CONSENT_OPEN_EVENT = "ticketstub:analytics-consent-open";
 
 type Listener = (state: ConsentState) => void;
 const listeners = new Set<Listener>();
-let memory: ConsentState | null = null; // this page's answer when storage is off
+/**
+ * The choice made in this page. It wins over storage until another tab changes the stored choice: if saving
+ * fails (storage full or read-only), an older stored "granted" must not come back on the next read or remount.
+ */
+let memory: ConsentState | null = null;
 let watching = false;
 
 function parse(raw: string | null): ConsentState {
@@ -26,11 +30,11 @@ function parse(raw: string | null): ConsentState {
 
 export function readConsent(): ConsentState {
   if (typeof window === "undefined") return "unset";
+  if (memory) return memory;
   try {
-    const stored = parse(window.localStorage.getItem(CONSENT_KEY));
-    return stored === "unset" && memory ? memory : stored;
+    return parse(window.localStorage.getItem(CONSENT_KEY));
   } catch {
-    return memory ?? "unset";
+    return "unset";
   }
 }
 
@@ -58,7 +62,7 @@ export function setConsent(decision: ConsentDecision): void {
 
 function onStorage(e: StorageEvent) {
   if (e.key !== CONSENT_KEY && e.key !== null) return;
-  memory = null;
+  memory = null; // a genuine change from another tab: the stored choice is current again
   emit(readConsent());
 }
 
