@@ -4,7 +4,7 @@
 // reports Web Vitals and route timing. With no configuration it renders nothing and sends nothing.
 import { usePathname, useSearchParams } from "next/navigation";
 import { useReportWebVitals } from "next/web-vitals";
-import { Suspense, useEffect, useLayoutEffect } from "react";
+import { Suspense, useLayoutEffect } from "react";
 import { isAnalyticsConfig, type AnalyticsConfig } from "./config";
 import { readConsent, subscribeConsent } from "./consent";
 import { ConsentControls } from "./ConsentControls";
@@ -15,7 +15,10 @@ function PageViews() {
   const pathname = usePathname();
   const search = useSearchParams();
   const query = search?.toString() ?? "";
-  useEffect(() => {
+  // A layout effect: React runs every layout effect of a commit before any passive effect, so the new page is
+  // recorded before the new route's mount effects (organizer_step, wall_view, studio_open) are tracked and
+  // stamped. A click handler that navigates still runs before the commit, so it keeps the page it was on.
+  useLayoutEffect(() => {
     if (!pathname) return;
     const fresh = recordPageView(pathname, query);
     if (!fresh) return;

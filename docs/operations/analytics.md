@@ -124,7 +124,10 @@ button is not rendered. The wording is plain-language and makes no legal guarant
 
 `gtag('config', id, { send_page_view: false, ... })` disables automatic page views. The layout's observer
 (`usePathname` + `useSearchParams`, inside `Suspense`) records **one page view per accepted App Router
-navigation**:
+navigation**. It records the page in a layout effect, which React runs before any passive effect of the same
+commit, so the new route's mount events (`organizer_step`, `wall_view`, `studio_open`, …) follow its `page_view`
+and carry its template, while a click that starts the navigation is tracked before the commit and keeps the page
+it was on:
 
 - initial load, `router.push`, `router.replace`, `<Link>`, and browser back/forward each count once;
 - navigating between different ids or queries on the same template (`/studio/a` → `/studio/b`, `/search?q=a` →
@@ -464,6 +467,25 @@ referrers, `document.title`, campaign tags and event params, and assert none rea
 `dataLayer`, the script URL or cookies. They cover consent before/after/reload/withdrawal/cross-tab, no replay,
 blocked/slow tag failing closed (including timeout → withdrawal → late script execution), remembered grants waiting for the first sanitized page, stale loaders, page-view de-duplication (push/replace/back/forward/Strict Mode/same template),
 schema rejection, sandbox/simulated stamping and the absence of purchase/login events.
+
+Ordering and page context in a real headless Chrome (production build, offline):
+
+```sh
+npm run build && node scripts/check-analytics-order.mjs
+```
+
+It starts `next start` on a loopback port with a synthetic preview id (`G-TEST000000`) and a throwaway database,
+answers the `gtag.js` request with an empty local stub (Chrome resolves loopback only, so nothing reaches Google)
+and reads `window.dataLayer`. It fails unless, after consent, SPA navigations `/make` → `/organizer`, `/wall` and
+`/studio/<demo>` each record the destination's `page_view` first and then its mount event (`organizer_step`,
+`wall_view`, `studio_open`) exactly once with the destination's template; the navigating click (`nav_select`)
+keeps the source page; back and forward give one `page_view` each; every event carries the template of the
+latest `page_view` before it; no seeded value appears; and a remembered "Allow" on a hard load sends `page_view`
+then `studio_open`, both stamped. Recorded run on 2026-10-11, this worktree: 33 checks passed on Node 22.23.3
+and Node 24. With the page-view observer switched back to a passive effect (the code Astra reviewed at
+`3da2c7b`), 6 checks fail: `organizer_step`, `wall_view` and `studio_open` arrive before the destination's
+`page_view`, stamped with `/make`. This is local evidence with a stub tag; real Google requests are recorded
+separately in [analytics-live-validation.md](analytics-live-validation.md).
 
 Local browser check without sending anything to Google: start with a synthetic id and **block** Google's
 hosts in DevTools (Network → Request blocking: `*googletagmanager.com*`, `*google-analytics.com*`), or run
