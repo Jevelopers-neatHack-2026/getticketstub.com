@@ -1,0 +1,96 @@
+{
+  "preview": {
+    "cursor": 48,
+    "googleRequests": 2,
+    "events": [
+      {
+        "tid": "G-M2ELMGCNKW",
+        "en": "page_view",
+        "gcs": "G101",
+        "dl": "https://gvk66o79l1.preview.c38.airoapp.ai/make",
+        "ep.deployment_env": "preview",
+        "ep.runtime_mode": "live"
+      }
+    ]
+  },
+  "previewWithdrawalGoogleRequests": 0,
+  "production": {
+    "cursor": 350,
+    "googleRequests": 3,
+    "events": [
+      {
+        "tid": "G-RVV7ZNF463",
+        "en": "page_view",
+        "gcs": "G101",
+        "dl": "https://getticketstub.com/make",
+        "ep.deployment_env": "production",
+        "ep.runtime_mode": "live"
+      },
+      {
+        "tid": "G-RVV7ZNF463",
+        "en": "page_view",
+        "gcs": "G101",
+        "dl": "https://getticketstub.com/make",
+        "ep.deployment_env": "production",
+        "ep.runtime_mode": "live"
+      },
+      {
+        "tid": "G-RVV7ZNF463",
+        "en": "web_vital",
+        "gcs": "G101",
+        "dl": "https://getticketstub.com/make",
+        "ep.deployment_env": "production",
+        "ep.runtime_mode": "live"
+      },
+      {
+        "tid": "G-RVV7ZNF463",
+        "en": "web_vital",
+        "gcs": "G101",
+        "dl": "https://getticketstub.com/make",
+        "ep.deployment_env": "production",
+        "ep.runtime_mode": "live"
+      },
+      {
+        "tid": "G-RVV7ZNF463",
+        "en": "server_save",
+        "gcs": "G101",
+        "dl": "https://getticketstub.com/make",
+        "ep.deployment_env": "production",
+        "ep.runtime_mode": "live",
+        "ep.result": "saved"
+      }
+    ]
+  },
+  "performanceRows": [
+    "Index Event name Web vital name Web vital rating Route template Device category Event count Web vital value Action duration",
+    "Empty Summary Totals cell for Index column Total Empty Summary Totals cell for Event count column 21 Empty Summary Totals cell for Web vital value column 4,106 Empty Summary Totals cell for Action duration column 894",
+    "1 web_vital LCP good /make desktop 4 1,116 0",
+    "2 web_vital CLS good /wall desktop 2 4 0",
+    "3 web_vital CLS needs-improvement /make desktop 2 271 0",
+    "4 route_timing /studio/:id desktop 1 0 661",
+    "5 route_timing /wall desktop 1 0 233",
+    "6 web_vital CLS good / desktop 1 1 0",
+    "7 web_vital CLS good /studio/:id desktop 1 28 0",
+    "8 web_vital FCP good /make desktop 1 180 0",
+    "9 web_vital FCP good /studio/:id desktop 1 25 0",
+    "10 web_vital FCP good /wall desktop 1 1,761 0",
+    "11 web_vital INP good / desktop 1 56 0",
+    "12 web_vital INP good /studio/:id desktop 1 56 0",
+    "13 web_vital INP good /wall desktop 1 8 0",
+    "14 web_vital TTFB good /admin desktop 1 150 0",
+    "15 web_vital TTFB good /make desktop 1 137 0",
+    "16 web_vital TTFB good /wall desktop 1 313 0"
+  ],
+  "reliabilityRows": [
+    "Bounded reason Totals",
+    "Response class Empty column header cell for total column.",
+    "Index Event name API endpoint Action result Storage area Storage operation Event count Action duration Event count Action duration",
+    "Empty Summary Totals cell for Index column Total 3 100% of total Empty Summary Totals cell for Action duration column 0 3 100% of total Empty Summary Totals cell for Action duration column 0",
+    "1 server_save saved 3 0 3 0"
+  ],
+  "activationRows": [
+    "No data available"
+  ],
+  "ipFiltering": "not planned per owner",
+  "date": "2026-10-11"
+}

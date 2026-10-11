@@ -173,8 +173,9 @@ otherwise.
 - *TicketStub developer QA* (developer traffic, exclude) is in **Testing** on both properties. In Testing a filter
   **labels** matching traffic (visible through the *Test data filter name* dimension) and **does not exclude** it.
 - The default *Internal Traffic* filter is in **Testing** with **no IP definition**.
-- **IP-based internal filtering is deferred by the owner** ("skip this, deferred or not planned"). It is a recorded
-  decision, not remaining rollout work.
+- **IP-based internal filtering is not planned.** Historically recorded as deferred by the owner ("skip this,
+  deferred or not planned"); the owner has since explicitly closed it as not planned
+  ([follow-up](#follow-up-2026-10-11-2144-utc)). It is a recorded decision, not remaining rollout work.
 - No filter was activated: activation permanently drops matching data. QA isolation relies on the separate Preview
   property and on `debug_mode`; production reports may include QA traffic, as recorded above.
 
@@ -337,7 +338,7 @@ request. Hosted checks: follow [Verification on each host](#verification-on-each
   current release deployment and hosted verification are recorded on issue #39.
 - **Production data from 2026-10-11 includes synthetic QA traffic** (the Preview settings copy above, and QA on the
   host). No purge; no organic baseline is claimed.
-- **No IP-based internal filter**, a decision by the owner; filters are in Testing and label QA traffic without
+- **No IP-based internal filter**: closed by the owner as not planned; filters are in Testing and label QA traffic without
   excluding it.
 - Historical custom reports were not yet populated on 2026-10-11 (default range excludes today; newly registered
   dimensions); stored-data evidence is DebugView and Realtime.
@@ -351,3 +352,43 @@ request. Hosted checks: follow [Verification on each host](#verification-on-each
   people across devices. Authoritative purchase and pass issuance require their real provider boundaries; these
   are product limitations, not incomplete analytics work.
 - Ad-blockers and visitors who decline consent are not measured, by design.
+
+## Follow-up, 2026-10-11 (~21:44 UTC)
+
+Added after the verified baseline above; the earlier dates, counts and evidence are unchanged.
+
+**Production reports, range *Today*.** Checked around 21:44 UTC:
+
+- **Performance** (tab 9) is now populated: **21 events** in total, 19 `web_vital` and 2 `route_timing`. Rows include
+  LCP rated *good* on `/make`, desktop: 4 observations, *Web vital value* sum 1,116 ms; CLS rated
+  *needs-improvement* on `/make`, desktop: 2 observations, scaled sum 271 (CLS is stored × 1000);
+  `route_timing` on `/studio/:id`: 1 event, *Action duration* 661 ms; on `/wall`: 1 event, 233 ms.
+- **Reliability** (tab 10): 3 `server_save` observations with `result=saved` and *Action duration* 0. These events
+  carry no duration metric; an absent metric reads as 0 and means no timing can be inferred, not zero latency.
+- **Activation** (tab 1, closed funnel) showed no data for *Today*. This is **not** a proven zero conversion and not a
+  failure: the data may not be processed yet.
+
+The saved views were set back to their default *Last 28 days* after checking *Today*; *Show rows* on Performance was
+increased to 50. These reports include QA traffic and a small, early, partially processed sample: they are **not** a
+stable organic or service baseline, and no percentiles or thresholds are derived from them (metrics are sums). Not all
+saved reports are populated. Google documents that custom dimensions can take 24–48 hours to appear
+([Google Analytics help](https://support.google.com/analytics/answer/14240153?hl=en)).
+
+**IP filtering.** The owner explicitly closed IP-based internal filtering as **not planned**
+([decision](#filters-decision)).
+
+**Hosting, subsequent release `63406e1`.** Unrelated host settings were preserved. The four Preview overrides were
+restored manually per [the procedure](#after-every-publish-restore-and-verify-preview) (this is a manual gate, not an
+automated restore). A scoped request capture showed each host sending only its own measurement id and
+`deployment_env` (Preview `G-M2ELMGCNKW` / `preview`, production `G-RVV7ZNF463` / `production`). On Preview, consent
+withdrawal followed by a reload produced **0** requests to Google hosts. The QA browser's analytics preference was
+left **off**.
+
+The Preview QA saved view also populated for Today: **229 processed events**, with sanitized routes such as
+`/studio/:id`, `/s/:token` and `/checkout/:id`. Its screenshot displays the first 10 grouped rows; 229 is the
+report total, not the sum of the displayed rows. The rolling Last 28 days range was restored afterward.
+
+Follow-up evidence: [Production performance](evidence/analytics-2026-10-11/google-production-performance-processed.jpg),
+[Production reliability](evidence/analytics-2026-10-11/google-production-reliability-processed.jpg),
+[Preview QA](evidence/analytics-2026-10-11/google-preview-qa-processed.jpg), and
+[sanitized hosted checks and report rows](evidence/analytics-2026-10-11/followup-hosted-check.json).
