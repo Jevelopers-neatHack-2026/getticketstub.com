@@ -1,3 +1,5 @@
+import type { ProviderMetadata } from "@/server/ai/providers";
+
 // Studio domain types. Field names follow the shared-contracts catalog where one exists
 // (EventIntelligencePackage facts, DesignVersion, FulfillmentQuote); studio-only fields are marked.
 
@@ -27,6 +29,7 @@ export interface GameMoment {
 }
 
 export interface EventData {
+  providerMetadata?: ProviderMetadata;
   type: EventType;
   title: string; // artist, matchup, show or event name
   subtitle?: string; // tour, competition, run
@@ -57,6 +60,7 @@ export const MATERIALS: { id: Material; label: string; priceMinor: number }[] = 
 
 /** Art layer: generated, text-free. A remix creates a new DesignVersion. */
 export interface ArtLayer {
+  providerMetadata?: ProviderMetadata;
   kind: "image" | "procedural";
   src?: string; // image url when kind = image
   seed: number; // deterministic procedural art / foil plate

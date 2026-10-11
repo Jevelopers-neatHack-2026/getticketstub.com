@@ -59,6 +59,80 @@ The optional server-only `OPENAI_API_KEY` and `ANTHROPIC_API_KEY` enable origina
 provider paths in that mode; setting keys alone never enables them in demo mode.
 No live provider calls were made to validate this deployment fix.
 
+### OpenRouter configuration
+
+OpenRouter is an optional server-side route for OpenAI and Anthropic models.
+[Create an account](https://openrouter.ai/) and generate a key at
+[OpenRouter API keys](https://openrouter.ai/keys). Copy `.env.example` to
+`.env.local` in this repository root and fill in `OPENROUTER_API_KEY` locally.
+For deployment, enter the same names in the hosting platform's **server
+Environment Variables / Secrets** settings. Never use `NEXT_PUBLIC_` names or
+commit `.env.local`. No direct OpenAI or Anthropic key is needed for a capability
+that selects OpenRouter.
+
+| Capability | Provider setting | Allowed values / default | OpenRouter model setting |
+| --- | --- | --- | --- |
+| Page fact extraction | `TICKETSTUB_RESEARCH_PROVIDER` | `anthropic` (default), `openrouter` | `TICKETSTUB_RESEARCH_MODEL` |
+| Agent chat | `TICKETSTUB_AGENT_PROVIDER` | `anthropic` (default), `openrouter` | `TICKETSTUB_AGENT_MODEL` |
+| Artwork | `TICKETSTUB_ART_PROVIDER` | `openai` (default), `openrouter` | `TICKETSTUB_ART_MODEL` |
+
+For reviewed development with all three capabilities using OpenRouter:
+
+```dotenv
+TICKETSTUB_RUNTIME_MODE=live
+TICKETSTUB_RESEARCH_PROVIDER=openrouter
+TICKETSTUB_RESEARCH_MODEL=anthropic/claude-sonnet-5.5
+TICKETSTUB_AGENT_PROVIDER=openrouter
+TICKETSTUB_AGENT_MODEL=openai/gpt-6.1-sol
+TICKETSTUB_ART_PROVIDER=openrouter
+TICKETSTUB_ART_MODEL=openai/gpt-image-2
+OPENROUTER_API_KEY=<set privately in .env.local or hosting secrets>
+```
+
+These example IDs were listed by OpenRouter's public discovery APIs on
+2026-10-11 UTC; they are not proof of account access or a paid smoke test.
+Select models your account can use and review their cost. Both OpenAI and
+Anthropic text models are accepted; artwork requires an OpenAI image model.
+There are no implicit OpenRouter model defaults. Auto-routing and colon-suffix
+variants (including `:online` and `:free`) are rejected. Provider fallback is
+explicitly disabled. The app does not retry failed requests or switch to a
+direct-provider key after an OpenRouter failure.
+
+Research and chat use OpenRouter Chat Completions with final text output.
+Research extracts facts from the page already fetched by the application;
+it does not enable external search or client tool execution. Fact citations
+still point to that page, and a fact is live only when its quoted evidence
+appears in the page. Malformed or truncated responses and unexecuted tool
+calls are rejected. Artwork checks the Image Models API before using the
+[dedicated Image API](https://openrouter.ai/docs/guides/overview/multimodal/image-generation).
+Only base64 PNG, JPEG, and WebP outputs are accepted; returned image URLs and
+SVG are rejected. Image dimensions use the selected model's default; this
+adapter does not certify print dimensions or supplier compatibility.
+
+Explicit OpenRouter configuration, capability, authentication, rate-limit,
+and transport failures return bounded error codes and are displayed as errors.
+They do not silently generate simulated art or agent replies. The original
+optional direct-provider paths retain their simulated fallback behavior.
+Successful route responses include `providerMetadata` with requested and
+returned model/provider identities where supplied, plus available token counts
+and OpenRouter cost in USD. Missing cost is unknown, not zero. These receipts
+are not an authoritative finance ledger, provider invoice reconciliation, or
+complete sponsor integration.
+
+Setting keys does not enable external calls. Keep `TICKETSTUB_RUNTIME_MODE=demo`
+for preview. For reviewed live development set it consistently at build and
+start, then rebuild/restart after configuration changes. Existing production
+limitations above still apply, including unfinished identity, budget, and URL
+controls. Do not enable this as an unattended production service.
+
+Run `npm test` for offline adapter and route tests. They intercept all HTTP
+requests and use synthetic keys. Any paid smoke test requires the existing
+project budget/authorization process and sanitized evidence; no paid request
+was made to implement this support.
+
+References: [OpenRouter Chat API](https://openrouter.ai/docs/api/reference/overview)
+and [provider routing](https://openrouter.ai/docs/guides/routing/provider-selection).
+
 With the production server running, run the deployment smoke checks:
 
 ```sh

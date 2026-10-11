@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { generateText, ProviderError, providerFailure } from "@/server/ai/providers";
 import { HARBOUR_GAME, NEATHACK, PALE_HOURS } from "@/customer/studio/fixtures";
 import type { EventData, EventType, Fact } from "@/customer/studio/types";
 
@@ -263,11 +264,9 @@ async function weatherFact(city: string, dateISO: string, dateConfidence: number
   };
 }
 
-// ---------- Optional LLM enrichment (Anthropic Messages API, one call) ----------
+// ---------- Optional grounded LLM enrichment (one selected provider call) ----------
 
-async function llmFacts(event: EventData, text: string, url: string): Promise<Fact[]> {
-  const key = process.env.ANTHROPIC_API_KEY;
-  if (!key) return [];
+async function llmFacts(event: EventData, text: string, url: string, signal: AbortSignal): Promise<Fact[]> {
   try {
     const prompt = `You extract facts about one event from a web page for a printed keepsake stub.
 Event: ${event.title}${event.dateISO ? ` on ${event.dateISO}` : ""}${event.venue ? ` at ${event.venue}` : ""}.
@@ -276,36 +275,33 @@ Only include facts stated on the page. If nothing is stated, return [].
 
 PAGE TEXT:
 ${text.slice(0, 6000)}`;
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-      body: JSON.stringify({ model: "claude-sonnet-5-5", max_tokens: 600, messages: [{ role: "user", content: prompt }] }),
-      signal: AbortSignal.timeout(15000),
-    });
-    if (!res.ok) return [];
-    const data = (await res.json()) as { content?: { type: string; text?: string }[] };
-    const out = data.content?.find((c) => c.type === "text")?.text ?? "";
+    const result = await generateText({ capability: "research", prompt, maxTokens: 600, signal });
+    if (!result) return [];
+    event.providerMetadata = result.metadata;
+    const out = result.value;
     const json = out.match(/\[[\s\S]*\]/)?.[0];
-    if (!json) return [];
+    if (!json) throw new ProviderError("invalid_provider_response");
     const items = JSON.parse(json) as { id?: string; label?: string; value?: string; evidence?: string; confidence?: number }[];
+    if (!Array.isArray(items) || items.some((i) => !i || typeof i !== "object" || typeof i.label !== "string" || typeof i.value !== "string" || (i.evidence !== undefined && typeof i.evidence !== "string"))) throw new ProviderError("invalid_provider_response");
     const lowerText = text.toLowerCase();
     return items
       .filter((i) => i.label && i.value)
       .slice(0, 4)
       .map((i, n) => {
         // Only trust as "live" when the quoted evidence really appears on the fetched page.
-        const grounded = !!i.evidence && lowerText.includes(i.evidence.toLowerCase().slice(0, 60));
+        const grounded = typeof i.evidence === "string" && i.evidence.trim().length > 0 && i.evidence.length <= 2000 && lowerText.includes(i.evidence.toLowerCase());
         return {
           id: `${i.id && i.id !== "other" ? i.id : "note"}${event.facts.some((f) => f.id === i.id) ? `-${n}` : ""}`,
           label: String(i.label).slice(0, 40),
           value: String(i.value),
-          source: "event page (read by Claude)",
+          source: `event page (read by ${result.metadata.requestedModel})`,
           sourceUrl: url,
           confidence: Math.min(grounded ? 0.85 : 0.5, typeof i.confidence === "number" ? i.confidence : 0.6),
           provenance: grounded ? ("live" as const) : ("estimated" as const),
         };
       });
-  } catch {
+  } catch (error) {
+    if (process.env.TICKETSTUB_RESEARCH_PROVIDER === "openrouter" || (error instanceof ProviderError && error.code === "invalid_provider_configuration")) throw error instanceof ProviderError ? error : new ProviderError("invalid_provider_response");
     return [];
   }
 }
@@ -389,13 +385,15 @@ export async function POST(req: Request) {
     } else {
       event.facts.push({ id: "weather", label: "Weather: pending", value: "Needs a city and a date", source: "Open-Meteo", confidence: 0.2, provenance: "pending" });
     }
-    tasks.push(llmFacts(event, ex.text, url.toString()).then((fs) => event.facts.push(...fs)));
+    tasks.push(llmFacts(event, ex.text, url.toString(), req.signal).then((fs) => event.facts.push(...fs)));
     await Promise.all(tasks);
     if (!event.facts.some((f) => f.id === "weather")) {
       event.facts.push({ id: "weather", label: "Weather: pending", value: "Weather lookup unavailable", source: "Open-Meteo", confidence: 0.2, provenance: "pending" });
     }
     return NextResponse.json(event);
-  } catch {
+  } catch (error) {
+    const failure = providerFailure(error);
+    if (failure) return NextResponse.json(failure.body, { status: failure.status });
     return readError();
   }
 }

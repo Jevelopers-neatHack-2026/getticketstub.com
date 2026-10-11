@@ -55,16 +55,18 @@ export async function remixArt(stub: Stub, vibe?: string): Promise<ArtLayer> {
 
 /** Optional server agent reply. Returns undefined when no model is configured (caller falls back to rules). */
 export async function askAgent(stub: Stub, message: string): Promise<{ reply: string; provenance: "live" } | undefined> {
+  let res: Response;
   try {
-    const res = await fetch("/api/agent", {
+    res = await fetch("/api/agent", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ event: stub.event, message }),
     });
-    if (!res.ok) return undefined;
-    const data = (await res.json()) as { reply?: string; provenance?: string };
-    return data.reply && data.provenance === "live" ? { reply: data.reply, provenance: "live" } : undefined;
   } catch {
-    return undefined;
+    throw new Error("You look offline. Check your connection and try again.");
   }
+  if (res.status === 204) return undefined;
+  const data = await res.json() as { reply?: string; provenance?: string; error?: string };
+  if (!res.ok) throw new Error(data.error || "The agent is unavailable. Try again in a moment.");
+  return data.reply && data.provenance === "live" ? { reply: data.reply, provenance: "live" } : undefined;
 }

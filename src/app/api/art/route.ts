@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { generateImage, providerFailure } from "@/server/ai/providers";
 import { buildArtPrompt } from "@/customer/studio/research/artPrompt";
 import type { ArtLayer, Edition, EventData } from "@/customer/studio/types";
 
@@ -19,26 +20,6 @@ function freshSeed(): number {
   return Math.floor(Math.random() * 2_147_483_647);
 }
 
-async function openAiImage(prompt: string): Promise<string | undefined> {
-  if (process.env.TICKETSTUB_RUNTIME_MODE !== "live") return undefined;
-  const key = process.env.OPENAI_API_KEY;
-  if (!key) return undefined;
-  try {
-    const res = await fetch("https://api.openai.com/v1/images/generations", {
-      method: "POST",
-      headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
-      body: JSON.stringify({ model: "gpt-image-1", prompt, size: "1024x1536", n: 1, quality: "medium", output_format: "jpeg", output_compression: 82 }),
-      signal: AbortSignal.timeout(90_000),
-    });
-    if (!res.ok) return undefined;
-    const data = (await res.json()) as { data?: { b64_json?: string }[] };
-    const b64 = data.data?.[0]?.b64_json;
-    return b64 ? `data:image/jpeg;base64,${b64}` : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
 export async function POST(req: Request) {
   let body: ArtRequest;
   try {
@@ -53,10 +34,15 @@ export async function POST(req: Request) {
   const vibe = typeof body.vibe === "string" && body.vibe.trim() ? body.vibe.trim().slice(0, 120) : undefined;
   const seed = typeof body.seed === "number" && Number.isFinite(body.seed) ? Math.floor(body.seed) : freshSeed();
 
-  const src = await openAiImage(buildArtPrompt(body.event, vibe));
-  if (src) {
-    const art: ArtLayer = { kind: "image", src, seed, vibe, provenance: "live" };
-    return NextResponse.json(art);
+  try {
+    const result = await generateImage(buildArtPrompt(body.event, vibe), req.signal);
+    if (result) {
+      const art: ArtLayer = { kind: "image", src: result.value, seed, vibe, provenance: "live", providerMetadata: result.metadata };
+      return NextResponse.json(art);
+    }
+  } catch (error) {
+    const failure = providerFailure(error);
+    if (failure && (process.env.TICKETSTUB_ART_PROVIDER === "openrouter" || failure.body.code === "invalid_provider_configuration")) return NextResponse.json(failure.body, { status: failure.status });
   }
 
   if (body.first && body.edition === "researched" && !vibe) {

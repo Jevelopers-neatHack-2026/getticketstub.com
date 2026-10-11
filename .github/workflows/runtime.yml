@@ -17,6 +17,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run lint
+      - run: npm test
       - run: npm run typecheck
       - run: npm run build
       - name: Verify production server on platform port
@@ -25,6 +26,10 @@ jobs:
           SMOKE_BASE_URL: http://127.0.0.1:43121
           OPENAI_API_KEY: unused-preview-sentinel
           ANTHROPIC_API_KEY: unused-preview-sentinel
+          OPENROUTER_API_KEY: unused-preview-sentinel
+          TICKETSTUB_RESEARCH_PROVIDER: openrouter
+          TICKETSTUB_AGENT_PROVIDER: openrouter
+          TICKETSTUB_ART_PROVIDER: openrouter
         run: |
           npm start > /tmp/ticketstub-server.log 2>&1 &
           server_pid=$!
