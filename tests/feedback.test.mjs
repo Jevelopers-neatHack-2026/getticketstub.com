@@ -108,6 +108,28 @@ test("a newer print supersedes one still waiting on resume, leaving one loop", a
   assert.equal(liveLoops(), 1);
 });
 
+test("an older loop's safety cap does not cancel a newer print waiting on resume", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "setInterval"] });
+  window.setTimeout = setTimeout;
+  window.clearTimeout = clearTimeout;
+  window.setInterval = setInterval;
+  window.clearInterval = clearInterval;
+  try {
+    play("print"); // context already running from earlier tests
+    assert.equal(liveLoops(), 1);
+    suspend();
+    play("print");
+    t.mock.timers.tick(8000); // the first loop's cap fires while the second waits
+    assert.equal(liveLoops(), 0);
+    await resumeAll();
+    assert.equal(liveLoops(), 1, "the newer print still starts");
+  } finally {
+    stopPrint();
+    t.mock.timers.reset();
+    Object.assign(window, { setInterval, clearInterval, setTimeout, clearTimeout });
+  }
+});
+
 test("one-shot cues still play after a cancelled print", async () => {
   suspend();
   play("print");

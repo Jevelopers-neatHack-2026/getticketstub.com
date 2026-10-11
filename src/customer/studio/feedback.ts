@@ -538,7 +538,7 @@ export function setPrintVoice(v: PrintVoice): void {
 }
 
 function startPrint(c: AudioContext, schedule?: PrintBurst[], voiceOpt?: PrintVoice) {
-  if (printNodes) stopPrint();
+  if (printNodes) fadePrint();
   const voice = voiceOpt ?? getPrintVoice();
   const t0 = c.currentTime;
   const gain = c.createGain();
@@ -647,7 +647,8 @@ function startPrint(c: AudioContext, schedule?: PrintBurst[], voiceOpt?: PrintVo
         next += dur + 0.12 + Math.random() * 0.28;
       }
     }, 60);
-    cap = window.setTimeout(stopPrint, PRINT_MAX_S * 1000);
+    // fade only: the cap must not cancel a newer print still waiting on resume()
+    cap = window.setTimeout(fadePrint, PRINT_MAX_S * 1000);
   }
 
   printNodes = {
@@ -668,9 +669,14 @@ function startPrint(c: AudioContext, schedule?: PrintBurst[], voiceOpt?: PrintVo
   };
 }
 
-/** Fade the printer out (no-op when not printing). */
+/** Fade the printer out (no-op when not printing), and cancel any print still waiting on resume(). */
 export function stopPrint(): void {
   printGen++;
+  fadePrint();
+}
+
+/** Fade out the running loop only; a pending print is left alone. */
+function fadePrint(): void {
   try {
     if (!ctx || !printNodes) return;
     const t = ctx.currentTime;
