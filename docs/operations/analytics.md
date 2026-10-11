@@ -525,8 +525,8 @@ validation below, in the preview property.
   `page_location`; a phone activation stored in Preview DebugView; desktop sharing, organizer and claim journeys;
   production Realtime receiving events. Details, limits and evidence:
   [analytics-rollout.md](analytics-rollout.md#hosted-verification-2026-10-11).
-- **Offline, every change:** the unit suites and both browser checks in CI cover every customer flow at phone and
-  desktop sizes, including error paths, with a synthetic id and no network
+- **Offline, every change:** the unit suites and both browser checks in CI cover the enumerated phone and desktop
+  journeys plus focused unit and error cases, with a synthetic id and no network
   ([analytics-journey-validation.md](analytics-journey-validation.md)).
 
 ## Rollout and rollback

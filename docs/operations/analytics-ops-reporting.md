@@ -193,6 +193,6 @@ in text or JSON output, and that each bad record is rejected whole.
 - Only `ticketstub.ops/1` is understood. If the schema changes, update the allow-list in the script with
   `src/server/observability/schema.ts`; until then new fields cause whole-record rejection (visible in `rejected`).
 - Hosting formats beyond the three shapes above are not supported.
-- The example outputs in sections 3 and 4 come from offline runs of the real handlers with mocked upstreams. No
-  production or live-provider log has been summarized yet.
+- The example outputs in sections 3 and 4 come from offline runs of the real handlers with mocked upstreams. The
+  separate seven-record production sample is summarized in [analytics-rollout.md](analytics-rollout.md#operational-reporting). It is a small observed sample, not a service baseline.
 - Product events (`ticketstub.event/1`) and GA4 data are not included and cannot be joined to these records.

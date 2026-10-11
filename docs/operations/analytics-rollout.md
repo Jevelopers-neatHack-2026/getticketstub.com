@@ -141,7 +141,7 @@ phone events; the opened `creation_complete` showed `deployment_env=preview` and
 - A desktop tear was validated in the earlier local-build session, not on the host after the restore. The phone tear
   above is the hosted activation evidence. The offline suite covers the full tear at both sizes.
 
-Sandbox checkout privacy on the host was checked in the earlier local-build session
+Sandbox checkout privacy was checked in the earlier local-build session
 ([analytics-live-validation.md](analytics-live-validation.md)). Error paths (blocked tag, failed storage, provider
 failure, quote expiry and similar) are covered by the offline suites, not injected on the live hosts.
 

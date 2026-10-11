@@ -29,8 +29,8 @@ Disabling enhanced measurement during stream creation did not persist. Earlier t
 
 At the time of these local checks, hosted phone and desktop journeys, deployed-host behaviour, filters, saved
 explorations, ownership and deployment settings were still open. They were completed in the hosted rollout and are
-recorded in [analytics-rollout.md](analytics-rollout.md); full phone and desktop coverage of every flow and option
-handler runs offline in [analytics-journey-validation.md](analytics-journey-validation.md). IP-based internal
+recorded in [analytics-rollout.md](analytics-rollout.md); the enumerated phone and desktop journeys, supplemented by focused unit and error tests,
+run offline in [analytics-journey-validation.md](analytics-journey-validation.md). IP-based internal
 filtering was deferred by the owner.
 
 Final build regression: production smoke passed all eight pages/assets and demo API/blocked external research/art/agent/404 checks. Gift wrap/delivery choices and wallet provider choice were clicked in Chrome; the real preview transport emitted `gift_option`, `wallet_option`, and `nav_select` with safe template locations. Collection was turned off again after QA. Full tests passed 240/240 twice each on Node 22.23.3 and Node 24.15.0 after isolating provider test storage; lint/typecheck and production build passed.
