@@ -135,9 +135,11 @@ it was on:
   `/search?q=b`) counts as a new view;
 - the same pathname + query twice in a row (React Strict Mode double effects, remounts, re-renders) counts once;
   the identity used for this is the raw pathname + query and **never leaves the runtime module**;
-- one narrow exception, in the follow-up and **not yet deployed**: on `/wall` the `pinned` parameter is ignored in
+- one narrow exception, deployed in release `b25563a`: on `/wall` the `pinned` parameter is ignored in
   that identity, so the tear flow's landing on `/wall?pinned=<id>` and the wall's cleanup to `/wall` are one view.
-  Any other wall query, other ids and queries, and back/forward still count. The deployed `0f9baa5` counts two;
+  Any other wall query, other ids and queries, and back/forward still count. The earlier baseline `0f9baa5` counted
+  two; [the release verification](https://github.com/Jevelopers-neatHack-2026/getticketstub.com/issues/39#issuecomment-6113662415)
+  confirmed one hosted wall view after the fix;
 - hash-only changes are not navigations.
 
 **Every URL is reduced to a known route template before anything is sent.** Share links embed serialized stubs
