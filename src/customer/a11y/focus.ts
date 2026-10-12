@@ -20,8 +20,15 @@ if (typeof document !== "undefined") {
   );
 }
 
+/** Layout alone is not focusability: visibility and inherited fieldset disability matter too. */
+function availableForFocus(el: HTMLElement): boolean {
+  if (el.matches(":disabled") || el.closest('[inert], [aria-hidden="true"]') || !el.getClientRects().length) return false;
+  const visibility = getComputedStyle(el).visibility;
+  return visibility !== "hidden" && visibility !== "collapse";
+}
+
 export function focusables(root: HTMLElement): HTMLElement[] {
-  return [...root.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((el) => el.tabIndex >= 0 && !el.closest("[inert]") && el.getAttribute("aria-hidden") !== "true" && (el.offsetParent !== null || el === document.activeElement || getComputedStyle(el).position === "fixed"));
+  return [...root.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((el) => el.tabIndex >= 0 && availableForFocus(el));
 }
 
 /**
@@ -37,8 +44,12 @@ export function useDialogFocus(ref: RefObject<HTMLElement | null>, active: boole
     if (!root.hasAttribute("tabindex")) root.setAttribute("tabindex", "-1");
     // after paint, so the entering animation never moves focus off the target
     const raf = requestAnimationFrame(() => {
-      if (root.contains(document.activeElement) && document.activeElement !== root) return;
-      const target = (initial === "self" ? root : initial ? root.querySelector<HTMLElement>(initial) : null) ?? focusables(root).find((el) => !el.hasAttribute("data-close")) ?? focusables(root)[0] ?? root;
+      const current = document.activeElement;
+      if (current instanceof HTMLElement && root.contains(current) && current !== root && availableForFocus(current)) return;
+      // Explicit initial targets may have tabindex=-1 (for example a heading), but must still be available.
+      const requested = initial && initial !== "self" ? root.querySelector<HTMLElement>(initial) : null;
+      const list = focusables(root);
+      const target = (initial === "self" ? root : requested && availableForFocus(requested) ? requested : null) ?? list.find((el) => !el.hasAttribute("data-close")) ?? list[0] ?? root;
       target.focus({ preventScroll: true });
     });
     const onKey = (e: KeyboardEvent) => {

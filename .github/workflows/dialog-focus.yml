@@ -1,0 +1,60 @@
+name: Dialog focus accessibility
+
+on:
+  pull_request:
+    paths:
+      - 'src/customer/a11y/**'
+      - 'scripts/check-dialog-focus.mjs'
+      - 'scripts/lib/cdp.mjs'
+      - '.github/workflows/dialog-focus.yml'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.nvmrc'
+  push:
+    branches: [main]
+    paths:
+      - 'src/customer/a11y/**'
+      - 'scripts/check-dialog-focus.mjs'
+      - 'scripts/lib/cdp.mjs'
+      - '.github/workflows/dialog-focus.yml'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.nvmrc'
+
+permissions:
+  contents: read
+
+jobs:
+  dialog-focus:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      NEXT_TELEMETRY_DISABLED: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Select pinned npm
+        run: npm install --global npm@11.16.0
+      - run: npm ci
+      - name: Native focus-target controls with synthetic effect scheduling
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/dialog-focus-evidence"
+          node scripts/check-dialog-focus.mjs "$RUNNER_TEMP/dialog-focus-evidence" 2>&1 | tee "$RUNNER_TEMP/dialog-focus-evidence/native.log"
+      - run: npm run build
+      - name: Existing production React accessibility suite (offline fixtures)
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run verify:product -- --suite a11y --mode fixture --evidence-dir "$RUNNER_TEMP/dialog-focus-evidence" 2>&1 | tee "$RUNNER_TEMP/dialog-focus-evidence/application-a11y.log"
+      - name: Retain original focus and application results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dialog-focus-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/dialog-focus-evidence
+          if-no-files-found: error
