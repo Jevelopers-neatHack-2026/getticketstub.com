@@ -53,6 +53,18 @@ For errors, the common `route()` wrapper maps `HttpError` to `{ error: { code, m
 
 The matrix in `src/server/context-token.ts` is the source of capability grants. An account capability does not imply access to another account's records. For scoped records the server resolves the owner/captain from storage before granting the capability. A missing or inaccessible project can be returned as 404 to avoid disclosing its existence. A caller with a known project but insufficient role can receive 403. Guest or anonymous callers receive 401 for account-only operations.
 
+The application capabilities below repeat `CAPABILITY_MATRIX`, as does [the context fixture reference](../../fixtures/context/README.md#capability-matrix). `scripts/smoke-server.mjs` checks that both references list every application capability; the route and fixture checks establish the actual grants and denials.
+
+| Actor or scoped role | Application capabilities |
+| --- | --- |
+| Everyone (anonymous, guest, account) | `stub.draft`, `art.generate`, `agent.use`, `share.create`, `share.view`, `wall.public.view`, `claim.view`, `file.read`, `order.create` |
+| Signed-in account, any role | The public capabilities plus `account.read`, `account.email.change`, `account.delete`, `session.revoke`, `wall.sync`, `wall.publish`, `order.read`, `event.create`, `claim.redeem` |
+| Owner of the selected stub | `stub.read`, `stub.write`, `share.revoke`, `gift.create`; `stub.approve` and `order.authorize` additionally require a signed-in account, even when a guest device owns the stub |
+| Captain of the selected event | `event.read`, `event.publish`, `claims.read` |
+| Member or viewer of the selected project | `stub.read` for a stub or `event.read` for an event; these roles are modelled and fixture-tested but are not currently assigned by an invitation flow |
+| Staff account on `ADMIN_EMAILS` | `admin.view` in addition to ordinary account capabilities; staff status itself grants no access to another account's project |
+| No role on the selected project | No project capability; public and ordinary account capabilities still follow the actor's identity |
+
 There are public exceptions by design: a share or gift token can read its own projection; a public-wall token can read the published wall; approval verification and context verification validate signed material; order-authorization consumer routes validate HMAC and the specific signed authorization. Public token possession never creates an account session.
 
 ## Signed context versions
