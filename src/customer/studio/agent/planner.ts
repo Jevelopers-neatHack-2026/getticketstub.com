@@ -38,6 +38,52 @@ export function findDate(t: string, fallbackYear?: number, fallbackMonth?: numbe
   return null;
 }
 const stubMonth = (state: StateSummary) => (state.dateISO ? Number(state.dateISO.slice(5, 7)) || undefined : undefined);
+const stubYear = (state: StateSummary) => (state.dateISO ? Number(state.dateISO.slice(0, 4)) || undefined : undefined);
+
+/** Every distinct date in the text, in the order found. A bare ordinal only counts when no dated month is named. */
+function datesIn(t: string, fallbackYear?: number, fallbackMonth?: number): { iso: string; real: boolean }[] {
+  const out: { iso: string; real: boolean }[] = [];
+  const add = (iso: string) => {
+    if (!out.some((o) => o.iso === iso)) out.push({ iso, real: isRealDate(iso) });
+  };
+  const named = (day: string, mon: string, year: string | undefined) => {
+    const mi = monthIndex(mon.toLowerCase());
+    const y = year ? Number(year) : fallbackYear;
+    if (mi >= 0 && y) add(`${y}-${pad(mi + 1)}-${pad(Number(day))}`);
+  };
+  for (const m of t.matchAll(/\b\d{4}-\d{2}-\d{2}\b/g)) add(m[0]);
+  for (const m of t.matchAll(/\b(\d{1,2})(?:st|nd|rd|th)?(?:\s+of)?\s+([a-z]{3,9})\.?(?:,?\s+(\d{4}))?\b/gi)) named(m[1], m[2], m[3]);
+  for (const m of t.matchAll(/\b([a-z]{3,9})\.?\s+(\d{1,2})(?:st|nd|rd|th)?(?:,?\s+(\d{4}))?\b/gi)) named(m[2], m[1], m[3]);
+  if (!out.length && fallbackYear && fallbackMonth) for (const m of t.matchAll(/\b(\d{1,2})(?:st|nd|rd|th)\b/gi)) add(`${fallbackYear}-${pad(fallbackMonth)}-${pad(Number(m[1]))}`);
+  return out;
+}
+
+const RELATIVE_SPAN = /(?:\s+of)?\s*(?:the\s+)?\b(next|following|coming|upcoming|last|previous|prior)\s+(month|year)\b/i;
+
+/**
+ * Wording the planner cannot resolve on its own: a relative month or year ("the 12th of next month": next from when?)
+ * or more than one date. Returns why, and the dates it could offer as tappable choices. Undefined when the text is plain.
+ */
+function dateDoubt(t: string, state: StateSummary): { why: string; options?: string[] } | undefined {
+  const y = stubYear(state), m = stubMonth(state);
+  const rel = RELATIVE_SPAN.exec(t);
+  if (rel) {
+    const why = `“${rel[1].toLowerCase()} ${rel[2].toLowerCase()}” depends on which date it counts from, so I will not guess.`;
+    const stripped = t.replace(RELATIVE_SPAN, "");
+    // offer a date only for a bare day, counted from the stub's own month; anything with its own month stays a question
+    if (!y || !m || findDate(stripped, y)) return { why };
+    const step = /^(last|previous|prior)$/i.test(rel[1]) ? -1 : 1;
+    const target = rel[2].toLowerCase() === "month" ? { y: y + Math.floor((m - 1 + step) / 12), m: ((m - 1 + step + 12) % 12) + 1 } : { y: y + step, m };
+    const found = findDate(stripped, target.y, target.m);
+    return { why, ...(found?.real ? { options: [found.iso] } : {}) };
+  }
+  const all = datesIn(t, stubYear(state), stubMonth(state));
+  if (all.length > 1) {
+    const real = all.filter((d) => d.real).map((d) => d.iso).slice(0, LIMITS.options);
+    return { why: `I found more than one date in that (${all.map((d) => d.iso).join(", ")}), so I will not guess.`, ...(real.length > 1 ? { options: real } : {}) };
+  }
+  return undefined;
+}
 
 const tidy = (s: string) => s.trim().replace(/^["'“”‘’]+|["'“”‘’.!?]+$/g, "").trim();
 
@@ -72,8 +118,11 @@ function fromMessage(message: string, state: StateSummary): AgentPlan {
 
   // date
   if (/\bdate\b/.test(t) && /\b(fix|change|correct|set|update|wrong|should|was|is|to)\b/.test(t)) {
-    const found = findDate(valueAfter(raw, /\bdate\b/) ?? raw, year, stubMonth(state));
-    if (found?.real) actions.push({ type: "set_fact", field: "date", value: found.iso });
+    const text = valueAfter(raw, /\bdate\b/) ?? raw;
+    const doubt = dateDoubt(text, state);
+    const found = doubt ? null : findDate(text, year, stubMonth(state));
+    if (doubt) dateAsk = { reply: doubt.why, actions: [ask("Which date did you mean? Give a day, month and year, like 12 Oct 2024.", doubt.options, "date")] };
+    else if (found?.real) actions.push({ type: "set_fact", field: "date", value: found.iso });
     else
       dateAsk = {
         reply: found ? `${found.iso} is not a real calendar date, so I will not change anything.` : "I could not find a date in that.",
@@ -192,17 +241,33 @@ export function resolvePending(message: string, pending: PendingQuestion, state:
   const raw = message.trim();
   const isOption = !!pending.options?.some((o) => o.toLowerCase() === raw.toLowerCase());
   const again = (why: string): AgentPlan => ({ reply: why, actions: [ask(pending.question, pending.options, pending.field)] });
+  const year = stubYear(state), month = stubMonth(state);
+  // what else the answer asks for ("the 12th and make it moodier"): kept, never dropped while the question is answered
+  const others = isOption ? [] : fromMessage(raw, state).actions.filter((a) => a.type !== "ask_user" && !(a.type === "set_fact" && a.field === "date"));
   if (!isOption) {
     // a different request (a question, or something the planner can act on) is a change of topic
     if (raw.endsWith("?")) return undefined;
-    if (fromMessage(raw, state).actions.some((a) => a.type !== "ask_user") && !(pending.field === "date" && findDate(raw, state.dateISO ? Number(state.dateISO.slice(0, 4)) : undefined, stubMonth(state)))) return undefined;
+    if (others.length && !(pending.field === "date" && (findDate(raw, year, month) || RELATIVE_SPAN.test(raw)))) return undefined;
   }
   const answer = isOption ? pending.options!.find((o) => o.toLowerCase() === raw.toLowerCase())! : tidy(raw);
+  // the answer's own reply, with the other asks proposed alongside it (the question is asked again after them)
+  const withOthers = (own: AgentPlan): AgentPlan => {
+    if (!others.length) return own;
+    const kept = others.slice(0, LIMITS.actions - own.actions.length);
+    const proposed = own.actions.filter((a) => a.type !== "ask_user");
+    return {
+      reply: proposed.length ? sentence([...proposed, ...kept], state) : `${sentence(kept, state)} ${own.reply} The date stays as it is until you give it.`,
+      actions: [...proposed, ...kept, ...own.actions.filter((a) => a.type === "ask_user")],
+    };
+  };
   if (pending.field === "date") {
-    const found = findDate(answer, state.dateISO ? Number(state.dateISO.slice(0, 4)) : undefined, stubMonth(state));
+    const doubt = isOption ? undefined : dateDoubt(answer, state);
+    if (doubt) return withOthers({ reply: doubt.why, actions: [ask("Which date did you mean? Give a day, month and year, like 12 Oct 2024.", doubt.options, "date")] });
+    const found = findDate(answer, year, month);
     if (!found) return again("I could not find a date in that, so nothing is proposed.");
-    if (!found.real) return again(`${found.iso} is not a real calendar date, so nothing is proposed.`);
-    return { reply: sentence([{ type: "set_fact", field: "date", value: found.iso }], state), actions: [{ type: "set_fact", field: "date", value: found.iso }] };
+    if (!found.real) return withOthers(again(`${found.iso} is not a real calendar date, so nothing is proposed.`));
+    const action: Action = { type: "set_fact", field: "date", value: found.iso };
+    return withOthers({ reply: sentence([action], state), actions: [action] });
   }
   const label = FIELD_LABEL[pending.field];
   if (!answer) return again(`I need a ${label} to propose it.`);

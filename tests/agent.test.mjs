@@ -227,6 +227,58 @@ test("a day alone resolves in the stub's own month and year, and an unreadable d
   assert.deepEqual(types(ask("fix the date to 2024-02-31 and make it moodier")), ["remix_art", "ask_user"]);
 });
 
+test("a relative month or year is asked about, never resolved to the stub's own month", () => {
+  const at = (dateISO, message, extra = {}) => planDemo(request({ message, ...extra, state: { ...state(), dateISO } }));
+  const noDate = (plan) => assert.ok(!plan.actions.some((a) => a.type === "set_fact" && a.field === "date"));
+  const p = at("2024-10-11", "Fix the date to the 12th of next month and make it moodier");
+  noDate(p);
+  assert.deepEqual(types(p), ["remix_art", "ask_user"], "the art change is kept, the date is asked for");
+  assert.deepEqual(p.actions[1].options, ["2024-11-12"]);
+  assert.equal(p.actions[1].field, "date");
+  assert.match(p.reply, /next month/);
+  // month and year boundaries
+  assert.deepEqual(at("2024-12-11", "change the date to the 5th of next month").actions[0].options, ["2025-01-05"]);
+  assert.deepEqual(at("2024-01-11", "change the date to the 5th of last month").actions[0].options, ["2023-12-05"]);
+  assert.deepEqual(at("2024-10-11", "change the date to the 5th of next year").actions[0].options, ["2025-10-05"]);
+  // a day that month does not have is not offered; a named month is only asked about
+  assert.equal(at("2024-01-11", "change the date to the 31st of next month").actions[0].options, undefined);
+  assert.equal(at("2024-10-11", "change the date to 12 Oct next year").actions[0].options, undefined);
+  noDate(at("2024-10-11", "change the date to 12 Oct next year"));
+  // answering a pending date question with a relative month asks again and keeps the other ask
+  const pending = pendingOf(ask("fix the date"));
+  const a = at("2024-10-11", "the 12th of next month and make it moodier", { pending });
+  noDate(a);
+  assert.deepEqual(types(a), ["remix_art", "ask_user"]);
+  assert.deepEqual(types(at("2024-10-11", "next month", { pending })), ["ask_user"]);
+  assert.deepEqual(types(at("2024-10-11", "next month and make it moodier", { pending })), ["remix_art", "ask_user"]);
+});
+
+test("more than one date in a request is asked about, with the real ones offered", () => {
+  assert.deepEqual(types(ask("fix the date to the 12th or the 13th")), ["ask_user"]);
+  const two = ask("fix the date to 11 Oct 2024 or 12 Oct 2024");
+  assert.deepEqual(two.actions[0].options, ["2024-10-11", "2024-10-12"]);
+  assert.deepEqual(types(ask("fix the date to 2024-10-11 or 2024-02-31")), ["ask_user"]);
+  assert.equal(ask("fix the date to 2024-10-11 or 2024-02-31").actions[0].options, undefined, "one real date is not a choice");
+  assert.deepEqual(ask("fix the date to 11 Oct 2024 (the 11th)").actions, [{ type: "set_fact", field: "date", value: "2024-10-11" }], "the same date twice is one date");
+});
+
+test("a pending date answer keeps the other requested actions", () => {
+  const [y, m] = state().dateISO.split("-");
+  const pending = pendingOf(ask("fix the date"));
+  const both = answer(ask("fix the date"), "the 12th and make it moodier");
+  assert.deepEqual(both.actions, [{ type: "set_fact", field: "date", value: `${y}-${m}-12` }, { type: "remix_art", vibe: "moodier" }]);
+  assert.match(both.reply, /Nothing changes until you apply it/);
+  assert.equal(P.parsePlan(both).ok, true);
+  assert.deepEqual(types(planDemo(request({ message: "12 Oct 2024 and switch to letterpress", pending }))), ["set_fact", "set_style"]);
+  // an impossible date keeps the other ask and asks for the date again
+  const bad = planDemo(request({ message: "2024-02-31 and make it moodier", pending }));
+  assert.deepEqual(types(bad), ["remix_art", "ask_user"]);
+  assert.equal(bad.actions[1].field, "date");
+  assert.match(bad.reply, /not a real calendar date/);
+  // nothing is ever applied by the planner: every date is a proposal
+  assert.ok(both.reply.includes("Nothing changes until you apply it"));
+});
+
 // What the browser carries from one turn to the next: the first typed question of the last plan.
 const pendingOf = (plan) => {
   const q = plan.actions.find((a) => a.type === "ask_user" && a.field);
