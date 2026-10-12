@@ -84,6 +84,8 @@ export const COMMIT_UNKNOWN_MESSAGE =
 interface Entry {
   req: StartRequest;
   ac: AbortController;
+  /** Readable stored selection at dispatch; distinct from an open draft's own unsaved selection. */
+  storedVersionId?: string;
   /** Resolves the start() promise at a terminal phase. */
   done: (op: GenerationOp) => void;
   candidate?: Produced;
@@ -223,7 +225,11 @@ export class GenerationController {
       message: req.via === "photo" ? PHOTO_PENDING_MESSAGE : "Generating new art. Your current art stays in place until the result is ready.",
     };
     return new Promise<StartResult>((resolve) => {
-      const entry: Entry = { req, ac: new AbortController(), done: (o) => resolve({ started: true, op: o }) };
+      const stored = this.host.presence ? readGenerationStorage(source.id) : undefined;
+      const entry: Entry = {
+        req, ac: new AbortController(), done: (o) => resolve({ started: true, op: o }),
+        ...(stored?.status === "present" ? { storedVersionId: stored.stub.currentVersionId } : {}),
+      };
       this.ops.set(runId, op);
       this.latest.set(source.id, runId);
       this.entries.set(runId, entry);
@@ -346,11 +352,11 @@ export class GenerationController {
    * Immediately before a write, what is stored compared with this draft; independent of any event or queue.
    * removed: absent (or queued for deletion). replaced: no version in common, so a different project holds the id.
    * conflict: the same version id with a different body. unknown: the store cannot be read (never a removal).
-   * peer_selected: another editor selected a version this one has never seen (never silently switched).
+   * peer_selected: stored selection changed during this request, or names a version this editor has never seen.
    * ok: carries the stored project so its versions are kept alongside this draft's, own unsaved ones included.
    * A host without a store has nothing to check.
    */
-  private inspect(stubId: string, cur: Stub):
+  private inspect(stubId: string, cur: Stub, storedVersionId?: string):
     | { kind: "ok"; stored?: Stub }
     | { kind: "removed" | "replaced" | "unknown" }
     | { kind: "conflict" | "unverifiable"; versionId: string }
@@ -367,7 +373,8 @@ export class GenerationController {
     if (r.status === "replaced") return { kind: "replaced" };
     if (r.status === "conflict") return { kind: "conflict", versionId: r.versionId };
     if (r.status === "unverifiable") return { kind: "unverifiable", versionId: r.versionId };
-    return r.peerOnly.includes(stored.currentVersionId) ? { kind: "peer_selected", stored } : { kind: "ok", stored };
+    const selectionChanged = storedVersionId !== undefined && stored.currentVersionId !== storedVersionId;
+    return selectionChanged || r.peerOnly.includes(stored.currentVersionId) ? { kind: "peer_selected", stored } : { kind: "ok", stored };
   }
 
   /** The current draft, when this operation may still write to it: it is the open project, and not seen removed. */
@@ -409,7 +416,7 @@ export class GenerationController {
       });
       return;
     }
-    const v = this.inspect(op.stubId, cur);
+    const v = this.inspect(op.stubId, cur, entry.storedVersionId);
     if (v.kind === "removed" || v.kind === "replaced") {
       this.latchRemoved(op.stubId, v.kind === "removed" ? REMOVED_MESSAGE : CHANGED_MESSAGE, v.kind === "removed" ? "project_removed" : "project_changed");
       return;

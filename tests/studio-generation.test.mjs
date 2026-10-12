@@ -1029,6 +1029,55 @@ describe("version history is reconciled, never dropped (PR100-ASTRA-004 / 005)",
     assert.equal(JSON.stringify(ed.stub), draft);
   });
 
+  for (const action of ["apply", "discard"]) test(`a peer selecting an already-known version is held until explicit ${action}`, async () => {
+    const ed = openEditor();
+    ed.update(withPeer(ed.stub)); // Both histories already contain v0 and peer-v1 when this request starts.
+    const draft = structuredClone(ed.stub);
+    const p = ed.ask("sheet");
+    await tick();
+    store.upsertStub({ ...store.getStub("s1"), currentVersionId: "peer-v1" });
+    const before = localStorage.getItem(store.WALL_STORAGE_KEY), commits = ed.saved.length;
+    calls[0].ok("known-selection");
+    const { op } = await p;
+    assert.equal(op.phase, "ready");
+    assert.equal(op.code, "peer_selected");
+    assert.equal(ed.saved.length, commits, "completion must not enter the editor commit");
+    assert.deepEqual(ed.stub, draft);
+    assert.equal(localStorage.getItem(store.WALL_STORAGE_KEY), before, "the peer selection remains byte-for-byte unchanged");
+    if (action === "discard") {
+      ed.gen.discard(op.runId);
+      assert.equal(ed.gen.apply(op.runId).phase, "discarded");
+      assert.equal(localStorage.getItem(store.WALL_STORAGE_KEY), before);
+    } else {
+      assert.equal(ed.gen.apply(op.runId).phase, "applied");
+      const saved = store.getStub("s1");
+      assert.equal(saved.versions.length, 3);
+      assert.deepEqual(saved.versions.slice(0, 2), draft.versions);
+      ed.gen.apply(op.runId);
+      assert.equal(ed.saved.length, commits + 1, "explicit Apply still commits at most once");
+    }
+    ed.gen.detach();
+  });
+
+  test("an unsaved local selection at dispatch is distinct from a peer changing selection during the request", async () => {
+    const ed = openEditor();
+    ed.update(withPeer(ed.stub));
+    localStorage.mode = "blocked";
+    ed.update(ops.atVersion(ed.stub, "peer-v1"));
+    localStorage.mode = "ok";
+    assert.equal(store.getStub("s1").currentVersionId, "v0");
+    assert.equal(ed.stub.currentVersionId, "peer-v1");
+    const p = ed.ask("note");
+    await tick();
+    calls[0].ok("recover-selection");
+    const { op } = await p;
+    assert.equal(op.phase, "applied", "an unchanged stored selection must not be misclassified as a peer change");
+    assert.equal(op.saved, true);
+    assert.equal(currentVersion(ed.stub).parentId, "peer-v1");
+    assert.equal(store.getStub("s1").versions.length, 3);
+    ed.gen.detach();
+  });
+
   test("after a write failure the editor's own unsaved version is NOT a replacement: the next generation applies and recovers persistence", async () => {
     const ed = openEditor();
     localStorage.mode = "blocked";

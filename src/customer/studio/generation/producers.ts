@@ -16,7 +16,8 @@ export function remixProducer(via: Exclude<GenerationVia, "photo">, vibe: string
       flow("remix_result", { via, result: res.limitNote ? "limited" : "success", ...artOutcome(res.art), duration_ms: since(asked) });
       return { art: res.art, ...(res.limitNote ? { limitNote: res.limitNote } : {}) };
     } catch (e) {
-      flow("remix_result", { via, result: "error", duration_ms: since(asked), error_code: errorCode(e) });
+      // Stop/navigation aborts are local lifecycle decisions, not failed art-service results.
+      if (!signal.aborted) flow("remix_result", { via, result: "error", duration_ms: since(asked), error_code: errorCode(e) });
       throw e;
     }
   };

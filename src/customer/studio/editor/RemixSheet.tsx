@@ -1,10 +1,11 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { DesignVersion, Stub } from "../types";
 import { currentVersion } from "../types";
 import { PaperButton, PaperSheet, Tag, Tags, TearLink } from "@/customer/desk/Desk";
 import type { GenerationController } from "../generation/operations";
 import { useGenerationOp } from "../generation/useGeneration";
+import { captureFocusHandoff, type FocusHandoff } from "../generation/focus-handoff";
 import { photoProducer, remixProducer } from "../generation/producers";
 import { play } from "@/customer/studio/feedback";
 import { listVersions, restoreVersion, sameArt, versionHash } from "../versions/versions";
@@ -49,11 +50,21 @@ function chipNames(versions: DesignVersion[]): string[] {
 /** Vibe tags, a photo option and one action. Free text lives behind "Describe it instead". */
 export function RemixPanel({ stub, onChange, generation, onDescribe, onDone }: PanelProps) {
   const [vibe, setVibe] = useState<string | null>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const statusRef = useRef<HTMLParagraphElement>(null);
+  const focusHandoff = useRef<FocusHandoff | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const earlier = earlierVersions(stub);
   const names = chipNames(earlier);
   const op = useGenerationOp(generation, stub.id);
   const busy = op?.phase === "pending";
+  useLayoutEffect(() => {
+    const intent = focusHandoff.current;
+    focusHandoff.current = null;
+    const close = panelRef.current?.closest('[role="dialog"][aria-modal="true"]')?.querySelector<HTMLButtonElement>("[data-close]:not(:disabled)");
+    intent?.finish(close ?? statusRef.current);
+  }, [op]);
+  useEffect(() => () => focusHandoff.current?.cancel(), []);
   // Art the sheet asked for closes it when applied; a limited fallback stays open so the note is read.
   // (The sheet closing never cancels anything: the editor owns the operation.)
   const mine = useRef<string | null>(null);
@@ -63,11 +74,21 @@ export function RemixPanel({ stub, onChange, generation, onDescribe, onDone }: P
 
   const dispatch = (req: Parameters<GenerationController["start"]>[0]) => {
     play("remix");
+    focusHandoff.current?.cancel();
+    const active = panelRef.current?.ownerDocument.activeElement;
+    focusHandoff.current = active instanceof HTMLElement && panelRef.current?.contains(active) ? captureFocusHandoff(active) : null;
     const before = generation.get(stub.id);
-    const started = generation.start(req); // the operation exists as soon as this returns
-    const now = generation.get(stub.id);
-    if (now && now !== before && now.phase === "pending") mine.current = now.runId;
-    started.catch(() => undefined);
+    try {
+      const started = generation.start(req); // the operation exists as soon as this returns
+      const now = generation.get(stub.id);
+      if (now && now !== before && now.phase === "pending") mine.current = now.runId;
+      started.catch(() => undefined);
+    } finally {
+      if (generation.get(stub.id) === before) {
+        focusHandoff.current?.cancel();
+        focusHandoff.current = null;
+      }
+    }
   };
   const run = () => dispatch({ via: "sheet", vibe: vibe ?? undefined, fallback: "apply", run: remixProducer("sheet", vibe ?? undefined, vibeOf(vibe)) });
 
@@ -78,7 +99,7 @@ export function RemixPanel({ stub, onChange, generation, onDescribe, onDone }: P
   };
 
   return (
-    <div className={styles.stack} aria-busy={busy}>
+    <div ref={panelRef} className={styles.stack} aria-busy={busy}>
       <span className="desk-label">Pick a look</span>
       <Tags label="Vibe">
         {VIBES.map((v) => (
@@ -104,7 +125,7 @@ export function RemixPanel({ stub, onChange, generation, onDescribe, onDone }: P
       <PaperButton block onClick={run} disabled={busy}>
         {busy ? "Remixing…" : "Remix the art"}
       </PaperButton>
-      <p className={styles.muted}>
+      <p ref={statusRef} tabIndex={-1} className={styles.muted}>
         {busy ? (op?.via === "photo" ? "Adding your photo." : "Generating new art.") + " The status stays beside the artwork if you close this." : (op?.message ?? "Each remix is kept as a version, so you can go back.")}
       </p>
       {earlier.length > 0 && (
