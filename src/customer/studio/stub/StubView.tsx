@@ -13,6 +13,9 @@ import { Foil, foilTextClass } from "./Foil";
 import { proceduralArt } from "./proceduralArt";
 import { hashSeed, rng } from "./rng";
 import { useTilt } from "./useTilt";
+import { SvgStub } from "./svg/SvgStub";
+import { stubData } from "./svg/style";
+import { templateById } from "./svg/templates";
 import s from "./StubView.module.css";
 
 export type StubElement = "title" | "subtitle" | "facts" | "art";
@@ -607,11 +610,18 @@ export function StubView({ stub, flipped = false, tilt = false, size = "md", sel
     if (typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches) void requestGyro();
   }, [tilt, requestGyro]);
 
+  const template = version?.template ? templateById(version.template) : undefined;
+  const svgData = useMemo(
+    () => (template ? stubData(stub, version.art.kind === "image" ? version.art.src : undefined) : null),
+    [template, stub, version],
+  );
+
   const Front = FRONTS[edition];
   const titleFont = meta.fontPairs[stub.personal.titleFont] ?? meta.fontPairs[0];
+  const orientation = template?.orientation ?? meta.orientation;
   const vars = {
-    "--w": `${WIDTHS[meta.orientation][size]}px`,
-    "--aspect": ASPECT[edition],
+    "--w": `${WIDTHS[orientation][size]}px`,
+    "--aspect": template ? `${template.width} / ${template.height}` : ASPECT[edition],
     "--paper": meta.paper,
     "--ink": meta.ink,
     "--accent": meta.accent,
@@ -621,7 +631,7 @@ export function StubView({ stub, flipped = false, tilt = false, size = "md", sel
   } as CSSProperties;
 
   // The name is short (what it is); the description carries the rest (when, where, which facts, how it is finished).
-  const label = `${e.title}, ${meta.label} edition stub${flipped ? ", back" : ""}`;
+  const label = `${e.title}, ${template?.name ?? meta.label} ${template ? "style" : "edition"} stub${flipped ? ", back" : ""}`;
   const description = [
     e.subtitle,
     e.venue,
@@ -639,11 +649,11 @@ export function StubView({ stub, flipped = false, tilt = false, size = "md", sel
 
   return (
     <figure
-      className={cx(s.stub, s[edition], s[meta.orientation], flipped && s.flipped, className)}
+      className={cx(s.stub, template ? s.svgStub : s[edition], s[orientation], flipped && s.flipped, className)}
       style={vars}
       aria-label={label}
       aria-describedby={descId}
-      data-edition={edition}
+      data-edition={template?.id ?? edition}
       data-size={size}
       data-guest={stub.personal.guestName ? "" : undefined}
       onClick={onClick}
@@ -653,18 +663,33 @@ export function StubView({ stub, flipped = false, tilt = false, size = "md", sel
       </span>
       <div ref={tiltRef} className={s.tilt}>
         <div className={s.flipper}>
-          <div className={cx(s.face, s.front)} aria-hidden={flipped || undefined}>
-            <div className={s.paper} />
-            <Front c={c} />
-            <div className={s.grain} aria-hidden="true" />
-            <Foil finish={stub.finish} seed={stub.id} />
-          </div>
-          <div className={cx(s.face, s.back)} aria-hidden={!flipped || undefined}>
-            <div className={s.paper} />
-            <Back c={c} />
-            <div className={s.grain} aria-hidden="true" />
-            <Foil finish="matte" seed={stub.id + ":back"} />
-          </div>
+          {template && svgData ? (
+            <>
+              {/* SVG template: paper, art, type, foil, holo and the die-cut are all in the file; its foil and holo
+                  follow the tilt vars. No CSS paper, grain or glare: they would paint outside the die-cut. */}
+              <div className={cx(s.face, s.front, s.svgFace)} aria-hidden={flipped || undefined}>
+                <SvgStub template={template.id} face="front" data={svgData} className={s.svgHost} />
+              </div>
+              <div className={cx(s.face, s.back, s.svgFace)} aria-hidden={!flipped || undefined}>
+                <SvgStub template={template.id} face="back" data={svgData} className={s.svgHost} />
+              </div>
+            </>
+          ) : (
+            <>
+              <div className={cx(s.face, s.front)} aria-hidden={flipped || undefined}>
+                <div className={s.paper} />
+                <Front c={c} />
+                <div className={s.grain} aria-hidden="true" />
+                <Foil finish={stub.finish} seed={stub.id} />
+              </div>
+              <div className={cx(s.face, s.back)} aria-hidden={!flipped || undefined}>
+                <div className={s.paper} />
+                <Back c={c} />
+                <div className={s.grain} aria-hidden="true" />
+                <Foil finish="matte" seed={stub.id + ":back"} />
+              </div>
+            </>
+          )}
         </div>
       </div>
     </figure>

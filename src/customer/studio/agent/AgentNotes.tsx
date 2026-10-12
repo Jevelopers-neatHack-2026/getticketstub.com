@@ -9,7 +9,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { Fact, Provenance, Stub } from "../types";
 import { currentVersion } from "../types";
 import { remixArt } from "../research/client";
-import { EDITION_META } from "@/customer/studio/stub/editions";
+import { styleLabel, styleOf } from "@/customer/studio/stub/svg/style";
 import { haptic, play } from "@/customer/studio/feedback";
 import { MarkLegend, SourceMark, Tag, Tags } from "@/customer/desk/Desk";
 import { CloseIcon } from "@/customer/desk/icons";
@@ -110,7 +110,7 @@ export function AgentNotes({ stub, onChange, onAsk, onShowBack, variant, folded 
   };
 
   const ev = stub.event;
-  const edition = EDITION_META[currentVersion(stub).edition];
+  const styleName = styleLabel(styleOf(currentVersion(stub)));
   const kept = ev.facts.filter((f) => f.kept && f.confidence >= 0.8).slice(0, 3);
   const notes: Note[] = [];
 
@@ -138,7 +138,7 @@ export function AgentNotes({ stub, onChange, onAsk, onShowBack, variant, folded 
     id: "intro",
     body: (
       <>
-        I set up your {edition?.label ?? "first"} stub for {ev.title}. The date and place are on the front
+        I set up your {styleName} stub for {ev.title}. The date and place are on the front
         {kept.length ? <>, with {list(kept.map((f) => <FactMark key={f.id} f={f} />))}</> : null}.
       </>
     ),

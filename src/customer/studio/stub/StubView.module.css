@@ -1070,3 +1070,16 @@ button.chip:focus-visible {
   color: var(--ink);
   opacity: 0.85;
 }
+
+/* SVG template faces: the file draws everything, including the die-cut, so the face is a bare host. */
+.svgFace {
+  border-radius: 0;
+  background: none;
+}
+.svgFace::after {
+  display: none;
+}
+.svgHost {
+  position: absolute;
+  inset: 0;
+}

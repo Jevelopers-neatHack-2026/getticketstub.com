@@ -116,6 +116,7 @@ export function AgentChat(props: { stub: Stub; onChange: (s: Stub) => void; /** 
         id: `v${s.versions.length + 1}-${rid()}`,
         parentId: cur?.id,
         edition: cur?.edition ?? "researched",
+        template: cur?.template,
         art,
         createdAt: new Date().toISOString(),
       };

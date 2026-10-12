@@ -1,11 +1,11 @@
 "use client";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import type { Edition, Material, Stub } from "../types";
-import { EDITIONS, currentVersion } from "../types";
+import type { Material, Stub } from "../types";
+import { currentVersion } from "../types";
+import { STYLES, styleAspect, styleInches, styleLabel, styleOf, type StyleId } from "@/customer/studio/stub/svg/style";
 import { encodeStub, getStub, upsertStub } from "../store";
 import { StubView } from "@/customer/studio/stub/StubView";
-import { EDITION_META } from "@/customer/studio/stub/editions";
 import { announce } from "@/customer/a11y/announce";
 import { haptic, play } from "@/customer/studio/feedback";
 import { getAccountState } from "@/customer/account/useAccount";
@@ -19,7 +19,7 @@ import { HandleIcon } from "@/customer/nav/icons";
 import { PathTrack } from "@/customer/wayfinding/PathTrack";
 import { PaperButton, PaperSheet, Stamp, Tag, Tags, Tool, Tools } from "@/customer/desk/Desk";
 import { AskIcon, FlipIcon, FriendsIcon, PreviewIcon, RemixIcon } from "@/customer/desk/icons";
-import { editChanges, formatDate, hiddenLabel, setEdition, setHidden, stepEdition, type Selectable } from "./ops";
+import { editChanges, formatDate, hiddenLabel, setStyle, setHidden, stepEdition, type Selectable } from "./ops";
 import { flow } from "@/customer/flows/events";
 import { FloatingToolbar } from "./FloatingToolbar";
 import { DockedToolbar } from "./Dock";
@@ -45,18 +45,8 @@ type SheetName = null | "styles" | "remix" | "agent" | "finish" | "facts" | "ver
 /** How a style was dealt, for analytics: the gesture or control that committed it. */
 type DealMethod = "swipe" | "keyboard" | "grid" | "rail" | "dots";
 
-/** Width / height of each style, so the stage can be sized to the stub before it renders. */
-const ASPECT: Record<Edition, number> = { researched: 2 / 3, risograph: 2 / 3, minimal: 2 / 3, letterpress: 1.9, classic: 2.4 };
 /** What each stock adds around the stub, in px (see MaterialFrame). */
 const MAT: Record<Material, number> = { digital: 0, card: 12, print: 36, framed: 80 };
-/** The stub's printed size in inches: width, height. The cutting mat's grid is drawn from this. */
-const INCHES: Record<Edition, [number, number]> = {
-  researched: [2, 3],
-  risograph: [2, 3],
-  minimal: [2, 3],
-  letterpress: [5.5, 2.9],
-  classic: [5.5, 2.3],
-};
 
 const DEAL_MS = 460;
 const LONG_PRESS_MS = 450;
@@ -98,13 +88,13 @@ function writePanels(p: Panels) {
   }
 }
 
-function editionLabel(ed: Edition): string {
-  return EDITION_META[ed]?.label ?? ed;
+function editionLabel(style: StyleId): string {
+  return styleLabel(style);
 }
 
 /** The stub's printed width in inches, for the camera's grid and rulers. */
 function inchesWide(ed: string): number {
-  return INCHES[ed as Edition]?.[0] ?? 2;
+  return styleInches(ed)[0];
 }
 
 /** The studio editor: one stub, edited in place. Every change is saved to the wall right away. */
@@ -214,7 +204,7 @@ function EditorLoaded({ id }: { id: string }) {
       if (!stub) return;
       dealMethod.current = method;
       setDealing({ from: stub, dir, fromX, n: ++dealN.current });
-      announce(`${editionLabel(currentVersion(next).edition)} style.`);
+      announce(`${editionLabel(styleOf(currentVersion(next)))} style.`);
       setHint(false);
       setSelected(null);
       setFlipped(false);
@@ -231,12 +221,12 @@ function EditorLoaded({ id }: { id: string }) {
   const dealStep = useCallback((dir: 1 | -1, fromX: number, method: DealMethod) => stub && deal(stepEdition(stub, dir), dir, fromX, method), [stub, deal]);
 
   const dealTo = useCallback(
-    (ed: Edition, method: DealMethod) => {
+    (ed: StyleId, method: DealMethod) => {
       if (!stub) return;
-      const from = EDITIONS.indexOf(currentVersion(stub).edition);
-      const to = EDITIONS.indexOf(ed);
+      const from = STYLES.indexOf(styleOf(currentVersion(stub)));
+      const to = STYLES.indexOf(ed);
       if (from === to) return;
-      deal(setEdition(stub, ed), to > from ? 1 : -1, 0, method);
+      deal(setStyle(stub, ed), to > from ? 1 : -1, 0, method);
     },
     [stub, deal],
   );
@@ -511,12 +501,12 @@ function EditorLoaded({ id }: { id: string }) {
   }
 
   const version = currentVersion(stub);
-  const edition = version.edition;
+  const edition = styleOf(version);
   const ev = stub.event;
   const crumb = [ev.subtitle, ev.venue, formatDate(ev.dateISO)].filter(Boolean).join(" · ");
-  const index = EDITIONS.indexOf(edition);
+  const index = STYLES.indexOf(edition);
 
-  const stageVars = { "--ar": ASPECT[edition], "--mat": `${MAT[stub.material]}px` } as CSSProperties;
+  const stageVars = { "--ar": styleAspect(edition), "--mat": `${MAT[stub.material]}px` } as CSSProperties;
 
   /** The stub on its stock, with the one being dealt off sliding away beside it. */
   const deck = (size: "md" | "lg") => (
@@ -854,7 +844,7 @@ function EditorLoaded({ id }: { id: string }) {
 
         <div className={styles.caption}>
           <div className={styles.dots} role="group" aria-label="Styles">
-            {EDITIONS.map((ed, i) => (
+            {STYLES.map((ed, i) => (
               <button key={ed} type="button" className={styles.dot} aria-label={`${editionLabel(ed)} style`} aria-current={i === index} onClick={() => dealTo(ed, "dots")} />
             ))}
           </div>

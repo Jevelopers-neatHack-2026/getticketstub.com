@@ -107,6 +107,8 @@ export interface DesignVersion {
   id: string;
   parentId?: string;
   edition: Edition;
+  /** SVG stub template id (public/stubs/<id>). When set it is the style drawn; `edition` stays as the fallback. */
+  template?: string;
   art: ArtLayer;
   createdAt: string;
   context?: VersionContext;
