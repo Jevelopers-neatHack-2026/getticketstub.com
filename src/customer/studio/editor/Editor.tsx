@@ -228,7 +228,7 @@ function EditorLoaded({ id }: { id: string }) {
         const first = !said.has(op.runId);
         said.set(op.runId, op.phase);
         if (first && op.phase !== "pending" && op.phase !== "interrupted") continue; // adopted terminal status: already read
-        announce(op.phase === "pending" ? "Generating new art." : op.message);
+        announce(op.phase === "pending" ? (op.via === "photo" ? "Adding your photo." : "Generating new art.") : op.message);
         if (op.via !== "agent" && op.phase === "applied") {
           play("success", { emphasis: op.fallback ? "subtle" : undefined });
           haptic([18, 40, 28]);

@@ -596,3 +596,64 @@ describe("one owner per project: an older run cannot supersede or write over the
     }
   });
 });
+
+describe("photo art uses the same lifecycle with photo-truthful outcomes", () => {
+  const photo = (ed, run) => ed.gen.start({ via: "photo", fallback: "apply", run });
+  const read = () => {
+    const d = {};
+    d.promise = new Promise((resolve, reject) => ((d.resolve = resolve), (d.reject = reject)));
+    return d;
+  };
+  test("pending and Stop talk about the photo, never an art service; no art request is made", async () => {
+    const ed = openEditor();
+    const r = read();
+    const p = photo(ed, () => r.promise);
+    await tick();
+    const pending = ed.gen.get("s1");
+    assert.match(pending.message, /photo/i);
+    assert.doesNotMatch(pending.message, /art service|Generating new art/i);
+    ed.gen.cancel(pending.runId);
+    const { op } = await p;
+    assert.match(op.message, /photo/i);
+    assert.doesNotMatch(op.message, /art service|provider/i);
+    r.resolve({ art: { kind: "image", src: "data:image/png;base64,AAAA", vibe: "photo", seed: 1, provenance: "live" } });
+    await tick();
+    assert.equal(ed.stub.versions.length, 1, "late read after Stop writes nothing");
+    assert.equal(calls.length, 0, "a photo never calls the art route");
+  });
+
+  test("photo completion keeps edits; changed selection waits for explicit Apply; a pending art request blocks a photo (one lifecycle)", async () => {
+    const ed = openEditor();
+    const art = ed.ask("sheet");
+    await tick();
+    const dup = await photo(ed, async () => ({ art: { kind: "image", src: "data:x", vibe: "photo", seed: 2 } }));
+    assert.equal(dup.started, false);
+    assert.equal(calls.length, 1);
+    ed.gen.cancel(ed.gen.get("s1").runId);
+    await art;
+    const r = read();
+    const p = photo(ed, () => r.promise);
+    await tick();
+    ed.update(ops.setMaterial(ed.stub, "framed"));
+    ed.update(ops.setEdition(ed.stub, "minimal"));
+    r.resolve({ art: { kind: "image", src: "data:image/png;base64,BBBB", vibe: "photo", seed: 3, provenance: "live" } });
+    const { op } = await p;
+    assert.equal(op.phase, "ready");
+    assert.equal(ed.stub.versions.length, 2);
+    assert.equal(ed.gen.apply(op.runId).phase, "applied");
+    assert.equal(ed.stub.material, "framed");
+    assert.equal(currentVersion(ed.stub).art.vibe, "photo");
+    assert.equal(store.getStub("s1").versions.length, 3);
+  });
+
+  test("an unreadable photo fails honestly and leaves the draft", async () => {
+    const ed = openEditor();
+    const before = JSON.stringify(ed.stub);
+    const { op } = await photo(ed, async () => {
+      throw new Error("We couldn't read that photo. Try another one.");
+    });
+    assert.equal(op.phase, "failed");
+    assert.match(op.message, /couldn't read that photo/);
+    assert.equal(JSON.stringify(ed.stub), before);
+  });
+});

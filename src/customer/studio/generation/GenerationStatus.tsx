@@ -36,7 +36,7 @@ export function GenerationStatus({ controller, stubId, onOpenRemix }: { controll
   };
   return (
     <section className={styles.status} data-phase={phase} data-run={runId} aria-label="Art generation status" aria-busy={phase === "pending"}>
-      <p className={styles.title}>{TITLES[phase]}</p>
+      <p className={styles.title}>{phase === "pending" && op.via === "photo" ? "Adding your photo…" : TITLES[phase]}</p>
       {phase === "pending" && <div className={styles.bar} aria-hidden="true" />}
       <p className={styles.text}>
         {op.message}

@@ -57,6 +57,9 @@ export interface StartResult {
 
 export const STOPPED_MESSAGE =
   "Stopped. If a result still arrives it is ignored. This does not cancel the request on the art service, which may still finish it.";
+/** A photo is read on this device: there is no art service to speak of. */
+export const PHOTO_STOPPED_MESSAGE = "Stopped. The photo is ignored if it finishes reading. Your current art is unchanged.";
+export const PHOTO_PENDING_MESSAGE = "Adding your photo as the art. Your current art stays in place until it is ready.";
 
 interface Entry {
   req: StartRequest;
@@ -146,7 +149,7 @@ export class GenerationController {
       ...(req.vibe ? { vibe: req.vibe } : {}),
       phase: "pending",
       startedAt: Date.now(),
-      message: "Generating new art. Your current art stays in place until the result is ready.",
+      message: req.via === "photo" ? PHOTO_PENDING_MESSAGE : "Generating new art. Your current art stays in place until the result is ready.",
     };
     return new Promise<StartResult>((resolve) => {
       const entry: Entry = { req, ac: new AbortController(), done: (o) => resolve({ started: true, op: o }) };
@@ -173,7 +176,7 @@ export class GenerationController {
     const op = this.ops.get(runId);
     if (!op || op.phase !== "pending" || !this.isLatest(op)) return;
     this.entries.get(runId)?.ac.abort();
-    this.finish(runId, { phase: "canceled", code: "canceled", message: STOPPED_MESSAGE });
+    this.finish(runId, { phase: "canceled", code: "canceled", message: op.via === "photo" ? PHOTO_STOPPED_MESSAGE : STOPPED_MESSAGE });
   }
 
   /** Explicitly apply a ready candidate to the CURRENT draft: a new version from what is selected now. At most once. */

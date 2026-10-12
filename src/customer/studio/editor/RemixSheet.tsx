@@ -105,7 +105,7 @@ export function RemixPanel({ stub, onChange, generation, onDescribe, onDone }: P
         {busy ? "Remixing…" : "Remix the art"}
       </PaperButton>
       <p className={styles.muted}>
-        {busy ? "Generating new art. The status stays beside the artwork if you close this." : (op?.message ?? "Each remix is kept as a version, so you can go back.")}
+        {busy ? (op?.via === "photo" ? "Adding your photo." : "Generating new art.") + " The status stays beside the artwork if you close this." : (op?.message ?? "Each remix is kept as a version, so you can go back.")}
       </p>
       {earlier.length > 0 && (
         <>
