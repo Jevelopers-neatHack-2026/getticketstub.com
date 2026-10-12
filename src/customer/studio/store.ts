@@ -6,6 +6,7 @@ import type { Correction, Stub } from "./types";
 import { releasable, releaseOldest, retainArt } from "./versions/retention";
 import { applyCorrection, entries, undoCorrection, type CorrectionInput } from "./facts/corrections";
 import { storageFailure, storageReason } from "@/customer/flows/events";
+import { forgetStatus } from "./generation/status-store";
 
 const KEY = "ticketstub.wall.v1";
 const DELETED_KEY = "ticketstub.wall.deleted.v1";
@@ -139,6 +140,7 @@ export function undoStubCorrection(id: string, factId: string): Stub | undefined
 /** True when the stub is gone from storage too. */
 export function removeStub(id: string): boolean {
   saveDeleted([...loadDeleted(), id]);
+  forgetStatus(id);
   return saveWall(loadWall().filter((s) => s.id !== id));
 }
 

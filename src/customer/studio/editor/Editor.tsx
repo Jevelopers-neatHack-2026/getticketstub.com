@@ -3,7 +3,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import type { Edition, Material, Stub } from "../types";
 import { EDITIONS, currentVersion } from "../types";
-import { encodeStub, getStub, upsertStub } from "../store";
+import { encodeStub, getStub, loadDeleted, upsertStub } from "../store";
 import { StubView } from "@/customer/studio/stub/StubView";
 import { EDITION_META } from "@/customer/studio/stub/editions";
 import { announce } from "@/customer/a11y/announce";
@@ -21,6 +21,8 @@ import { PaperButton, PaperSheet, Stamp, Tag, Tags, Tool, Tools } from "@/custom
 import { AskIcon, FlipIcon, FriendsIcon, PreviewIcon, RemixIcon } from "@/customer/desk/icons";
 import { editChanges, formatDate, hiddenLabel, setEdition, setHidden, stepEdition, type Selectable } from "./ops";
 import { flow } from "@/customer/flows/events";
+import { GenerationController, editorHost } from "../generation/operations";
+import { GenerationStatus } from "../generation/GenerationStatus";
 import { FloatingToolbar } from "./FloatingToolbar";
 import { DockedToolbar } from "./Dock";
 import { ChipPopover } from "./ChipPopover";
@@ -172,9 +174,12 @@ function EditorLoaded({ id }: { id: string }) {
   }, []);
 
   const stubRef = useRef(stub);
-  const update = useCallback((s: Stub) => {
+  /** Counts committed edits: the "source revision" an art operation records when it is dispatched. */
+  const revisionRef = useRef(0);
+  const update = useCallback((s: Stub): boolean => {
     const prev = stubRef.current;
     stubRef.current = s;
+    revisionRef.current++;
     setStub(s);
     const stored = upsertStub(s);
     // One event per committed change, named by what changed (never the values); a deal says how it was dealt.
@@ -206,7 +211,35 @@ function EditorLoaded({ id }: { id: string }) {
         reportEvent("version_selected", { version: s.currentVersionId, versions: s.versions.length }, s.id);
       }
     }
+    return stored;
   }, []);
+
+  // The one art-generation controller. It lives as long as this editor, not as long as any panel, and commits through update().
+  // The host only reads the refs when an operation settles, never during render.
+  // eslint-disable-next-line react-hooks/refs
+  const [generation] = useState(() => new GenerationController(editorHost(stubRef, revisionRef, update, (id) => loadDeleted().includes(id))));
+  useEffect(() => {
+    generation.attach();
+    // say each transition once, through the single polite live region; the sheet and chat do not announce it again
+    const said = new Map<string, string>();
+    const unsub = generation.subscribe(() => {
+      for (const op of generation.all()) {
+        if (said.get(op.runId) === op.phase) continue;
+        const first = !said.has(op.runId);
+        said.set(op.runId, op.phase);
+        if (first && op.phase !== "pending" && op.phase !== "interrupted") continue; // adopted terminal status: already read
+        announce(op.phase === "pending" ? "Generating new art." : op.message);
+        if (op.via !== "agent" && op.phase === "applied") {
+          play("success", { emphasis: op.fallback ? "subtle" : undefined });
+          haptic([18, 40, 28]);
+        } else if (op.phase === "failed" && op.via !== "agent") play("close");
+      }
+    });
+    return () => {
+      unsub();
+      generation.detach();
+    };
+  }, [generation]);
 
   /** Deal another style: the old stub slides off, the new one is set down with a thunk and a buzz. */
   const deal = useCallback(
@@ -620,13 +653,14 @@ function EditorLoaded({ id }: { id: string }) {
     <>
       <ChipPopover stub={stub} factId={chipFact} onChange={update} onClose={() => setChipFact(null)} />
       <StyleGrid open={sheet === "styles"} onClose={() => setSheet(null)} stub={stub} onPick={(ed) => dealTo(ed, "grid")} />
-      <RemixSheet open={sheet === "remix"} onClose={() => setSheet(null)} stub={stub} onChange={update} onDescribe={() => ask()} />
+      <RemixSheet open={sheet === "remix"} onClose={() => setSheet(null)} stub={stub} onChange={update} onDescribe={() => ask()} generation={generation} />
       <PaperSheet title="Ask the agent" open={sheet === "agent"} onClose={() => setSheet(null)}>
         <div className={styles.agentSheet}>
           <AgentChat
             key={agentSeed?.n ?? 0}
             stub={stub}
             onChange={update}
+            generation={generation}
             onShowBack={() => {
               showBack();
               setSheet(null);
@@ -732,6 +766,7 @@ function EditorLoaded({ id }: { id: string }) {
                       <AgentNotes
                         stub={stub}
                         onChange={update}
+                        generation={generation}
                         onAsk={ask}
                         onShowBack={showBack}
                         variant="pin"
@@ -752,6 +787,8 @@ function EditorLoaded({ id }: { id: string }) {
                   <span className={styles.read} data-cam-read data-on="false" aria-hidden="true" />
                 </div>
               </div>
+
+              <GenerationStatus controller={generation} stubId={stub.id} onOpenRemix={() => openSheet("remix")} />
 
               <div className={styles.deskFooter}>
                 <div className={styles.footTools}>{tools}</div>
@@ -861,6 +898,8 @@ function EditorLoaded({ id }: { id: string }) {
           {toolbar}
         </section>
 
+        <GenerationStatus controller={generation} stubId={stub.id} onOpenRemix={() => openSheet("remix")} />
+
         <div className={styles.caption}>
           <div className={styles.dots} role="group" aria-label="Styles">
             {EDITIONS.map((ed, i) => (
@@ -877,7 +916,7 @@ function EditorLoaded({ id }: { id: string }) {
         </div>
         {hiddenRow}
 
-        <AgentNotes stub={stub} onChange={update} onAsk={ask} onShowBack={showBack} variant="card" />
+        <AgentNotes stub={stub} onChange={update} generation={generation} onAsk={ask} onShowBack={showBack} variant="card" />
 
         <div className={styles.toolsWrap}>{tools}</div>
 

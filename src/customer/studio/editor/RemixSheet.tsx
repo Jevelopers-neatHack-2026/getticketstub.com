@@ -1,13 +1,14 @@
 "use client";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { DesignVersion, Stub } from "../types";
 import { currentVersion } from "../types";
-import { remixArtNoted } from "@/customer/studio/research/client";
-import { play, haptic } from "@/customer/studio/feedback";
 import { PaperButton, PaperSheet, Tag, Tags, TearLink } from "@/customer/desk/Desk";
-import { addArtVersion, readImageFile } from "./ops";
+import type { GenerationController } from "../generation/operations";
+import { useGenerationOp } from "../generation/useGeneration";
+import { photoProducer, remixProducer } from "../generation/producers";
+import { play } from "@/customer/studio/feedback";
 import { listVersions, restoreVersion, sameArt, versionHash } from "../versions/versions";
-import { artOutcome, clock, errorCode, flow, since, vibeOf } from "@/customer/flows/events";
+import { vibeOf } from "@/customer/flows/events";
 import styles from "./overlays.module.css";
 
 export const VIBES = ["Neon", "Risograph", "70s", "Minimal"] as const;
@@ -15,6 +16,8 @@ export const VIBES = ["Neon", "Risograph", "70s", "Minimal"] as const;
 interface PanelProps {
   stub: Stub;
   onChange: (s: Stub) => void;
+  /** The editor's art-generation controller: the panel is only an entry point, it owns no request. */
+  generation: GenerationController;
   /** Opens the agent for a free-text description. */
   onDescribe: () => void;
   onDone?: () => void;
@@ -44,63 +47,34 @@ function chipNames(versions: DesignVersion[]): string[] {
 }
 
 /** Vibe tags, a photo option and one action. Free text lives behind "Describe it instead". */
-export function RemixPanel({ stub, onChange, onDescribe, onDone }: PanelProps) {
+export function RemixPanel({ stub, onChange, generation, onDescribe, onDone }: PanelProps) {
   const [vibe, setVibe] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const earlier = earlierVersions(stub);
   const names = chipNames(earlier);
+  const op = useGenerationOp(generation, stub.id);
+  const busy = op?.phase === "pending";
+  // Art the sheet asked for closes it when applied; a limited fallback stays open so the note is read.
+  // (The sheet closing never cancels anything: the editor owns the operation.)
+  const mine = useRef<string | null>(null);
+  useEffect(() => {
+    if (op && op.runId === mine.current && op.phase === "applied" && !op.fallback) onDone?.();
+  }, [op, onDone]);
 
-  const finish = (s: Stub) => {
-    onChange(s);
-    play("success");
-    haptic([18, 40, 28]);
-    onDone?.();
-  };
-
-  const run = async () => {
-    setBusy(true);
-    setError(null);
+  const dispatch = (req: Parameters<GenerationController["start"]>[0]) => {
     play("remix");
-    flow("remix_request", { via: "sheet", vibe: vibeOf(vibe) });
-    const asked = clock();
-    try {
-      const { art, limitNote } = await remixArtNoted(stub, vibe ?? undefined);
-      // the daily cap answers with procedural art: a limited result, never reported as generated
-      flow("remix_result", { via: "sheet", result: limitNote ? "limited" : "success", ...artOutcome(art), duration_ms: since(asked) });
-      if (limitNote) {
-        // Procedural art is applied, and the sheet stays open so the note is read.
-        onChange(addArtVersion(stub, art));
-        play("success", { emphasis: "subtle" });
-        setError(limitNote);
-      } else {
-        finish(addArtVersion(stub, art));
-      }
-    } catch (e) {
-      flow("remix_result", { via: "sheet", result: "error", duration_ms: since(asked), error_code: errorCode(e) });
-      setError(e instanceof Error ? e.message : "We couldn't remix the art. Try again.");
-    } finally {
-      setBusy(false);
-    }
+    const before = generation.get(stub.id);
+    const started = generation.start(req); // the operation exists as soon as this returns
+    const now = generation.get(stub.id);
+    if (now && now !== before && now.phase === "pending") mine.current = now.runId;
+    started.catch(() => undefined);
   };
+  const run = () => dispatch({ via: "sheet", vibe: vibe ?? undefined, fallback: "apply", run: remixProducer("sheet", vibe ?? undefined, vibeOf(vibe)) });
 
-  const onPhoto = async (file: File | undefined) => {
+  const onPhoto = (file: File | undefined) => {
     if (!file) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const src = await readImageFile(file);
-      // the person's own photo as the art: uploaded, kept on this device (never the photo or its name)
-      flow("remix_result", { via: "sheet", result: "success", art: "uploaded", capability: "local" });
-      finish(addArtVersion(stub, { kind: "image", src, seed: Date.now() % 100000, vibe: "photo", provenance: "live" }));
-    } catch (e) {
-      flow("remix_result", { via: "sheet", result: "error", art: "uploaded", capability: "local", error_code: "bad_image" });
-      setError(e instanceof Error ? e.message : "We couldn't read that photo. Try another one.");
-    } finally {
-      setBusy(false);
-      if (fileRef.current) fileRef.current.value = "";
-    }
+    dispatch({ via: "photo", fallback: "apply", run: photoProducer(file) });
+    if (fileRef.current) fileRef.current.value = "";
   };
 
   return (
@@ -130,8 +104,8 @@ export function RemixPanel({ stub, onChange, onDescribe, onDone }: PanelProps) {
       <PaperButton block onClick={run} disabled={busy}>
         {busy ? "Remixing…" : "Remix the art"}
       </PaperButton>
-      <p className={styles.muted} data-announce="change">
-        {busy ? "Remixing. Your text and edits stay." : (error ?? "Your text and edits stay. Each remix is kept, so you can go back.")}
+      <p className={styles.muted}>
+        {busy ? "Generating new art. The status stays beside the artwork if you close this." : (op?.message ?? "Each remix is kept as a version, so you can go back.")}
       </p>
       {earlier.length > 0 && (
         <>
