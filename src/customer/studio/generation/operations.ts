@@ -8,6 +8,7 @@
 import type { ArtLayer, Stub } from "../types";
 import { currentVersion } from "../types";
 import { addArtVersion } from "../editor/ops";
+import { readStoredStub } from "../store";
 import { forgetStatus, loadStatus, saveStatus, type GenerationOp, type GenerationVia } from "./status-store";
 
 export type { GenerationOp, GenerationPhase, GenerationVia } from "./status-store";
@@ -26,15 +27,18 @@ export interface GenerationHost {
    * Optional: a host without a store has nothing to observe.
    */
   presence?(stubId: string): "present" | "absent" | "unknown";
-  /** Replace the live draft and persist it. True when it reached this device's storage. */
-  commit(next: Stub): boolean;
+  /**
+   * Replace the live draft and persist it. True when it reached this device's storage. `persist: false` updates the open
+   * editor only and writes nothing (used when storage cannot be read, where a write could erase other projects).
+   */
+  commit(next: Stub, opts?: { persist?: boolean }): boolean;
 }
 
 /** The host over an editor's refs: its live draft, edit counter and real commit. */
 export function editorHost(
   stub: { readonly current: Stub | null },
   revision: { readonly current: number },
-  commit: (next: Stub) => boolean,
+  commit: (next: Stub, opts?: { persist?: boolean }) => boolean,
   isGone: (stubId: string) => boolean,
   presence?: (stubId: string) => "present" | "absent" | "unknown",
 ): GenerationHost {
@@ -62,6 +66,8 @@ export interface StartResult {
   op: GenerationOp;
 }
 
+export const CHANGED_MESSAGE = "This project was replaced on this device (for example restored from elsewhere) while art was being made, so nothing was applied. What is stored now is unchanged.";
+export const UNREADABLE_HOLD_MESSAGE = "New art ready, not applied automatically: this device's storage can't be read right now, so the project can't be updated safely. Apply it to use it in this open editor only (it will not be saved), or discard it.";
 export const REMOVED_MESSAGE = "This project was removed from this device while art was being made, so nothing was applied. Your open draft is unchanged.";
 export const STOPPED_MESSAGE =
   "Stopped. If a result still arrives it is ignored. This does not cancel the request on the art service, which may still finish it.";
@@ -142,14 +148,21 @@ export class GenerationController {
    * Re-read the store for every project with a live operation (call it on wall, storage and sync events). A removal seen
    * here retires those operations at once and for good: a project restored under the same id later does not revive them.
    */
-  observe = (): void => {
+  observe = (): void => this.scan();
+
+  /** As observe, with what a delivered `storage` event's payload says about each project at THAT moment. */
+  observeTransition = (hint: (stubId: string) => "present" | "absent" | "unknown"): void => this.scan(hint);
+
+  private scan(hint?: (stubId: string) => "present" | "absent" | "unknown"): void {
     if (!this.attached) return;
     const ids = new Set<string>();
     for (const op of this.ops.values()) if (op.phase === "pending" || op.phase === "ready") ids.add(op.stubId);
     const cur = this.host.current()?.id;
     if (cur) ids.add(cur);
-    ids.forEach((id) => this.watch(id));
-  };
+    // `hint` is what a delivered storage event's payload says. It is a transition: read before the current store, because by
+    // the time a queued event is handled the project may already have been restored under the same id.
+    ids.forEach((id) => this.watch(id, hint?.(id)));
+  }
 
   /** The latest operation for a project, if there is one to show. */
   get(stubId: string): GenerationOp | null {
@@ -239,13 +252,15 @@ export class GenerationController {
     if (!op || !this.isLatest(op) || op.phase !== "ready" || !entry?.candidate) return op ?? null;
     const cur = this.guard(op);
     if (!cur) return this.discardGone(runId);
-    if (this.seen.has(op.stubId) && this.host.presence?.(op.stubId) === "unknown") {
-      // an unreadable store cannot be merged into safely: keep the candidate, say so, write nothing
-      return this.finish(runId, { phase: "ready", message: "Not applied: this device's storage can't be read right now, so the project can't be updated safely. Try Apply again, or discard it." });
+    const v = this.verdict(op.stubId, cur);
+    if (v === "removed" || v === "changed") {
+      this.latchRemoved(op.stubId, v === "removed" ? REMOVED_MESSAGE : CHANGED_MESSAGE, v === "removed" ? "project_removed" : "project_changed");
+      return this.ops.get(runId) ?? null;
     }
     const { art } = entry.candidate;
     entry.candidate = undefined;
-    return this.commitArt(runId, cur, art, !!op.fallback);
+    // an explicit Apply on an unreadable store changes the open editor only: it writes nothing, so nothing can be erased
+    return this.commitArt(runId, cur, art, !!op.fallback, undefined, v === "unknown");
   }
 
   /** Throw away a ready candidate (or stop a pending run). The draft is untouched. */
@@ -299,18 +314,37 @@ export class GenerationController {
   }
 
   /** Compare the store with what this editor has seen of the project. A removal latches for the session. */
-  private watch(stubId: string): "present" | "absent" | "unknown" | undefined {
+  private watch(stubId: string, transition?: "present" | "absent" | "unknown"): "present" | "absent" | "unknown" | undefined {
+    if (transition === "absent" && this.seen.has(stubId)) this.latchRemoved(stubId, REMOVED_MESSAGE, "project_removed");
     const p = this.host.presence?.(stubId);
     if (p === "present") this.seen.add(stubId);
-    else if (p === "absent" && this.seen.has(stubId) && !this.removed.has(stubId)) {
-      this.removed.add(stubId);
-      for (const op of [...this.ops.values()]) {
-        if (op.stubId !== stubId || (op.phase !== "pending" && op.phase !== "ready")) continue;
-        this.entries.get(op.runId)?.ac.abort();
-        this.finish(op.runId, { phase: "discarded", code: "project_removed", message: REMOVED_MESSAGE });
-      }
-    }
+    else if (p === "absent" && this.seen.has(stubId)) this.latchRemoved(stubId, REMOVED_MESSAGE, "project_removed");
     return p;
+  }
+
+  /** The project was seen removed or replaced: retire its live operations for good, for this editor session. */
+  private latchRemoved(stubId: string, message: string, code: string): void {
+    this.removed.add(stubId);
+    for (const op of [...this.ops.values()]) {
+      if (op.stubId !== stubId || (op.phase !== "pending" && op.phase !== "ready")) continue;
+      this.entries.get(op.runId)?.ac.abort();
+      this.finish(op.runId, { phase: "discarded", code, message });
+    }
+  }
+
+  /**
+   * Immediately before a write: what is stored is the project this draft came from. Independent of any event or queue.
+   * "removed": absent (or queued for deletion); "changed": a different project now holds the id (versions the draft was
+   * built on are missing); "unknown": the store cannot be read. A host without a store has nothing to check.
+   */
+  private verdict(stubId: string, cur: Stub): "ok" | "removed" | "changed" | "unknown" {
+    if (!this.host.presence) return "ok";
+    if (this.host.isGone(stubId)) return "removed";
+    const stored = readStoredStub(stubId);
+    if (stored.status === "unknown") return "unknown";
+    if (stored.status !== "present") return "removed";
+    const have = new Set((stored.stub.versions ?? []).map((v) => v.id));
+    return cur.versions.every((v) => have.has(v.id)) ? "ok" : "changed";
   }
 
   /** The current draft, when this operation may still write to it: it is the open project, and not seen removed. */
@@ -333,16 +367,6 @@ export class GenerationController {
       return;
     }
     const fallback = !!produced.limitNote;
-    if (this.seen.has(op.stubId) && this.host.presence?.(op.stubId) === "unknown") {
-      // storage cannot be read: we cannot tell "saved" from "removed". Never call it deleted, never auto-write; keep for review.
-      entry.candidate = produced;
-      this.finish(runId, {
-        phase: "ready",
-        fallback,
-        message: "New art ready, not applied automatically: this device's storage could not be read, so we can't confirm the project is still saved. Apply it as a new version, or discard it.",
-      });
-      return;
-    }
     if (fallback && entry.req.fallback === "offer") {
       this.finish(runId, {
         phase: "failed",
@@ -362,12 +386,32 @@ export class GenerationController {
       });
       return;
     }
+    const v = this.verdict(op.stubId, cur);
+    if (v === "removed" || v === "changed") {
+      this.latchRemoved(op.stubId, v === "removed" ? REMOVED_MESSAGE : CHANGED_MESSAGE, v === "removed" ? "project_removed" : "project_changed");
+      return;
+    }
+    if (v === "unknown") {
+      // storage cannot be read: "saved" and "removed" cannot be told apart, and a write could erase other projects. Never call it
+      // deleted, never write; keep the result for an explicit, honest Apply.
+      entry.candidate = produced;
+      this.finish(runId, { phase: "ready", fallback, message: UNREADABLE_HOLD_MESSAGE });
+      return;
+    }
     this.commitArt(runId, cur, produced.art, fallback, produced.limitNote);
   }
 
-  private commitArt(runId: string, cur: Stub, art: ArtLayer, fallback: boolean, limitNote?: string): GenerationOp {
+  private commitArt(runId: string, cur: Stub, art: ArtLayer, fallback: boolean, limitNote?: string, memoryOnly = false): GenerationOp {
     // art-only: the new version is built from the CURRENT draft, so every other field stays as the person left it
-    const saved = this.host.commit(addArtVersion(cur, art));
+    const saved = this.host.commit(addArtVersion(cur, art), memoryOnly ? { persist: false } : undefined);
+    if (memoryOnly) {
+      return this.finish(runId, {
+        phase: "applied",
+        fallback,
+        saved: false,
+        message: "New art applied in this open editor only. This device's storage can't be read right now, so it is NOT saved. The earlier look stays in Versions.",
+      });
+    }
     const lead = fallback ? `${limitNote ?? "The daily limit was reached."} No generated image was made; procedural art was applied instead.` : "New art applied.";
     return this.finish(runId, {
       phase: "applied",

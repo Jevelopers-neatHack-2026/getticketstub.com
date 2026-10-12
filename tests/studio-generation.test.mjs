@@ -86,10 +86,10 @@ const makeStub = (id = "s1") => ({
 /** The editor's commit path, as Editor.update does it: live ref, revision, then the real local save. */
 function openEditor(id = "s1", { seed = true } = {}) {
   const ed = { stub: null, revision: 0, saved: [] };
-  ed.update = (s) => {
+  ed.update = (s, opts) => {
     ed.stub = s;
     ed.revision++;
-    const stored = store.upsertStub(s);
+    const stored = opts?.persist === false ? false : store.upsertStub(s);
     ed.saved.push(stored);
     return stored;
   };
@@ -768,30 +768,29 @@ describe("an observed removal retires operations for good, independent of the ou
     assert.equal(store.getStub("s1"), undefined);
   });
 
-  test("unknown storage is honest: never 'deleted', never an unsafe write; the draft stays open", async () => {
+  test("unknown storage is honest: never 'deleted', never an unsafe write; Apply changes the open editor only", async () => {
     const ed = openEditor();
     const other = makeStub("keep");
     store.upsertStub(other);
     const p = ed.ask("sheet");
     await tick();
-    localStorage.readFails = true; // storage became unreadable
-    const wallBefore = JSON.stringify([...store.loadWall()]); // (reads empty while unreadable: the helper must not call it deleted)
+    localStorage.readFails = true; // storage became unreadable (writes would still work)
     calls[0].ok("held");
     const { op } = await p;
     assert.equal(op.phase, "ready", "held for review rather than written blindly");
     assert.notEqual(op.code, "project_removed");
-    assert.match(op.message, /can't confirm/);
+    assert.match(op.message, /can't be read/);
     assert.equal(ed.stub.versions.length, 1, "open draft untouched");
-    const tries = ed.gen.apply(op.runId);
-    assert.equal(tries.phase, "ready", "explicit Apply also refuses to write into an unreadable store");
-    assert.match(tries.message, /can't be read/);
-    assert.equal(ed.stub.versions.length, 1);
+    const applied = ed.gen.apply(op.runId);
+    assert.equal(applied.phase, "applied");
+    assert.equal(applied.saved, false);
+    assert.match(applied.message, /NOT saved/);
+    assert.equal(ed.stub.versions.length, 2, "the open editor has it");
     localStorage.readFails = false;
     assert.ok(store.getStub("keep"), "other projects were not overwritten");
-    assert.equal(store.stubPresence("s1"), "present");
-    assert.equal(ed.gen.apply(op.runId).phase, "applied", "once readable again, the explicit Apply works exactly once");
-    assert.equal(ed.stub.versions.length, 2);
-    void wallBefore;
+    assert.equal(store.getStub("s1").versions.length, 1, "nothing was persisted for the unreadable moment");
+    ed.gen.apply(op.runId);
+    assert.equal(ed.stub.versions.length, 2, "at most once");
   });
 
   test("write failure and quota on a valid project still apply at most once with the draft kept and an unsaved warning", async () => {
@@ -826,5 +825,130 @@ describe("an observed removal retires operations for good, independent of the ou
     calls[calls.length - 1].ok("new");
     assert.equal((await q).op.phase, "applied");
     assert.equal(store.getStub("brand-new").versions.length, 2);
+  });
+});
+
+describe("boundary repairs: first-observation unknown, and a removal that restoration hides (PR100-ASTRA-002/003)", () => {
+  const restoredStub = (id = "s1") => ({ ...makeStub(id), event: { ...makeStub(id).event, title: "Restored independent draft" }, versions: [{ ...makeStub(id).versions[0], id: "restored-v0" }], currentVersionId: "restored-v0" });
+
+  test("unknown storage at the very FIRST observation holds the result, writes nothing and erases no other project", async () => {
+    const ed0 = openEditor();
+    store.upsertStub(makeStub("other"));
+    const live = store.getStub("s1");
+    localStorage.readFails = true; // unreadable before the controller ever observes the project
+    const writes = { n: 0 };
+    const orig = localStorage.setItem.bind(localStorage);
+    localStorage.setItem = (k, v) => ((k === "ticketstub.wall.v1" && writes.n++, orig(k, v)));
+    const ed = { stub: live, saves: 0 };
+    const g = new GenerationController(editorHost({ get current() { return ed.stub; } }, { current: 0 }, (s) => ((ed.stub = s), ed.saves++, store.upsertStub(s)), (id) => store.loadDeleted().includes(id), store.stubPresence), localStorage);
+    g.attach();
+    const r = await g.start({ via: "sheet", run: async () => ({ art: { kind: "procedural", seed: 9, provenance: "simulated" } }) });
+    localStorage.setItem = orig;
+    localStorage.readFails = false;
+    assert.equal(r.op.phase, "ready");
+    assert.equal(ed.saves, 0, "no commit at all");
+    assert.equal(writes.n, 0, "no wall write was even attempted");
+    assert.ok(store.getStub("other"), "the unrelated project survives");
+    assert.ok(store.getStub("s1"));
+    void ed0;
+  });
+
+  test("the typed store write refuses an unreadable wall instead of erasing it (upsertStub)", () => {
+    store.upsertStub(makeStub("a"));
+    store.upsertStub(makeStub("b"));
+    localStorage.readFails = true;
+    assert.equal(store.upsertStub(makeStub("c")), false, "reported unsaved");
+    localStorage.readFails = false;
+    assert.deepEqual(store.loadWall().map((s) => s.id).sort(), ["a", "b"], "nothing was erased and nothing half-written");
+  });
+
+  test("malformed storage is unknown, never absent; a never-seen project in a writable store still works", async () => {
+    const ed = openEditor();
+    localStorage.setItem("ticketstub.wall.v1", "{not json");
+    assert.equal(store.stubPresence("s1"), "unknown");
+    const p = ed.ask();
+    await tick();
+    calls[0].ok("m");
+    assert.equal((await p).op.phase, "ready", "malformed wall: held, not 'deleted' and not written");
+    localStorage.clear();
+    store.upsertStub(makeStub("s1"));
+    const fresh = openEditor("s1");
+    const q = fresh.ask();
+    await tick();
+    calls[calls.length - 1].ok("ok");
+    assert.equal((await q).op.phase, "applied");
+  });
+
+  /** What the paused editor will be handed later: removal then restoration, as two queued storage events. */
+  function queuedDeleteThenRestore(ed) {
+    const key = "ticketstub.wall.v1";
+    const before = localStorage.getItem(key);
+    const other = store.getStub("keep") ?? makeStub("keep");
+    localStorage.setItem(key, JSON.stringify([other])); // peer removes the project
+    const removedValue = localStorage.getItem(key);
+    localStorage.setItem(key, JSON.stringify([restoredStub(), other])); // and restores the same id before this tab handles anything
+    const restoredValue = localStorage.getItem(key);
+    const events = [
+      { key, oldValue: before, newValue: removedValue },
+      { key, oldValue: removedValue, newValue: restoredValue },
+    ];
+    return () => {
+      for (const e of events) ed.gen.observeTransition((id) => store.wallPresenceFromValue(e.newValue, id));
+    };
+  }
+
+  test("queued removal + same-id restore: the event payload keeps the removal; old run and retained callbacks stay invalid", async () => {
+    const ed = openEditor();
+    store.upsertStub(makeStub("keep"));
+    const a = ed.ask("note");
+    await tick();
+    const idA = ed.gen.get("s1").runId;
+    const deliver = queuedDeleteThenRestore(ed);
+    assert.equal(store.getStub("s1").event.title, "Restored independent draft", "by delivery time the id is already restored");
+    deliver();
+    calls[0].ok("late");
+    const { op } = await a;
+    assert.equal(op.phase, "discarded");
+    assert.equal(store.getStub("s1").event.title, "Restored independent draft", "the restored project was not overwritten");
+    assert.deepEqual(store.getStub("s1").versions.map((v) => v.id), ["restored-v0"]);
+    for (const m of ["apply", "discard", "cancel", "dismiss"]) ed.gen[m](idA);
+    assert.equal(ed.gen.retry(idA), null);
+    assert.equal((await ed.ask("agent", "offer")).started, false, "an old editor session cannot start new work on the restored id");
+    // a genuinely new editor session on the restored project generates normally
+    const fresh = openEditor("s1");
+    const q = fresh.ask("sheet");
+    await tick();
+    calls[calls.length - 1].ok("fresh");
+    assert.equal((await q).op.phase, "applied");
+    assert.deepEqual(store.getStub("s1").versions.map((v) => v.id).slice(0, 1), ["restored-v0"], "older immutable version unchanged");
+    assert.ok(store.getStub("keep"), "the unrelated project is preserved throughout");
+  });
+
+  test("even with NO event delivered, a restored (different) project is detected at the write and never overwritten", async () => {
+    const live = openEditor().stub;
+    const box = { stub: live };
+    // a bare controller: no observer is wired, so only the write-time check can notice
+    const g = new GenerationController(editorHost({ get current() { return box.stub; } }, { current: 0 }, (s) => ((box.stub = s), store.upsertStub(s)), (id) => store.loadDeleted().includes(id), store.stubPresence), localStorage);
+    g.attach();
+    let release;
+    const a = g.start({ via: "sheet", run: () => new Promise((r) => (release = r)) });
+    store.removeStub("s1");
+    store.saveDeleted([]);
+    store.upsertStub(restoredStub());
+    release({ art: { kind: "procedural", seed: 3, provenance: "simulated" } });
+    const { op } = await a;
+    assert.equal(op.phase, "discarded");
+    assert.equal(op.code, "project_changed");
+    assert.deepEqual(store.getStub("s1").versions.map((v) => v.id), ["restored-v0"]);
+  });
+
+  test("a readable project that gained versions elsewhere is still a valid target (peer edits do not block generation)", async () => {
+    const ed = openEditor();
+    const p = ed.ask("sheet");
+    await tick();
+    const peer = store.getStub("s1");
+    store.upsertStub({ ...peer, versions: [...peer.versions, { id: "peer-v1", edition: "researched", art: { kind: "procedural", seed: 5 }, createdAt: "2026-10-02T00:00:00.000Z" }] });
+    calls[0].ok("ok");
+    assert.equal((await p).op.phase, "applied");
   });
 });

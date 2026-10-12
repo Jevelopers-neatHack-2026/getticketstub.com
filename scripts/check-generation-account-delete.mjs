@@ -158,6 +158,61 @@ try {
   check("ready case: zero upsert dispatches for the deleted project", (await upsertsFor(page, rid, idx2)) === 0);
   check("ready case: API wall has no such project", !(await remoteHas(rid)));
   await page.screenshot(join(evidenceDir, "ready-deleted-acked.png"));
+  // ---- 4. native paused editor: a peer deletes and restores the same id while this editor cannot run (PR100-ASTRA-003) ----
+  const qid = `acct-q-${Date.now()}`;
+  await openStudio(qid);
+  await page.eval(`(()=>{const w=JSON.parse(localStorage.getItem('ticketstub.wall.v1'));const keep=${JSON.stringify({ ...mkStub("keep-other"), event: { type: "concert", title: "Unrelated project", facts: [] } })};localStorage.setItem('ticketstub.wall.v1',JSON.stringify([...w,keep]))})()`);
+  check("queued case: note request pending", (await noteMoodier(page)) && (await page.waitFor("window.__art.length===1", 5000)));
+  await page.eval(`window.__storageEvents=[];window.addEventListener('storage',e=>{if(e.key==='ticketstub.wall.v1')window.__storageEvents.push({next:e.newValue})})`);
+  const peer = await browser.newPage({ width: 1280, height: 900 });
+  await peer.goto(`${base}/wall`, { settle: 1800 });
+  await page.send("Debugger.enable");
+  let reached;
+  const paused = new Promise((r) => (reached = r));
+  const off = browser.conn.on((m) => { if (m.sessionId === page.sid && m.method === "Debugger.paused") reached(true); });
+  const pausedEval = page.eval("debugger; true");
+  if (!(await Promise.race([paused, sleep(5000).then(() => false)]))) throw new Error("harness could not confirm the editor was paused");
+  off();
+  const peerMutation = peer.eval(`(()=>{const wall=JSON.parse(localStorage.getItem('ticketstub.wall.v1'));const src=wall.find(s=>s.id===${JSON.stringify(qid)});const next={...src,event:{...src.event,title:'Restored independent draft'},versions:[{...src.versions[0],id:'restored-v0'}],currentVersionId:'restored-v0',updatedAt:Date.now()};const rest=wall.filter(s=>s.id!==src.id);localStorage.setItem('ticketstub.wall.v1',JSON.stringify(rest));localStorage.setItem('ticketstub.wall.v1',JSON.stringify([next,...rest]));return true})()`);
+  const finishedWhilePaused = await Promise.race([peerMutation.then(() => true), sleep(8000).then(() => false)]);
+  await page.send("Debugger.resume");
+  await pausedEval;
+  await peerMutation;
+  check("queued case: the peer deleted and restored while the editor was paused", finishedWhilePaused);
+  check("queued case: native storage events delivered, one with this project absent in its payload", (await page.waitFor("window.__storageEvents.length>=2", 5000)) && (await page.eval(`window.__storageEvents.some(e=>!JSON.parse(e.next||'[]').some(s=>s.id===${JSON.stringify(qid)}))`)));
+  const restored = await localStub(page, qid);
+  check("queued case: the independent restored draft is intact before the late response", restored?.event.title === "Restored independent draft" && restored.currentVersionId === "restored-v0");
+  await page.eval("window.__art[0]()");
+  await sleep(2500);
+  const after = await localStub(page, qid);
+  check("queued case: the late old generation does not overwrite the restored draft", after?.event.title === "Restored independent draft" && after.versions.length === 1 && after.currentVersionId === "restored-v0", { title: after?.event.title, versions: after?.versions.length });
+  check("queued case: the unrelated project is preserved", (await localStub(page, "keep-other"))?.event.title === "Unrelated project");
+  await page.screenshot(join(evidenceDir, "queued-delete-restore.png"));
+  await peer.close();
+
+  // ---- 5. unreadable storage (reads throw, writes would work): hold, never write, never call it deleted ----
+  const uid = `acct-u-${Date.now()}`;
+  await openStudio(uid);
+  await page.eval(`(()=>{const w=JSON.parse(localStorage.getItem('ticketstub.wall.v1'));localStorage.setItem('ticketstub.wall.v1',JSON.stringify([...w,${JSON.stringify({ ...mkStub("keep-two"), event: { type: "concert", title: "Second unrelated", facts: [] } })}]))})()`);
+  check("unreadable case: note request pending", (await noteMoodier(page)) && (await page.waitFor("window.__art.length===1", 5000)));
+  await page.eval(`(()=>{window.__wallWrites=0;const g=Storage.prototype.getItem,st=Storage.prototype.setItem;window.__unreadable=true;Storage.prototype.getItem=function(k){if(window.__unreadable&&k==='ticketstub.wall.v1')throw new DOMException('unreadable','SecurityError');return g.call(this,k)};Storage.prototype.setItem=function(k,v){if(k==='ticketstub.wall.v1')window.__wallWrites++;return st.call(this,k,v)};window.__restoreStorage=()=>{window.__unreadable=false}})()`);
+  await page.eval("window.__art[0]()");
+  check("unreadable case: result held as ready, not called deleted", await page.waitFor(`/can't be read/.test(document.querySelector('[aria-label="Art generation status"]')?.textContent||'')&&document.querySelector('[aria-label="Art generation status"]')?.getAttribute('data-phase')==='ready'`, 6000));
+  check("unreadable case: not one wall write was attempted", (await page.eval("window.__wallWrites")) === 0);
+  check("unreadable case: explicit Apply is in-editor only and says NOT saved", (await click(page, "Apply as new version")) && (await page.waitFor(`/NOT saved/.test(document.querySelector('[aria-label="Art generation status"]')?.textContent||'')`, 6000)));
+  check("unreadable case: still no wall write", (await page.eval("window.__wallWrites")) === 0);
+  await page.eval("window.__restoreStorage()");
+  check("unreadable case: no project was erased once readable again", (await localStub(page, "keep-two"))?.event.title === "Second unrelated" && (await localStub(page, uid))?.versions.length === 1);
+
+  // ---- 6. a valid project whose write fails keeps the draft and warns it is unsaved ----
+  const wid = `acct-w-${Date.now()}`;
+  await openStudio(wid);
+  check("write-failure case: note request pending", (await noteMoodier(page)) && (await page.waitFor("window.__art.length===1", 5000)));
+  await page.eval(`(()=>{const st=Storage.prototype.setItem;Storage.prototype.setItem=function(k,v){if(k==='ticketstub.wall.v1')throw new DOMException('full','QuotaExceededError');return st.call(this,k,v)}})()`);
+  await page.eval("window.__art[0]()");
+  check("write-failure case: applied once with the unsaved warning", await page.waitFor(`document.querySelector('[aria-label="Art generation status"]')?.getAttribute('data-phase')==='applied'&&/could not be saved/.test(document.querySelector('[aria-label="Art generation status"]').textContent)`, 6000));
+  check("write-failure case: the stored project is untouched", (await localStub(page, wid))?.versions.length === 1);
+
   check("fixture network guard: no outbound attempt", readFileSync(netLog, "utf8").split("\n").filter(Boolean).length === 0, readFileSync(netLog, "utf8"));
   exitCode = failed ? 1 : 0;
 } catch (e) {

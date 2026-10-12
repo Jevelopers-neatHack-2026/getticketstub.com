@@ -3,7 +3,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import type { Edition, Material, Stub } from "../types";
 import { EDITIONS, currentVersion } from "../types";
-import { WALL_CHANGED, encodeStub, getStub, loadDeleted, stubPresence, upsertStub } from "../store";
+import { WALL_CHANGED, WALL_STORAGE_KEY, encodeStub, getStub, loadDeleted, stubPresence, upsertStub, wallPresenceFromValue } from "../store";
 import { StubView } from "@/customer/studio/stub/StubView";
 import { EDITION_META } from "@/customer/studio/stub/editions";
 import { announce } from "@/customer/a11y/announce";
@@ -176,12 +176,13 @@ function EditorLoaded({ id }: { id: string }) {
   const stubRef = useRef(stub);
   /** Counts committed edits: the "source revision" an art operation records when it is dispatched. */
   const revisionRef = useRef(0);
-  const update = useCallback((s: Stub): boolean => {
+  const update = useCallback((s: Stub, opts?: { persist?: boolean }): boolean => {
     const prev = stubRef.current;
     stubRef.current = s;
     revisionRef.current++;
     setStub(s);
-    const stored = upsertStub(s);
+    // persist: false is the generation controller refusing to write into a wall it cannot read
+    const stored = opts?.persist === false ? false : upsertStub(s);
     // One event per committed change, named by what changed (never the values); a deal says how it was dealt.
     if (prev) {
       const method = dealMethod.current;
@@ -223,9 +224,15 @@ function EditorLoaded({ id }: { id: string }) {
     // A removal is observed when it happens (local save, another tab, an account sync), not inferred later from a queue
     // that sync may already have emptied. Once seen, the operation is retired for good.
     const observe = () => generation.observe();
+    // another tab's write: the event's own payload says whether the project was absent at THAT moment, even when it has been
+    // restored under the same id by the time this (possibly delayed) event is handled
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== null && e.key !== WALL_STORAGE_KEY) return;
+      generation.observeTransition(e.key === null ? () => "absent" : (id) => wallPresenceFromValue(e.newValue, id));
+    };
     window.addEventListener(WALL_CHANGED, observe);
     window.addEventListener(WALL_SYNCED, observe);
-    window.addEventListener("storage", observe);
+    window.addEventListener("storage", onStorage);
     window.addEventListener("focus", observe);
     // say each transition once, through the single polite live region; the sheet and chat do not announce it again
     const said = new Map<string, string>();
@@ -245,7 +252,7 @@ function EditorLoaded({ id }: { id: string }) {
     return () => {
       window.removeEventListener(WALL_CHANGED, observe);
       window.removeEventListener(WALL_SYNCED, observe);
-      window.removeEventListener("storage", observe);
+      window.removeEventListener("storage", onStorage);
       window.removeEventListener("focus", observe);
       unsub();
       generation.detach();
