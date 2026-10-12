@@ -1,5 +1,7 @@
 # Analytics journey validation (issue #39)
 
+**Historical scope:** the recorded 281-check run predates PR [#104](https://github.com/Jevelopers-neatHack-2026/getticketstub.com/pull/104), which changed the host root composition by adding the app-native landing around `StudioStart`. It remains evidence for the build and journeys recorded at the time; it does not exercise or validate the later landing hero, demo controls, cards, or their analytics instrumentation. See the [flow coverage scope note](analytics-flow-coverage.md#scope-note-2026-10-12).
+
 `scripts/check-analytics-journeys.mjs` drives the production build in a real headless Chrome, through the rendered UI,
 and checks what the analytics tag would read (`window.dataLayer`) for every customer journey. It complements
 `scripts/check-analytics-order.mjs` (33 checks: page-view ordering, warm navigation and remembered consent), which it

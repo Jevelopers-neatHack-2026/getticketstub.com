@@ -1,6 +1,6 @@
 # Trust boundaries and types
 
-GT-01 (#7). Three kinds of data meet in this app and they are never the same type: what the browser sends (untrusted), what the server derives about the caller (trusted), and what a domain adapter exchanges with another repo's contract (proposed, versioned elsewhere). A value only crosses from one to the next through a named function.
+GT-01 (#7). Three kinds of data meet in this app and they are never the same type: what the browser sends (untrusted), what the server derives about the caller (trusted), and what a domain adapter exchanges with another repo's contract (local, versioned or proposed elsewhere). A value only crosses from one to the next through a named function, and each route must call the guards that apply to its boundary. The helpers below are not universal middleware: authentication, Origin checks, body-size limits and rate limits vary by handler. See the [HTTP API catalog](../api/HTTP-API.md) for route-specific behavior and [current architecture](CURRENT-STATE.md) for actual cross-repository connections.
 
 ```mermaid
 flowchart LR
@@ -20,17 +20,16 @@ flowchart LR
     TM["customer/studio/research/ticketmaster*.ts<br/>Ticketmaster Discovery, event-intelligence"]
     COM["customer/pages/commerce.ts, capabilities.ts<br/>orders, supplier capability map"]
   end
-  DASH["team-dashboard<br/>(mounted at /admin)"]
+  DASH["team-dashboard<br/>(future package; host fixture now)"]
 
   UI --> DTO --> HTTP --> VAL --> CTX
   CTX --> ST
   ST --> PRJ --> UI
   CTX -- "issueContextToken" --> DASH
   DASH -- "token, verified server side" --> CTX
-  CTX --> CRE
-  CTX --> TM
-  CTX --> COM
 ```
+
+The diagram shows the trust path for routes that derive caller context. The adapter inventory below is not a universal runtime chain: the research route is public and has its own Ticketmaster path, the creative-engine adapter is a pure local mapping layer, and commerce operations have their own route/service boundaries.
 
 ## 1. Untrusted: browser DTOs
 
@@ -38,8 +37,8 @@ Everything that arrives in a request is a claim, not a fact: bodies, query strin
 
 Where they are checked:
 
-- `src/server/http.ts`: the handler wrapper `route()` turns thrown `HttpError`s into the `{ error: { code, message } }` shape; `checkOrigin` refuses a mutating request from a foreign origin; `readJson` enforces a byte cap before parsing; `limit` rate-limits.
-- `src/server/validate.ts`: the runtime validation. `readStub` (a stub body, size-capped), `parseEmail` / `parseAccountEmail`, `parseToken` (URL tokens), `safeReturnTo` (no open redirects), `parseText`. A route calls these before touching storage. TypeScript types alone prove nothing about request data.
+- `src/server/http.ts`: the handler wrapper `route()` turns thrown `HttpError`s into the `{ error: { code, message } }` shape. A handler must explicitly call `checkOrigin` to enforce the shared origin rule, `readJson` to apply its supplied byte ceiling before parsing, and `limit` to apply a process-local rate limit. The research route does not currently call those origin, capability or route-limiter guards; `/api/art` uses `req.json()` without an explicit route byte ceiling. See the route catalog and [HTTP origin boundaries](../operations/http-boundaries.md).
+- `src/server/validate.ts`: reusable runtime validation. `readStub` size-caps and checks a stub body; `parseEmail` / `parseAccountEmail`, `parseToken` (URL tokens), `safeReturnTo` (no open redirects), and `parseText` validate their named values when called. Routes use different combinations, and TypeScript types alone prove nothing about request data.
 - Other domain inputs get their own checks at the route: `src/app/api/research/route.ts` (URL allow-listing, demo mode refuses arbitrary URLs), `src/app/api/art/route.ts`, `src/app/api/orders/route.ts`.
 
 ## 2. Trusted: server-derived context
@@ -61,11 +60,11 @@ Each adapter converts between our `Stub`/`Order` types and a contract owned by a
 | Creative engine | `src/customer/studio/creative/` (`contracts.ts`, `controls.ts`, `adapter.ts`, `fixtures/`), `docs/integration/creative-engine.md` | creative-engine | `scripts/check-creative-adapter.mjs` (`verify:product --suite creative`) |
 | Ticketmaster / event intelligence | `src/customer/studio/research/ticketmaster.ts`, `ticketmasterPackage.ts`, `docs/integration/event-intelligence.md` | event-intelligence | `scripts/smoke-ticketmaster.mjs` against `scripts/fixtures/ticketmaster-discovery-event.json` (`--suite research`) |
 | Commerce and supplier capabilities | `src/customer/pages/commerce.ts`, `src/customer/pages/capabilities.ts`, `src/app/api/orders/route.ts` | print-production / fulfillment (supplier SKUs) | `--suite production` smoke (demo mode only) |
-| Dashboard | `src/app/admin/contract.ts` (`ticketstub.admin-mount/1`) | team-dashboard | `--suite foundation` (admin fixture) |
+| Dashboard | `src/app/admin/contract.ts` (`ticketstub.admin-mount/1`) | team-dashboard | `--suite foundation` (host admin fixture; team-dashboard package is not imported) |
 
 Rules that follow from this:
 
 1. A browser DTO is never passed to an adapter or to storage unvalidated, and an adapter type is never sent to the browser without a projection.
-2. A decision about the caller is made from the context, once, at the route. Screens and the dashboard may hide things; they never grant anything.
-3. In demo mode (`TICKETSTUB_RUNTIME_MODE` is not `live`) no adapter calls out: research uses fixtures, art is `simulated`, agent replies 204. `verify:product` runs with outbound network blocked to prove it.
+2. A route that needs caller authority derives it from server context and checks the required capability at that boundary. Screens and the dashboard may hide things; they never grant anything. Routes that are intentionally public still need their own exposure limits and input rules.
+3. When `TICKETSTUB_RUNTIME_MODE` is not `live`, external behavior is still route-specific: research uses fixtures, art is `simulated`, and the schema-bearing action-agent protocol returns its JSON response from the deterministic rules planner, which may propose typed actions. The legacy `/api/agent` `{ event, message }` branch, not the action-protocol branch, returns HTTP 204 in non-live mode. This is not a general promise that every handler is inert. `verify:product` runs the documented product checks with outbound network blocked; see the [runtime configuration](../operations/preview-runtime.md).
 4. No adapter invents ownership of work another repo does. Research, creative production, print production, fulfillment and the ledger are specified there; this app consumes them through these adapters.

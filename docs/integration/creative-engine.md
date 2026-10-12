@@ -1,9 +1,13 @@
-# creative-engine integration (adapter only, no runtime calls)
+# Creative Engine compatibility adapter (no runtime calls)
+
+**Observed app source:** `getticketstub.com` `main` at [`138e4b9019c0f5a55ad5e3f586d129216b680e4d`](https://github.com/Jevelopers-neatHack-2026/getticketstub.com/tree/138e4b9019c0f5a55ad5e3f586d129216b680e4d), audited 2026-10-12. The app-native landing change did not change the creative adapter or route. **Related component source:** [`creative-engine` main at `5b0f354dd8871550345863aef4017b7bbba3bd86`](https://github.com/Jevelopers-neatHack-2026/creative-engine/tree/5b0f354dd8871550345863aef4017b7bbba3bd86). The app has a local pure mapping layer and offline fixture comparison; it does not import or call the creative-engine package or service. The component now contains local synthetic API, version, controls, inspection and metering-port implementations, so the former description of main as architecture-only is stale. Its provider preflights and live gates remain fail-closed, and the external C01-C04 agreements remain pending. Neither repository's local code proves an integrated creative workflow or acceptance.
+
+> **Compatibility-note age:** The mapping and control tables below compare the app adapter with creative-engine proposal commit `65b8036194b3b962e1fd34f7193d54791cf07c88`, not the current `creative-engine` main revision above. Treat them as a dated compatibility analysis, not a current contract. Re-check both source trees, the maintained contract catalog, owner agreements and master acceptance before using or changing the mapping.
 
 Code: `src/customer/studio/creative/` (`contracts.ts`, `controls.ts`, `adapter.ts`, `fixtures/`).
 Check: `node scripts/check-creative-adapter.mjs` (Node 22.15+). It builds a brief, edit plans, a control schema and API envelopes from the demo stub and compares keys and enums with creative-engine's fixture JSON.
 
-Source of truth: `Jevelopers-neatHack-2026/creative-engine`, branch `impl/creative-brief-integrated` (commit `96d56f3`; the most complete branch, and it contains the contracts, controls, API, brief and version-store work). `main` only has architecture docs. Everything upstream is a **local consumer proposal**: `MODE=live` is not implemented, `make acceptance` exits 2 until the owner agreements are signed, and the shared-contracts catalog (`docs/contract-catalog.md`) describes `CreativeBrief`, `DesignControlSchema` and `DesignVersion` as proposed interfaces.
+The old branch reference above is retained only as the origin of this adapter audit. Current component source and release/owner-agreement state are maintained in [`creative-engine` main](https://github.com/Jevelopers-neatHack-2026/creative-engine/tree/5b0f354dd8871550345863aef4017b7bbba3bd86), its [ownership guide](https://github.com/Jevelopers-neatHack-2026/creative-engine/blob/main/docs/architecture/OWNERSHIP.md), and the [master acceptance checklist](https://github.com/Jevelopers-neatHack-2026/integration-evals/blob/main/planning/acceptance-checklist.md).
 
 ## Mapping table
 
@@ -77,7 +81,7 @@ Checked at the type level (`Pending<K>` = `` `PENDING_${K}` ``); a real hash alw
 
 | Field | Why we cannot supply it |
 | --- | --- |
-| `research_package_ref.package_id`, `.content_hash` | Needs an event-intelligence `EventIntelligencePackage` with a canonical hash. Our `/api/research` is moving to that shape (Ticketmaster); then this can be filled. |
+| `research_package_ref.package_id`, `.content_hash` | Requires an event-intelligence package with an accepted canonical identity and hash. The app can form locally package-shaped Ticketmaster data, but no shared schema/hash agreement is accepted or wired; these fields remain unavailable. See the [event-intelligence handoff](event-intelligence.md#which-shape-we-matched) and its source-backed limits. |
 | `source_identity[].uri` | A fact with no `sourceUrl`. |
 | `locks.items[].value_hash` | Upstream's canonical value hashing is not published. |
 | `EditPlan.base.brief_hash`, `.design_hash` | The engine's canonical hashes of its stored brief and version. We only learn them from the engine's responses. |
@@ -96,7 +100,9 @@ Checked at the type level (`Pending<K>` = `` `PENDING_${K}` ``); a real hash alw
 - `inspect`, `list`, `compare`, `restore`, `handoff` are supported by `toApiRequest` types but unused by the studio.
 - Upstream is on Node 22.23.3 / 24.15.0 and the `.d.mts` types aren't published as a package; `contracts.ts` mirrors them by hand. Re-check against upstream when they pin a release.
 
-## One-file swap plan for `/api/art`
+## Historical `/api/art` migration sketch (2026-10-10; not an approved plan)
+
+The steps below were a proposal based on the earlier adapter review. They are not a current interface agreement, deployment guide, or authorization to wire this app to the component. The sketch assumes a service/configuration shape that has not been approved. Any integration needs fresh source review, producer/consumer and security agreement, a trusted actor and scope boundary, failure policy, evidence and acceptance before implementation.
 
 Today `src/app/api/art/route.ts` takes `{event, vibe, seed, edition, first}` and returns an `ArtLayer`. The client (`research/client.ts` `remixArt`) and `addArtVersion` stay unchanged, because the route keeps that request and response.
 

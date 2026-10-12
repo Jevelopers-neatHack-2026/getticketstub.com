@@ -4,18 +4,19 @@ GT-01 (#7). Read from the code at this revision, not from the plan. `npm run ver
 
 Legend. **Owner** is the module that owns the behaviour, not a person. **Access** is who may load it: `public` (anyone with the URL), `guest` (an anonymous device session, drafts only), `account` (a verified emailed-link session), `owner` (account that owns the stub), `captain` (account that created the event), `staff` (account on `ADMIN_EMAILS`). Roles and capabilities come from `src/server/context.ts` and are never read from the browser. Most screens render for everyone and ask the server what the caller may do; the Access column says who gets useful content, and the API table says what the server enforces.
 
-## The `/` decision
+## Current `/` source and separate static-artifact handoff
 
-- `/` is the landing page: the teammate's hero (a placeholder in `src/app/page.tsx` until their artifact is handed over) with our `<StudioStart />` under it. It prints in place: pasting a link navigates to `/new`, it does not leave the app.
+- `/` is implemented by `src/app/page.tsx`: the app's own `src/customer/landing/` composition renders chrome, hero, rest and footer with `<StudioStart />` inserted after the hero. The hero form routes to `/new`; the inserted studio-start section retains its own print-in-place flow.
+- PR [#104](https://github.com/Jevelopers-neatHack-2026/getticketstub.com/pull/104) merged this host-owned landing into main. It does not import `landing-page-repo`; that repository still has a separate standalone static source and deterministic artifact build, and its artifact is not imported or served by this host.
 - The in-app intake is `/make`: the same `<StudioStart fill />` with the sidebar around it. The sidebar's "Make" row, the breadcrumbs and every in-app "make another" link go to `/make`.
 - Every existing link keeps working. `/` and `/parts` are the only routes without the sidebar (`NAV_FREE` in `src/customer/nav/routes.ts`). Share, claim and public-wall pages link back to `/` (a person arriving from a link has no sidebar context).
-- Canonical origin: `https://getticketstub.com` (`APP_URL`). One app, one domain. The landing page is served by this app at `/`, not from a second host or a static bucket.
+- Canonical app origin: `https://getticketstub.com` (`APP_URL`). The host owns and serves `/`. The separate landing repository's artifact path, mount, CTA and asset handoff remain owner-coordination work; do not describe that artifact as integrated until owners agree and the host checks are run.
 
 ## Pages
 
 | Route | Owner | Access | Demo vs live | Notes |
 |---|---|---|---|---|
-| `/` | landing (teammate) + `customer/start` | public | same; the demo notice banner shows in demo | hero placeholder until the landing artifact lands |
+| `/` | host `app/page.tsx` + `customer/landing` + `customer/start` | public | same; the demo notice banner shows in demo | Host-owned landing composition with the studio-start section; separate landing-page repository artifact is not mounted |
 | `/make` | `customer/start` | public (guest) | demo: three demo events only | |
 | `/search` | `customer/studio/research` | public (guest) | demo: demo events only, no Ticketmaster call | live: Ticketmaster Discovery via `/api/research` |
 | `/new` | `app/new` | public (guest) | demo: fixtures only | The printing stage between intake and the editor. `?url=`, `?q=`, `?demo=`, `?pick=1`. With a finished stub it `replace`s to `/studio/<id>`; with no input it `replace`s to `/make`. |
@@ -38,7 +39,7 @@ Legend. **Owner** is the module that owns the behaviour, not a person. **Access*
 | `/help` | `app/help` | public | | the desk map lives at the top |
 | `/privacy`, `/terms` | `app/privacy`, `app/terms` | public | | |
 | `/parts` | `customer/desk` | public | | the desk-parts board; no sidebar |
-| `/admin`, `/admin/[...path]` | `app/admin` (host) + team-dashboard (mounted) | staff | fixture mount until the package is published | everyone else: a real 404. See "Admin mount contract". |
+| `/admin`, `/admin/[...path]` | `app/admin` (host) + local `admin-fixture/1` | staff | the host fixture is rendered; team-dashboard package is not imported | everyone else: a real 404. See "Admin mount interface and current fixture". |
 | `/_not-found` (any unknown path) | `app/not-found.tsx` | public | | warm copy; Make, Wall, Help |
 
 ### Redirects
@@ -54,11 +55,11 @@ Legend. **Owner** is the module that owns the behaviour, not a person. **Access*
 
 ## API routes
 
-Mutating routes check `Origin` (`checkOrigin`); the access column is what the server enforces, by capability (`src/server/context.ts`).
+Guard behavior is route-specific. `checkOrigin`, checks that reject only a present foreign `Origin`, session/capability checks, consumer HMAC, provider webhook signatures, and intentionally public routes are distinct. The access column summarizes each route's caller boundary; it does not imply a shared Origin or capability guard. See the [HTTP API catalog](../api/HTTP-API.md) and [identity guide](identity.md) for the exact per-route behavior.
 
 | Route | Methods | Access | Demo vs live |
 |---|---|---|---|
-| `/api/health` | GET | public | `mode` is `demo` or `live`; `storage` is `ok` or `unavailable`; `persistence` is `configured` or `default-path`; no secrets, uncached |
+| `/api/health` | GET | public | Returns `ok`, app `version`/`commit`, `mode` (`demo` or `live`), storage/persistence state and timestamp; the first storage probe may write a scratch table. It does not prove full application readiness or attest the deployed source revision. |
 | `/api/context` | GET | public (answers for the caller) | the caller's own context plus a signed 5-minute token; `?project=` is a question, not an input |
 | `/api/context/verify` | POST | server consumers | token verification for downstream consumers |
 | `/api/auth/link` | POST | public, rate limited | sandbox mail returns `devLink` |
@@ -75,7 +76,7 @@ Mutating routes check `Origin` (`checkOrigin`); the access column is what the se
 | `/api/orders` | POST, GET | create: public with email; read: account | sandbox orders only |
 | `/api/research` | POST | public | demo: fixtures only, arbitrary URLs refused (422). live: Ticketmaster / provider paths |
 | `/api/art` | POST | public, quota by account, device and IP | demo: `simulated` art |
-| `/api/agent` | POST | public | demo: 204 |
+| `/api/agent` | POST | action protocol and live legacy path: require `agent.use`; non-live legacy path returns 204 before capability enforcement | non-live action protocol returns JSON from the deterministic rules planner, which may propose typed actions; legacy `{ event, message }` returns 204 |
 | `/api/files/[name]` | GET | public (content-hashed name) | |
 | `/api/dev/email-preview` | GET | dev only; 404 in production | |
 
@@ -106,22 +107,19 @@ States a screen can show. `yes` means the code has a screen for it, `n/a` means 
 
 These are reserved for the platform and for the landing page's artifact handoff; the landing page must not ship files at them.
 
-- `/admin/*`: team-dashboard mount, staff only.
+- `/admin/*`: host-controlled admin space; currently renders a local fixture after the staff gate. A future team-dashboard package must stay below this prefix.
 - `/api/*`: server routes, above.
 - `/signin/*`: sign-in confirmation (`/signin/confirm` today).
 - `/claim/*`: claim pages.
 - Also in use: `/_next/*`, `/brand/*` (public brand assets).
 
-Landing-page artifact contract (landing-page-repo #3, LP-01.C), as this host can promise it today:
+## Landing-page handoff boundary (LP-01.C)
 
-- The landing page is **source in this app**, not a copied static export: the teammate's hero component replaces the placeholder in `src/app/page.tsx` and `<StudioStart />` stays under it. If the landing repo later publishes a static artifact instead, it is served by this app at `/` only; the reserved paths above, the `/make` intake and every app route keep precedence.
-- Asset URLs: `/brand/*` and `/_next/static/*` are the host's; landing assets go in `public/landing/` (not yet created) to avoid colliding with them.
-- 404 and error handling are the host's (`not-found.tsx`, `error.tsx`).
-- Not yet agreed with the landing owner: the artifact directory and its rebuild/rollback procedure. This section is the host's proposal; LP-01.C stays open until the landing owner accepts it.
+There is not yet an accepted integration contract for the separate `landing-page-repo` artifact. That artifact uses its own `/assets/...` URLs and intake; the host has its own implemented landing and intake. The earlier proposal for a static-artifact mount does not describe PR #104's app-native landing, and merging that host work did not integrate the separate artifact. Owners still need to agree on source/artifact form, route and asset mapping, intake ownership, script/style isolation, external asset/CSP allowances, rebuild/rollback and actual-host tests before that handoff is claimed. Until then, keep the host root and reserved-route ownership described above. See landing's [static output proposal](https://github.com/Jevelopers-neatHack-2026/landing-page-repo/blob/main/integration/static-output.md).
 
-## Admin mount contract
+## Admin mount interface and current fixture
 
-The handoff team-dashboard asked for in TD-01. Contract id `ticketstub.admin-mount/1` (`src/app/admin/contract.ts`).
+The host contract id is `ticketstub.admin-mount/1` (`src/app/admin/contract.ts`). It describes a proposed package boundary; the current `AdminMount` imports and renders `src/app/admin/fixture/FixtureMount.tsx`, not `team-dashboard`.
 
 - **Base path.** `/admin`. The dashboard owns everything below it (`/admin/<anything>/<nested>`) and nothing above it. Routing is a single optional catch-all, `src/app/admin/[[...path]]/page.tsx`; segments are limited to `[A-Za-z0-9._~-]{1,64}` and depth 8, anything else is a 404.
 - **Access.** Server-gated in the page with `requireStaff(await headers())` from `src/server/context.ts`: a verified account whose email is on `ADMIN_EMAILS` holds the `staff` role and the `admin.view` capability. Everyone else (anonymous, guest, signed-in non-staff) gets `notFound()`, a real 404 identical to a path that does not exist. The sidebar entry is cosmetic.
