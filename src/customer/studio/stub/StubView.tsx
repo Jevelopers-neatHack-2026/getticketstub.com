@@ -600,6 +600,10 @@ export function StubView({ stub, flipped = false, still, tilt = false, size = "m
   const edition: Edition = version?.edition ?? "researched";
   const meta = EDITION_META[edition];
   const e = stub.event;
+  const template = version?.template ? templateById(version.template) : undefined;
+  const templateId = template?.id;
+  const artSrc = version?.art.kind === "image" ? version.art.src : undefined;
+  const svgData = useMemo(() => (templateId ? stubData(stub, artSrc) : null), [templateId, stub, artSrc]);
 
   const c: Ctx = useMemo(() => {
     const hidden = new Set(stub.personal.hiddenFields);
@@ -626,11 +630,6 @@ export function StubView({ stub, flipped = false, still, tilt = false, size = "m
     if (typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches) void requestGyro();
   }, [tilt, requestGyro]);
 
-  const template = version?.template ? templateById(version.template) : undefined;
-  const svgData = useMemo(
-    () => (template ? stubData(stub, version.art.kind === "image" ? version.art.src : undefined) : null),
-    [template, stub, version],
-  );
 
   const Front = FRONTS[edition];
   const titleFont = meta.fontPairs[stub.personal.titleFont] ?? meta.fontPairs[0];

@@ -46,6 +46,7 @@ export const ROUTES: readonly Route[] = [
   route("/privacy", "Privacy"),
   route("/terms", "Terms"),
   route("/parts", "Parts"),
+  route("/stub-lab", "Stub lab"),
 ];
 
 export const UNKNOWN_TEMPLATE = "/unknown";

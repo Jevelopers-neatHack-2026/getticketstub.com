@@ -1,5 +1,5 @@
 // Pure stub edits used by the studio editor. Every function returns a new Stub; callers persist with upsertStub.
-import { EDITIONS, currentVersion } from "../types";
+import { currentVersion } from "../types";
 import type { ArtLayer, DesignVersion, Edition, Finish, Material, Stub } from "../types";
 import { applyCorrection } from "../facts/corrections";
 import { contextOf, sameArt } from "../versions/versions";

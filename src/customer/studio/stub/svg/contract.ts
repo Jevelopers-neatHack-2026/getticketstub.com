@@ -104,7 +104,7 @@ export interface TemplateMeta {
   bestFor: StubCategory[];
 }
 
-/** Google Fonts the templates may use. Loading is shared, so keep this list short. */
+/** Google Fonts families the templates may use (served from public/stubs/fonts). Keep this list short. */
 export const STUB_FONTS: Record<string, string> = {
   "Fraunces": "Fraunces:opsz,wght@9..144,300..900",
   "Inter Tight": "Inter+Tight:wght@300..800",
@@ -123,7 +123,7 @@ export const STUB_FONTS: Record<string, string> = {
   "Chakra Petch": "Chakra+Petch:wght@400;500;600;700",
 };
 
-export function stubFontsHref(families: string[] = Object.keys(STUB_FONTS)): string {
-  const q = families.filter((f) => STUB_FONTS[f]).map((f) => `family=${STUB_FONTS[f]}`).join("&");
-  return `https://fonts.googleapis.com/css2?${q}&display=block`;
+/** The template fonts, self-hosted (public/stubs/fonts, latin + latin-ext) so stubs render offline and on one origin. */
+export function stubFontsHref(): string {
+  return "/stubs/fonts/fonts.css";
 }
