@@ -1,6 +1,6 @@
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
-import { issueContextToken, requireStaff, verifyContextTokenLive, type RequestContext } from "@/server/context";
+import { contextAudience, issueContextToken, requireStaff, verifyContextTokenLive, type RequestContext } from "@/server/context";
 import { ADMIN_BASE_PATH, type AdminContextSummary, type AdminNavInjection } from "../contract";
 import { AdminMount } from "../AdminMount";
 
@@ -36,7 +36,7 @@ export default async function AdminPage({ params }: { params: Promise<{ path?: s
   if (segments[0] === "fixture-error") throw new Error("admin fixture error (deliberate)");
 
   const token = issueContextToken(ctx);
-  const verified = (await verifyContextTokenLive(token)).ok;
+  const verified = (await verifyContextTokenLive(token, undefined, { audience: contextAudience() })).ok;
   const summary: AdminContextSummary = {
     schema: ctx.schema,
     actorKind: ctx.actor.kind,

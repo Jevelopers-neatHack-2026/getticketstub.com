@@ -624,7 +624,7 @@ async function gt08(anon) {
 
   // --- Fixtures: the same code the server runs, and the standalone reference verifier, agree on every outcome.
   const keyFile = JSON.parse(readFileSync(join(FIXTURES, "fixture-key.json"), "utf8"));
-  const fxFiles = readdirSync(FIXTURES).filter((n) => n.endsWith(".json") && !["fixture-key.json", "index.json"].includes(n));
+  const fxFiles = readdirSync(FIXTURES).filter((n) => n.endsWith(".json") && !["fixture-key.json", "index.json", "finance-trusted-scope.schema.json"].includes(n));
   const wanted = ["owner", "captain", "staff", "guest", "unknown", "malformed", "forged", "stale", "revoked", "expired", "unsupported-version", "cross-project-a", "cross-project-b", "tenant-a-owner", "tenant-b-owner"];
   check("fixtures: every required case is published", wanted.every((n) => fxFiles.includes(`${n}.json`)) && /fixture only|never production/i.test(keyFile.warning));
   let fxBad = [];
@@ -632,8 +632,8 @@ async function gt08(anon) {
   for (const f of fxFiles) {
     const x = JSON.parse(readFileSync(join(FIXTURES, f), "utf8"));
     fx[x.fixture] = x;
-    const opts = { now: Date.parse(x.verifyAt), state: x.state };
-    const a = verifyWithKey(x.token, keyFile.key, opts.now, opts.state);
+    const opts = { now: Date.parse(x.verifyAt), state: x.state, audience: "ticketstub.finance" };
+    const a = verifyWithKey(x.token, keyFile.key, opts.now, opts.state, { audience: opts.audience });
     const b = verifyContext(x.token, keyFile.key, opts);
     const want = x.expect;
     const good = (r) => r.ok === want.ok && (r.ok ? r.ctx.role === want.role && r.ctx.tenant.id === want.tenant : r.reason === want.reason);
@@ -645,10 +645,10 @@ async function gt08(anon) {
     const c = JSON.parse(Buffer.from(x.token.split(".")[1], "base64url").toString()).ctx;
     return JSON.stringify(c.capabilities) === JSON.stringify(capabilitiesFor(c.actor.kind, c.role, c.project, c.role === "staff"));
   }));
-  const a = verifyContext(fx["cross-project-a"].token, keyFile.key, { now: Date.parse(fx["cross-project-a"].verifyAt) }).ctx;
-  const b = verifyContext(fx["cross-project-b"].token, keyFile.key, { now: Date.parse(fx["cross-project-b"].verifyAt) }).ctx;
+  const a = verifyContext(fx["cross-project-a"].token, keyFile.key, { now: Date.parse(fx["cross-project-a"].verifyAt), audience: "ticketstub.finance" }).ctx;
+  const b = verifyContext(fx["cross-project-b"].token, keyFile.key, { now: Date.parse(fx["cross-project-b"].verifyAt), audience: "ticketstub.finance" }).ctx;
   check("fixtures: a token for project A does not authorize project B (same user)", authorizes(a, { tenant: a.tenant.id, project: { kind: "stub", id: "stub_fx_1" }, capability: "stub.read" }) && !authorizes(a, { tenant: a.tenant.id, project: { kind: "stub", id: "stub_fx_2" }, capability: "stub.read" }) && !authorizes(b, { tenant: b.tenant.id, project: { kind: "stub", id: "stub_fx_1" }, capability: "stub.read" }));
-  const ta = verifyContext(fx["tenant-a-owner"].token, keyFile.key, { now: Date.parse(fx["tenant-a-owner"].verifyAt) }).ctx;
+  const ta = verifyContext(fx["tenant-a-owner"].token, keyFile.key, { now: Date.parse(fx["tenant-a-owner"].verifyAt), audience: "ticketstub.finance" }).ctx;
   check("fixtures: tenant A's token does not authorize tenant B's stub with the same id", !authorizes(ta, { tenant: "acc_FIXTURE_tenant2", project: { kind: "stub", id: "stub_fx_shared" }, capability: "stub.read" }));
   check("fixtures: the fixture key is not accepted by this server", (await verify(fx.owner.token)).json?.reason === "forged");
   const docs = [join(ROOT, "fixtures", "context", "README.md"), join(ROOT, "docs", "architecture", "identity.md")].map((f) => (existsSync(f) ? readFileSync(f, "utf8") : ""));

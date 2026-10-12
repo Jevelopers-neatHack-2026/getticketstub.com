@@ -1,0 +1,30 @@
+{
+  "fixture": "boundary-actor-raw-128",
+  "description": "The reviewer's case: a 128-character raw account id is 136 prefixed. Valid /2, refused by the Finance adapter.",
+  "verifyAt": "2026-10-10T12:00:00.000Z",
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6InRpY2tldHN0dWIuY29udGV4dCJ9.eyJjdHgiOnsic2NoZW1hIjoidGlja2V0c3R1Yi5jb250ZXh0LzIiLCJpc3N1ZXIiOiJnZXR0aWNrZXRzdHViLmNvbSIsImF1ZGllbmNlIjoidGlja2V0c3R1Yi5maW5hbmNlIiwiYWN0b3IiOnsia2luZCI6ImFjY291bnQiLCJpZCI6ImFjY291bnQ6YWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWEifSwidGVuYW50Ijp7ImlkIjoiYWNjb3VudDphYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYSJ9LCJwcm9qZWN0Ijp7ImlkIjoiZXZ0X2Z4XzEiLCJraW5kIjoiZXZlbnQiLCJyZWYiOiJldmVudDpldnRfZnhfMSJ9LCJyb2xlIjoiY2FwdGFpbiIsImNhcGFiaWxpdGllcyI6WyJhY2NvdW50LmRlbGV0ZSIsImFjY291bnQuZW1haWwuY2hhbmdlIiwiYWNjb3VudC5yZWFkIiwiYWdlbnQudXNlIiwiYXJ0LmdlbmVyYXRlIiwiY2xhaW0ucmVkZWVtIiwiY2xhaW0udmlldyIsImNsYWltcy5yZWFkIiwiZXZlbnQuY3JlYXRlIiwiZXZlbnQucHVibGlzaCIsImV2ZW50LnJlYWQiLCJmaWxlLnJlYWQiLCJmaW5hbmNlLmV4cG9ydCIsImZpbmFuY2UucmVhZCIsIm9yZGVyLmNyZWF0ZSIsIm9yZGVyLnJlYWQiLCJzZXNzaW9uLnJldm9rZSIsInNoYXJlLmNyZWF0ZSIsInNoYXJlLnZpZXciLCJzdHViLmRyYWZ0Iiwid2FsbC5wdWJsaWMudmlldyIsIndhbGwucHVibGlzaCIsIndhbGwuc3luYyJdLCJtZW1iZXJzaGlwUmV2aXNpb24iOjMsInJldm9rZWQiOmZhbHNlLCJlbnZpcm9ubWVudCI6ImRldmVsb3BtZW50IiwiZWNvbm9taWNNb2RlIjoic2FuZGJveCIsImV2aWRlbmNlTW9kZSI6ImZpeHR1cmUiLCJpc3N1ZWRBdCI6IjIwMjYtMTAtMTBUMTI6MDA6MDAuMDAwWiIsImV4cGlyZXNBdCI6IjIwMjYtMTAtMTBUMTI6MDU6MDAuMDAwWiJ9LCJzaWQiOiJmeDAwMDAwMDAwMDAwMDAwMDAwMDAwMTAifQ.Ec-p3LPbK2X6lc1fs74SUmy2K7X98zvRkAe0aiUDi8E",
+  "state": {
+    "membershipRevision": 3,
+    "sessionLive": true,
+    "projectMember": true
+  },
+  "expect": {
+    "ok": true,
+    "role": "captain",
+    "tenant": "account:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "project": {
+      "id": "evt_fx_1",
+      "kind": "event",
+      "ref": "event:evt_fx_1"
+    },
+    "financeAdapter": {
+      "ok": false,
+      "schema": "ticketstub.finance-scope-adapter/1",
+      "reason": "identifier_too_long",
+      "fields": [
+        "tenantId",
+        "actorId"
+      ]
+    }
+  }
+}

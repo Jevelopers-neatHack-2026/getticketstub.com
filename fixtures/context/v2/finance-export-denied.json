@@ -1,0 +1,39 @@
+{
+  "fixture": "finance-export-denied",
+  "description": "A member of an event (modelled, never issued yet) may read finance summaries but not export them.",
+  "verifyAt": "2026-10-10T12:00:00.000Z",
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6InRpY2tldHN0dWIuY29udGV4dCJ9.eyJjdHgiOnsic2NoZW1hIjoidGlja2V0c3R1Yi5jb250ZXh0LzIiLCJpc3N1ZXIiOiJnZXR0aWNrZXRzdHViLmNvbSIsImF1ZGllbmNlIjoidGlja2V0c3R1Yi5maW5hbmNlIiwiYWN0b3IiOnsia2luZCI6ImFjY291bnQiLCJpZCI6ImFjY291bnQ6YWNjX0ZJWFRVUkVfbWVtYmVyMSJ9LCJ0ZW5hbnQiOnsiaWQiOiJhY2NvdW50OmFjY19GSVhUVVJFX21lbWJlcjEifSwicHJvamVjdCI6eyJpZCI6ImV2dF9meF8xIiwia2luZCI6ImV2ZW50IiwicmVmIjoiZXZlbnQ6ZXZ0X2Z4XzEifSwicm9sZSI6Im1lbWJlciIsImNhcGFiaWxpdGllcyI6WyJhY2NvdW50LmRlbGV0ZSIsImFjY291bnQuZW1haWwuY2hhbmdlIiwiYWNjb3VudC5yZWFkIiwiYWdlbnQudXNlIiwiYXJ0LmdlbmVyYXRlIiwiY2xhaW0ucmVkZWVtIiwiY2xhaW0udmlldyIsImV2ZW50LmNyZWF0ZSIsImV2ZW50LnJlYWQiLCJmaWxlLnJlYWQiLCJmaW5hbmNlLnJlYWQiLCJvcmRlci5jcmVhdGUiLCJvcmRlci5yZWFkIiwic2Vzc2lvbi5yZXZva2UiLCJzaGFyZS5jcmVhdGUiLCJzaGFyZS52aWV3Iiwic3R1Yi5kcmFmdCIsIndhbGwucHVibGljLnZpZXciLCJ3YWxsLnB1Ymxpc2giLCJ3YWxsLnN5bmMiXSwibWVtYmVyc2hpcFJldmlzaW9uIjoxLCJyZXZva2VkIjpmYWxzZSwiZW52aXJvbm1lbnQiOiJkZXZlbG9wbWVudCIsImVjb25vbWljTW9kZSI6InNhbmRib3giLCJldmlkZW5jZU1vZGUiOiJmaXh0dXJlIiwiaXNzdWVkQXQiOiIyMDI2LTEwLTEwVDEyOjAwOjAwLjAwMFoiLCJleHBpcmVzQXQiOiIyMDI2LTEwLTEwVDEyOjA1OjAwLjAwMFoifSwic2lkIjoiZngwMDAwMDAwMDAwMDAwMDAwMDAwMDExIn0.JRQIWsudiWr7ZGWRXxQIGzfZk-EAzntGThBG9QWejE0",
+  "state": {
+    "membershipRevision": 1,
+    "sessionLive": true,
+    "projectMember": true
+  },
+  "expect": {
+    "ok": true,
+    "role": "member",
+    "tenant": "account:acc_FIXTURE_member1",
+    "project": {
+      "id": "evt_fx_1",
+      "kind": "event",
+      "ref": "event:evt_fx_1"
+    },
+    "modes": {
+      "environment": "development",
+      "economicMode": "sandbox",
+      "evidenceMode": "fixture"
+    },
+    "grants": {
+      "allow": [
+        "finance.read"
+      ],
+      "deny": [
+        "finance.export",
+        "finance.command.budget_change",
+        "finance.command.expense_adjust",
+        "finance.command.reservation",
+        "finance.command.reconcile",
+        "finance.command.recovery"
+      ]
+    }
+  }
+}

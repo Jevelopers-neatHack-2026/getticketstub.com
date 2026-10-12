@@ -74,6 +74,7 @@ export const MESSAGES = {
   // Storage and limits
   storage_unavailable: { message: "Saving is off on this preview. Your stub stays on this device, and you can keep working.", action: RETRY, retryable: true },
   art_limit: { message: "You've made a lot of art today. Procedural art still works, and new art comes back tomorrow." },
+  backup_running: { message: "A backup is already being made. Wait for it to finish, then try again.", action: RETRY, retryable: true },
 
   // Providers (research, art and the agent). Their detail never reaches a person.
   provider_unavailable: { message: PROVIDER_DOWN, action: RETRY, retryable: true },

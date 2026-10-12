@@ -1,0 +1,33 @@
+{
+  "fixture": "economic-none",
+  "description": "development / none / synthetic: nothing is billable. Finance has no none, so it maps to billingMode simulated.",
+  "verifyAt": "2026-10-10T12:00:00.000Z",
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6InRpY2tldHN0dWIuY29udGV4dCJ9.eyJjdHgiOnsic2NoZW1hIjoidGlja2V0c3R1Yi5jb250ZXh0LzIiLCJpc3N1ZXIiOiJnZXR0aWNrZXRzdHViLmNvbSIsImF1ZGllbmNlIjoidGlja2V0c3R1Yi5maW5hbmNlIiwiYWN0b3IiOnsia2luZCI6ImFjY291bnQiLCJpZCI6ImFjY291bnQ6YWNjX0ZJWFRVUkVfc3RhZmYxIn0sInRlbmFudCI6eyJpZCI6ImFjY291bnQ6YWNjX0ZJWFRVUkVfc3RhZmYxIn0sInJvbGUiOiJzdGFmZiIsImNhcGFiaWxpdGllcyI6WyJhY2NvdW50LmRlbGV0ZSIsImFjY291bnQuZW1haWwuY2hhbmdlIiwiYWNjb3VudC5yZWFkIiwiYWRtaW4udmlldyIsImFnZW50LnVzZSIsImFydC5nZW5lcmF0ZSIsImNsYWltLnJlZGVlbSIsImNsYWltLnZpZXciLCJldmVudC5jcmVhdGUiLCJmaWxlLnJlYWQiLCJmaW5hbmNlLmNvbW1hbmQuYnVkZ2V0X2NoYW5nZSIsImZpbmFuY2UuY29tbWFuZC5leHBlbnNlX2FkanVzdCIsImZpbmFuY2UuY29tbWFuZC5yZWNvbmNpbGUiLCJmaW5hbmNlLmNvbW1hbmQucmVjb3ZlcnkiLCJmaW5hbmNlLmNvbW1hbmQucmVzZXJ2YXRpb24iLCJmaW5hbmNlLmV4cG9ydCIsImZpbmFuY2UucmVhZCIsIm9yZGVyLmNyZWF0ZSIsIm9yZGVyLnJlYWQiLCJzZXNzaW9uLnJldm9rZSIsInNoYXJlLmNyZWF0ZSIsInNoYXJlLnZpZXciLCJzdHViLmRyYWZ0Iiwid2FsbC5wdWJsaWMudmlldyIsIndhbGwucHVibGlzaCIsIndhbGwuc3luYyJdLCJtZW1iZXJzaGlwUmV2aXNpb24iOjEsInJldm9rZWQiOmZhbHNlLCJlbnZpcm9ubWVudCI6ImRldmVsb3BtZW50IiwiZWNvbm9taWNNb2RlIjoibm9uZSIsImV2aWRlbmNlTW9kZSI6InN5bnRoZXRpYyIsImlzc3VlZEF0IjoiMjAyNi0xMC0xMFQxMjowMDowMC4wMDBaIiwiZXhwaXJlc0F0IjoiMjAyNi0xMC0xMFQxMjowNTowMC4wMDBaIn0sInNpZCI6ImZ4MDAwMDAwMDAwMDAwMDAwMDAwMDAxMiJ9._vIXTCb6nQ7T6DHOeNTcTvX0y_DHEaNYgShlDdTLmvo",
+  "state": {
+    "membershipRevision": 1,
+    "sessionLive": true,
+    "projectMember": true
+  },
+  "expect": {
+    "ok": true,
+    "role": "staff",
+    "tenant": "account:acc_FIXTURE_staff1",
+    "modes": {
+      "environment": "development",
+      "economicMode": "none",
+      "evidenceMode": "synthetic"
+    },
+    "financeAdapter": {
+      "ok": true,
+      "schema": "ticketstub.finance-scope-adapter/1",
+      "scope": {
+        "tenantId": "account:acc_FIXTURE_staff1",
+        "projectId": "platform",
+        "environment": "development",
+        "billingMode": "simulated",
+        "actorId": "account:acc_FIXTURE_staff1"
+      },
+      "evidenceMode": "sandbox"
+    }
+  }
+}

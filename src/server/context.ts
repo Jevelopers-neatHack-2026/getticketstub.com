@@ -2,17 +2,23 @@ import "server-only";
 import { COOKIE } from "./auth";
 import {
   CONTEXT_SCHEMA,
+  CONTEXT_SCHEMA_V2,
+  DEFAULT_AUDIENCE,
   CAPABILITY_MATRIX,
   capabilitiesFor,
   TOKEN_TTL_MS,
   signContext,
+  toContextV2,
   tokenSessionRef,
   verifyWithKey,
+  type ContextV2,
   type RequestContext,
   type Role,
   type TokenState,
+  type VerifyOptions,
   type VerifyResult,
 } from "./context-token";
+import { ModeMappingError, resolveEnvironment, resolveModes } from "./context-modes";
 import { hashToken, newToken } from "./crypto";
 import { HttpError } from "./http";
 import { getStorage, storageAvailable } from "./index";
@@ -22,9 +28,9 @@ import { getStorage, storageAvailable } from "./index";
 // or a correlation id is never an input to who the caller is or what they own: a route may name a
 // project, and this module answers whether this caller can see it.
 
-export { CONTEXT_SCHEMA };
+export { CONTEXT_SCHEMA, CONTEXT_SCHEMA_V2 };
 export { CAPABILITY_MATRIX, capabilitiesFor };
-export type { RequestContext, Role, TokenState, VerifyResult };
+export type { ContextV2, RequestContext, Role, TokenState, VerifyResult };
 
 const DEVICE_COOKIE = "ts_device";
 const DEVICE_RE = /^[A-Za-z0-9_-]{16,64}$/;
@@ -37,10 +43,7 @@ type Project = { id: string; kind: "stub" | "event" };
 
 export const isLiveRuntime = () => process.env.TICKETSTUB_RUNTIME_MODE === "live";
 
-function environment(): RequestContext["environment"] {
-  if (isLiveRuntime()) return "live";
-  return process.env.NODE_ENV === "production" ? "preview" : "development";
-}
+const environment = (): RequestContext["environment"] => resolveEnvironment(process.env);
 
 /** ADMIN_EMAILS is comma-separated. Matched case-insensitively against a verified account email. */
 function isStaffEmail(email: string): boolean {
@@ -73,6 +76,8 @@ export function ensureDevice(req: Request): { id: string; cookie?: string } {
 export const guestTenant = (device: string) => `guest:${hashToken(device).slice(0, 16)}`;
 
 const sessionRefs = new WeakMap<RequestContext, string>();
+/** The issuer's own staff decision for a context, for the /2 finance grants. Never serialized. */
+const staffFlags = new WeakMap<RequestContext, boolean>();
 
 async function derive(cookieHeader: string | null, project?: Project): Promise<RequestContext> {
   const now = Date.now();
@@ -126,6 +131,7 @@ async function derive(cookieHeader: string | null, project?: Project): Promise<R
     expiresAt: new Date(now + TOKEN_TTL_MS).toISOString(),
   };
   if (sess) sessionRefs.set(ctx, sess.sessionRef);
+  staffFlags.set(ctx, staff);
   return ctx;
 }
 
@@ -205,32 +211,85 @@ export function issueContextToken(ctx: RequestContext): string {
   return signContext({ ...ctx, mode }, key, sessionRefs.get(ctx) ?? null);
 }
 
+/** The host this issuer mints /2 tokens for. Server configuration only: CONTEXT_AUDIENCE, else the finance default. */
+export function contextAudience(): string {
+  const a = process.env.CONTEXT_AUDIENCE?.trim();
+  return a && /^[\w.:-]{1,128}$/.test(a) ? a : DEFAULT_AUDIENCE;
+}
+
+/** The three mode axes as this server is configured right now, or throws ModeMappingError (see context-modes.ts). */
+function currentModes() {
+  return resolveModes(process.env, !!contextSecret());
+}
+
+/**
+ * The /2 context and a signed five-minute token for it: injective ids, separate environment / economic /
+ * evidence modes, finance grants. Derived from the same server-side context as /1. A configuration whose modes
+ * cannot be mapped honestly (a paid provider key with economic mode none, live money from a preview deploy)
+ * refuses with 503 instead of guessing.
+ */
+export function issueContextV2(ctx: RequestContext): { context: ContextV2; token: string } {
+  if (ctx.revoked) throw new HttpError(401, "unauthorized", "Sign in with an emailed link to do that.");
+  const key = signingKey();
+  let modes: ReturnType<typeof currentModes>;
+  try {
+    modes = currentModes();
+  } catch (e) {
+    if (e instanceof ModeMappingError) throw new HttpError(503, "context_unavailable", "Context tokens aren't set up on this server yet.");
+    throw e;
+  }
+  const context = toContextV2(ctx, { staff: staffFlags.get(ctx) ?? false, audience: contextAudience(), ...modes });
+  return { context, token: signContext(context, key, sessionRefs.get(ctx) ?? null) };
+}
+
 /**
  * Signature, schema version and expiry only, unless the caller passes `state` (the account's current
  * membershipRevision and whether its session is still live), which adds revoked and stale.
  * verifyContextTokenLive reads that state from storage.
  */
-export function verifyContextToken(token: string, now = Date.now(), state?: TokenState): VerifyResult {
+export function verifyContextToken(token: string, now = Date.now(), state?: TokenState, opts?: VerifyOptions): VerifyResult {
   let key: string;
   try {
     key = signingKey();
   } catch {
     return { ok: false, reason: "forged" }; // no key, nothing can be valid
   }
-  return verifyWithKey(token, key, now, state);
+  return verifyWithKey(token, key, now, state, opts);
 }
 
-/** verifyContextToken plus the storage lookups, so stale (membership changed) and revoked (signed out, deleted) are caught. */
-export async function verifyContextTokenLive(token: string, now = Date.now()): Promise<VerifyResult> {
-  const first = verifyContextToken(token, now);
-  if (!first.ok || first.ctx.actor.kind !== "account") return first;
+/**
+ * verifyContextToken plus the storage lookups, so stale (membership changed) and revoked (signed out, deleted) are caught.
+ * For /2 it also re-checks, now: that the token is for this issuer's audience (and the verifier's, when it names one),
+ * that the account still holds the token's project, and that the modes it carries are still what this server is
+ * configured to say. Each failure is a denial: wrong_audience, revoked, stale.
+ */
+export async function verifyContextTokenLive(token: string, now = Date.now(), opts?: VerifyOptions): Promise<VerifyResult> {
+  const first = verifyContextToken(token, now, undefined, opts);
+  if (!first.ok) return first;
+  const v2 = first.ctx.schema === CONTEXT_SCHEMA_V2 ? first.ctx : null;
+  if (v2) {
+    if (v2.audience !== contextAudience()) return { ok: false, reason: "wrong_audience" };
+    let modes: ReturnType<typeof currentModes>;
+    try {
+      modes = currentModes();
+    } catch {
+      return { ok: false, reason: "stale" }; // this server can no longer vouch for any mapping
+    }
+    if (modes.environment !== v2.environment || modes.economicMode !== v2.economicMode || modes.evidenceMode !== v2.evidenceMode) return { ok: false, reason: "stale" };
+  }
+  if (first.ctx.actor.kind !== "account") return first;
   if (!storageAvailable()) return { ok: false, reason: "revoked" }; // no records to check against, so nothing account-bound can be honoured
   const storage = getStorage();
   const sid = tokenSessionRef(token);
-  const acct = await storage.getAccountState(first.ctx.actor.id);
+  const accountId = v2 ? first.ctx.actor.id.slice("account:".length) : first.ctx.actor.id;
+  const acct = await storage.getAccountState(accountId);
   const state: TokenState = {
     membershipRevision: acct ? (isStaffEmail(acct.email) === acct.isStaff ? acct.membershipRevision : await storage.syncStaff(acct.id, !acct.isStaff)) : -1,
     sessionLive: sid && acct ? await storage.isSessionLive(sid, now) : false,
   };
-  return verifyContextToken(token, now, state);
+  // Current membership of the selected project: a stub that is gone, an event with another captain, is a lost membership.
+  if (v2?.project && acct) {
+    state.projectMember = v2.project.kind === "stub" ? await storage.ownsStub(acct.id, v2.project.id) : (await storage.getEventCaptain(v2.project.id)) === acct.id;
+  }
+  return verifyContextToken(token, now, state, opts);
 }

@@ -1,0 +1,61 @@
+{
+  "$comment": "Vendored from cost-intelligence src/shared/contracts.ts TrustedScopeSchema (TypeBox 0.34.52), JSON.stringify of the schema object. Source commit c0a0696b00e7487fbe6d3ad9ecdd1664d1a81987 (origin/main). The reviewed consumer revision 83092f1e91ca0d6b5c58fa09e12084a93a9a037c was not reachable from any clone or the GitHub API; the TrustedScopeSchema definition is identical in every reachable cost-intelligence ref (main and PR heads 22 to 26). Set FINANCE_CONSUMER_DIR to a cost-intelligence checkout to run the real TypeBox Value.Check and a drift check against this file.",
+  "additionalProperties": false,
+  "type": "object",
+  "required": [
+    "tenantId",
+    "projectId",
+    "environment",
+    "billingMode",
+    "actorId"
+  ],
+  "properties": {
+    "tenantId": {
+      "minLength": 1,
+      "maxLength": 128,
+      "type": "string"
+    },
+    "projectId": {
+      "minLength": 1,
+      "maxLength": 128,
+      "type": "string"
+    },
+    "environment": {
+      "anyOf": [
+        {
+          "const": "development",
+          "type": "string"
+        },
+        {
+          "const": "test",
+          "type": "string"
+        },
+        {
+          "const": "production",
+          "type": "string"
+        }
+      ]
+    },
+    "billingMode": {
+      "anyOf": [
+        {
+          "const": "live",
+          "type": "string"
+        },
+        {
+          "const": "sandbox",
+          "type": "string"
+        },
+        {
+          "const": "simulated",
+          "type": "string"
+        }
+      ]
+    },
+    "actorId": {
+      "minLength": 1,
+      "maxLength": 128,
+      "type": "string"
+    }
+  }
+}

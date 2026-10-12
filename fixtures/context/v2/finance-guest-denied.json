@@ -1,0 +1,28 @@
+{
+  "fixture": "finance-guest-denied",
+  "description": "A guest device holds no finance grant, ever. A verifier also refuses a guest token that carries one.",
+  "verifyAt": "2026-10-10T12:00:00.000Z",
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6InRpY2tldHN0dWIuY29udGV4dCJ9.eyJjdHgiOnsic2NoZW1hIjoidGlja2V0c3R1Yi5jb250ZXh0LzIiLCJpc3N1ZXIiOiJnZXR0aWNrZXRzdHViLmNvbSIsImF1ZGllbmNlIjoidGlja2V0c3R1Yi5maW5hbmNlIiwiYWN0b3IiOnsia2luZCI6Imd1ZXN0IiwiaWQiOiJndWVzdDpmeGd1ZXN0MDAwMDAwMDAwMSJ9LCJ0ZW5hbnQiOnsiaWQiOiJndWVzdDpmeGd1ZXN0MDAwMDAwMDAwMSJ9LCJyb2xlIjoibm9uZSIsImNhcGFiaWxpdGllcyI6WyJhZ2VudC51c2UiLCJhcnQuZ2VuZXJhdGUiLCJjbGFpbS52aWV3IiwiZmlsZS5yZWFkIiwib3JkZXIuY3JlYXRlIiwic2hhcmUuY3JlYXRlIiwic2hhcmUudmlldyIsInN0dWIuZHJhZnQiLCJ3YWxsLnB1YmxpYy52aWV3Il0sIm1lbWJlcnNoaXBSZXZpc2lvbiI6MCwicmV2b2tlZCI6ZmFsc2UsImVudmlyb25tZW50IjoiZGV2ZWxvcG1lbnQiLCJlY29ub21pY01vZGUiOiJzYW5kYm94IiwiZXZpZGVuY2VNb2RlIjoiZml4dHVyZSIsImlzc3VlZEF0IjoiMjAyNi0xMC0xMFQxMjowMDowMC4wMDBaIiwiZXhwaXJlc0F0IjoiMjAyNi0xMC0xMFQxMjowNTowMC4wMDBaIn0sInNpZCI6bnVsbH0.WO3ILCI2ro0p3cLiq6ZcT0jJipq8ZUI-zILQyj-S38M",
+  "expect": {
+    "ok": true,
+    "role": "none",
+    "tenant": "guest:fxguest0000000001",
+    "modes": {
+      "environment": "development",
+      "economicMode": "sandbox",
+      "evidenceMode": "fixture"
+    },
+    "grants": {
+      "allow": [],
+      "deny": [
+        "finance.read",
+        "finance.export",
+        "finance.command.budget_change",
+        "finance.command.expense_adjust",
+        "finance.command.reservation",
+        "finance.command.reconcile",
+        "finance.command.recovery"
+      ]
+    }
+  }
+}
