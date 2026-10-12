@@ -8,15 +8,16 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { Fact, Provenance, Stub } from "../types";
 import { currentVersion } from "../types";
-import { remixArt } from "../research/client";
+import type { GenerationController } from "../generation/operations";
+import { useGenerationOp } from "../generation/useGeneration";
+import { remixProducer } from "../generation/producers";
 import { EDITION_META } from "@/customer/studio/stub/editions";
 import { haptic, play } from "@/customer/studio/feedback";
 import { MarkLegend, SourceMark, Tag, Tags } from "@/customer/desk/Desk";
 import { CloseIcon } from "@/customer/desk/icons";
-import { addArtVersion, toggleKept } from "../editor/ops";
+import { toggleKept } from "../editor/ops";
 import { FactQuestion } from "../facts/FactsReview";
 import { openQuestions } from "../facts/corrections";
-import { artOutcome, clock, errorCode, flow, since } from "@/customer/flows/events";
 import styles from "./AgentNotes.module.css";
 
 interface Answer {
@@ -36,6 +37,8 @@ interface Note {
 interface Props {
   stub: Stub;
   onChange: (s: Stub) => void;
+  /** The editor's art-generation controller (the note is an entry point, not the owner). */
+  generation: GenerationController;
   /** Opens the full chat, optionally with a line the person typed into a note. */
   onAsk: (text?: string) => void;
   /** Flips the stub over so a change on the back is seen. */
@@ -67,10 +70,11 @@ function list(items: ReactNode[]): ReactNode {
   ));
 }
 
-export function AgentNotes({ stub, onChange, onAsk, onShowBack, variant, folded = false, onUnfold, skipQuestions = false }: Props) {
+export function AgentNotes({ stub, onChange, generation, onAsk, onShowBack, variant, folded = false, onUnfold, skipQuestions = false }: Props) {
   const [gone, setGone] = useState<string[]>([]);
   const [leaving, setLeaving] = useState<{ id: string; dir: 1 | -1 } | null>(null);
-  const [busy, setBusy] = useState<string | null>(null);
+  const op = useGenerationOp(generation, stub.id);
+  const busy = op?.phase === "pending" ? "art" : null;
   const [at, setAt] = useState(0);
 
   const commit = onChange;
@@ -88,25 +92,16 @@ export function AgentNotes({ stub, onChange, onAsk, onShowBack, variant, folded 
     dismiss(id);
   };
 
-  const remix = async () => {
+  const remix = () => {
     if (busy) return;
-    setBusy("art");
     play("remix");
-    flow("remix_request", { via: "note", vibe: "custom" });
-    const asked = clock();
-    try {
-      const art = await remixArt(stub, "moodier");
-      flow("remix_result", { via: "note", result: "success", ...artOutcome(art), duration_ms: since(asked) });
-      onChange(addArtVersion(stub, art));
-      play("success");
-      haptic([18, 40, 28]);
-      dismiss("art");
-    } catch (e) {
-      flow("remix_result", { via: "note", result: "error", duration_ms: since(asked), error_code: errorCode(e) });
-      play("close");
-    } finally {
-      setBusy(null);
-    }
+    // sound, announcement and status come from the editor's controller; the note just leaves once the art is applied or waiting
+    generation
+      .start({ via: "note", vibe: "moodier", fallback: "apply", run: remixProducer("note", "moodier", "custom") })
+      .then((r) => {
+        if (r.started && (r.op.phase === "applied" || r.op.phase === "ready")) dismiss("art");
+      })
+      .catch(() => undefined);
   };
 
   const ev = stub.event;

@@ -170,7 +170,7 @@ export interface RemixResult {
 }
 
 /** Remix the art layer for a stub, and say so when the daily cap turned it into procedural art. */
-export async function remixArtNoted(stub: Stub, vibe?: string, opts: { simulate?: "failure" } = {}): Promise<RemixResult> {
+export async function remixArtNoted(stub: Stub, vibe?: string, opts: { simulate?: "failure"; signal?: AbortSignal } = {}): Promise<RemixResult> {
   const v = currentVersion(stub);
   const seed = Math.floor(Math.random() * 2_147_483_647);
   const started = performance.now();
@@ -180,8 +180,11 @@ export async function remixArtNoted(stub: Stub, vibe?: string, opts: { simulate?
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ event: stub.event, vibe, seed, edition: v?.edition, first: false, ...(opts.simulate ? { simulate: opts.simulate } : {}) }),
+      ...(opts.signal ? { signal: opts.signal } : {}),
     });
   } catch {
+    // a stop the caller asked for is not a network failure (and never claims the provider stopped)
+    if (opts.signal?.aborted) throw Object.assign(new Error("Stopped."), { code: "aborted" });
     reportCall("art", started, { result: "failure" });
     throw Object.assign(new Error(messageFor("network").message), { code: "network" });
   }

@@ -6,8 +6,11 @@ import type { Correction, Stub } from "./types";
 import { releasable, releaseOldest, retainArt } from "./versions/retention";
 import { applyCorrection, entries, undoCorrection, type CorrectionInput } from "./facts/corrections";
 import { storageFailure, storageReason } from "@/customer/flows/events";
+import { forgetStatus } from "./generation/status-store";
 
 const KEY = "ticketstub.wall.v1";
+/** The localStorage key of the wall, for code that reads a `storage` event's payload. */
+export const WALL_STORAGE_KEY = KEY;
 const DELETED_KEY = "ticketstub.wall.deleted.v1";
 /** Fired after a local change the account sync should hear about. A sync's own writes don't fire it. */
 export const WALL_CHANGED = "ticketstub:wall-changed";
@@ -98,18 +101,76 @@ export function saveWall(stubs: Stub[]): boolean {
   return ok;
 }
 
+/** What a wall says about one stub. "unknown" means the wall could not be read: never "gone". */
+export type StubPresence = "present" | "absent" | "unknown";
+
+/** Presence from a raw stored wall value (a `storage` event's newValue, or a direct read). null is an empty wall. */
+export function wallPresenceFromValue(raw: string | null, id: string): StubPresence {
+  if (raw === null) return "absent";
+  try {
+    const wall = JSON.parse(raw) as unknown;
+    if (!Array.isArray(wall)) return "unknown";
+    return wall.some((s) => (s as Stub | null)?.id === id) ? "present" : "absent";
+  } catch {
+    return "unknown";
+  }
+}
+
+/** A typed presence read that, unlike loadWall, does not turn a failed read into an empty wall. */
+export function stubPresence(id: string): StubPresence {
+  try {
+    return wallPresenceFromValue(localStorage.getItem(KEY), id);
+  } catch {
+    return "unknown";
+  }
+}
+
+/** The stored copy of one stub with a typed outcome ("unknown" when the wall cannot be read). */
+export function readStoredStub(id: string): { status: "present"; stub: Stub } | { status: "absent" | "unknown" } {
+  try {
+    const raw = localStorage.getItem(KEY);
+    if (raw === null) return { status: "absent" };
+    const wall = JSON.parse(raw) as unknown;
+    if (!Array.isArray(wall)) return { status: "unknown" };
+    const stub = (wall as Stub[]).find((s) => s?.id === id);
+    return stub ? { status: "present", stub } : { status: "absent" };
+  } catch {
+    return { status: "unknown" };
+  }
+}
+
 export function getStub(id: string): Stub | undefined {
   return loadWall().find((s) => s.id === id);
 }
 
 /** Save one stub to the front of the wall. True when it is stored on this device; false means it lives in memory only. */
 export function upsertStub(stub: Stub): boolean {
-  const stored = loadWall();
-  const wall = stored.filter((s) => s.id !== stub.id);
+  // ONE read serves both the safety check and the merge, so nothing can change between them in this task. A wall that cannot be
+  // READ is not an empty wall: writing only this stub would erase every other project, so it is reported unsaved instead.
+  let raw: string | null;
+  try {
+    raw = localStorage.getItem(KEY);
+  } catch (e) {
+    storageFailure("wall", "read", e);
+    return false;
+  }
+  // Unparseable or non-list content is UNKNOWN, not empty: replacing it with just this stub would destroy whatever it holds.
+  let stored: Stub[] = [];
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      if (!Array.isArray(parsed)) throw new Error("wall is not a list");
+      stored = parsed as Stub[];
+    } catch (e) {
+      storageFailure("wall", "read", e);
+      return false;
+    }
+  }
+  const wall = stored.filter((s) => s?.id !== stub.id);
   const gone = loadDeleted();
   if (gone.includes(stub.id)) saveDeleted(gone.filter((id) => id !== stub.id));
   // a copy that had to let go of a picture takes it back from what is stored, if that still has it
-  return saveWall([{ ...retainArt(stub, stored.find((s) => s.id === stub.id)), updatedAt: Date.now() }, ...wall]);
+  return saveWall([{ ...retainArt(stub, stored.find((s) => s?.id === stub.id)), updatedAt: Date.now() }, ...wall]);
 }
 
 /** A stub's correction history, oldest first. Entries are only ever appended (an undo is a new entry). */
@@ -139,6 +200,7 @@ export function undoStubCorrection(id: string, factId: string): Stub | undefined
 /** True when the stub is gone from storage too. */
 export function removeStub(id: string): boolean {
   saveDeleted([...loadDeleted(), id]);
+  forgetStatus(id);
   return saveWall(loadWall().filter((s) => s.id !== id));
 }
 
