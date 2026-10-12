@@ -133,6 +133,9 @@ export class GenerationController {
     if (!source || !this.attached) return Promise.reject(new Error("The editor is not open."));
     const active = this.get(source.id);
     if (active?.phase === "pending") return Promise.resolve({ started: false, op: active });
+    // A new request replaces whatever the status was showing. An unapplied ready result is deliberately retired first,
+    // so the older run can no longer be applied, retried or shown over the newer one.
+    if (active) this.retire(active);
     const runId = newRunId();
     const op: GenerationOp = {
       runId,
@@ -168,7 +171,7 @@ export class GenerationController {
   /** Stop applying this operation's result. Local only: the provider may still complete the request. */
   cancel(runId: string): void {
     const op = this.ops.get(runId);
-    if (!op || op.phase !== "pending") return;
+    if (!op || op.phase !== "pending" || !this.isLatest(op)) return;
     this.entries.get(runId)?.ac.abort();
     this.finish(runId, { phase: "canceled", code: "canceled", message: STOPPED_MESSAGE });
   }
@@ -177,7 +180,8 @@ export class GenerationController {
   apply(runId: string): GenerationOp | null {
     const op = this.ops.get(runId);
     const entry = this.entries.get(runId);
-    if (!op || op.phase !== "ready" || !entry?.candidate) return op ?? null;
+    // only the project's CURRENT operation may write; an older run's Apply is inert
+    if (!op || !this.isLatest(op) || op.phase !== "ready" || !entry?.candidate) return op ?? null;
     const { art } = entry.candidate;
     entry.candidate = undefined;
     const cur = this.guard(op);
@@ -188,7 +192,7 @@ export class GenerationController {
   /** Throw away a ready candidate (or stop a pending run). The draft is untouched. */
   discard(runId: string): void {
     const op = this.ops.get(runId);
-    if (!op) return;
+    if (!op || !this.isLatest(op)) return;
     if (op.phase === "pending") return this.cancel(runId);
     if (op.phase !== "ready") return;
     this.finish(runId, { phase: "discarded", message: "New art discarded. Your design is unchanged." });
@@ -211,15 +215,29 @@ export class GenerationController {
   retry(runId: string): Promise<StartResult> | null {
     const op = this.ops.get(runId);
     const entry = this.entries.get(runId);
-    if (!op || !entry || op.phase === "pending" || op.phase === "ready" || op.phase === "applied") return null;
+    // only the current operation can be retried: an older run must not displace a newer pending or ready one
+    if (!op || !entry || !this.isLatest(op) || op.phase === "pending" || op.phase === "ready" || op.phase === "applied") return null;
     return this.start(entry.req);
   }
 
   canRetry(runId: string): boolean {
-    return this.entries.has(runId);
+    const op = this.ops.get(runId);
+    return !!op && this.isLatest(op) && this.entries.has(runId);
   }
 
   /* ---------------- internals ---------------- */
+
+  private isLatest(op: GenerationOp): boolean {
+    return this.latest.get(op.stubId) === op.runId;
+  }
+
+  /** Replace the shown operation: a ready candidate is discarded as superseded; its request and candidate are dropped. */
+  private retire(op: GenerationOp): void {
+    if (op.phase === "ready") {
+      this.finish(op.runId, { phase: "discarded", code: "superseded", message: "An earlier result was not applied: a newer request replaced it." });
+    }
+    this.entries.delete(op.runId);
+  }
 
   /** The current draft, when this operation may still write to it. */
   private guard(op: GenerationOp): Stub | null {
@@ -232,7 +250,7 @@ export class GenerationController {
     const op = this.ops.get(runId);
     const entry = this.entries.get(runId);
     // at most once: a duplicate, canceled, superseded or interrupted completion finds a terminal operation and stops here
-    if (!op || !entry || op.phase !== "pending") return;
+    if (!op || !entry || op.phase !== "pending" || !this.isLatest(op)) return;
     const cur = this.guard(op);
     if (!cur) {
       this.discardGone(runId);

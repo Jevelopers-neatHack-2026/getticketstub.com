@@ -188,6 +188,31 @@ async function scenarios(browser, label, vp) {
   check(tag("reload while pending reads interrupted, not resumed"), (await hasStatus(page, /can't tell whether it finished/)) && (await calls(page)) === 0, await statusText(page));
   await shot(page, `${label}-reload-interrupted`);
   await page.close();
+
+  // 4. ready A, then a newer request B: A is retired (cannot be applied late), B completes exactly once
+  page = await open(browser, label, vp);
+  await startRemix(page);
+  await closeSheet(page);
+  await pickEdition(page);
+  await sleep(400);
+  await settle(page, 0, "ok", "A");
+  await sleep(600);
+  check(tag("A is ready (selection moved)"), await hasStatus(page, /New art ready/), await statusText(page));
+  const vA = (await wall(page))?.versions?.length;
+  check(tag("a newer request B starts while A is ready"), await startRemix(page));
+  await closeSheet(page);
+  check(tag("two requests were made, B is pending"), (await calls(page)) === 2 && (await hasStatus(page, /Generating new art/)), await statusText(page));
+  check(tag("A's Apply is gone while B is pending"), !(await page.eval(`!![...document.querySelectorAll("button")].find((b) => /Apply as new version/.test(b.textContent))`)));
+  check(tag("A did not write while superseded"), (await wall(page))?.versions?.length === vA);
+  await shot(page, `${label}-superseded-b-pending`);
+  await settle(page, 1, "ok", "B");
+  await sleep(700);
+  w = await wall(page);
+  check(tag("B applied exactly once (one new version, A's never added)"), w?.versions?.length === vA + 1 && (await hasStatus(page, /New art applied/)), `versions=${w?.versions?.length} vs ${vA}`);
+  await settle(page, 0, "ok", "A-again").catch(() => undefined);
+  await sleep(400);
+  check(tag("a repeated late A response changes nothing"), (await wall(page))?.versions?.length === vA + 1);
+  await page.close();
 }
 
 const browser = await launchBrowser();

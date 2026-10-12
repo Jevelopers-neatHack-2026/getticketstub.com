@@ -457,3 +457,142 @@ describe("truthful cancel and status copy", () => {
     assert.doesNotMatch(text, /%|ETA|seconds|safe/i);
   });
 });
+
+describe("one owner per project: an older run cannot supersede or write over the current one", () => {
+  /** Count of local-save notifications the account sync listens to. */
+  const watchWrites = () => {
+    const n = { count: 0 };
+    window.addEventListener(store.WALL_CHANGED, () => n.count++);
+    return n;
+  };
+  /** A is ready (selection moved while it ran), then B is dispatched and pending. */
+  async function readyAThenPendingB(ed) {
+    const a = ed.ask("sheet");
+    await tick();
+    ed.update(ops.setEdition(ed.stub, "risograph")); // selection moves: A will be held
+    calls[0].ok("A");
+    const first = await a;
+    assert.equal(first.op.phase, "ready");
+    const b = ed.ask("agent", "offer");
+    await tick();
+    return { idA: first.op.runId, b };
+  }
+  const snapshot = (ed) => ({ draft: JSON.stringify(ed.stub), wall: localStorage.getItem("ticketstub.wall.v1"), saves: ed.saved.length });
+
+  test("ready A -> pending B -> stale Apply A: zero draft, storage and sync writes; B then succeeds exactly once", async () => {
+    const ed = openEditor();
+    const writes = watchWrites();
+    const { idA, b } = await readyAThenPendingB(ed);
+    const idB = ed.gen.get("s1").runId;
+    assert.notEqual(idB, idA);
+    assert.equal(ed.gen.all().find((o) => o.runId === idA).phase, "discarded", "A was deliberately retired");
+    assert.equal(ed.gen.all().find((o) => o.runId === idA).code, "superseded");
+    const before = snapshot(ed);
+    const w0 = writes.count;
+    const res = ed.gen.apply(idA);
+    assert.equal(res.phase, "discarded");
+    assert.deepEqual(snapshot(ed), before, "no draft change, no local save");
+    assert.equal(writes.count, w0, "no wall-changed notification, so nothing for the account sync to publish");
+    assert.equal(ed.gen.get("s1").runId, idB);
+    assert.equal(ed.gen.get("s1").phase, "pending", "A did not displace B");
+    calls[1].ok("B");
+    const done = await b;
+    assert.equal(done.op.phase, "applied");
+    assert.equal(ed.stub.versions.length, 3, "A's version never added; B's added once");
+    assert.equal(currentVersion(ed.stub).art.src, "/art/B.webp");
+    ed.gen.apply(idB);
+    ed.gen.apply(idA);
+    assert.equal(ed.stub.versions.length, 3, "duplicates change nothing");
+    assert.equal(store.getStub("s1").versions.length, 3);
+  });
+
+  test("the supplied negative: A ready, B pending, apply(A) commits nothing", async () => {
+    let stub = { ...makeStub("neg"), versions: [{ id: "v0", edition: "researched", art: { kind: "procedural", seed: 1 }, createdAt: "2026-10-12T00:00:00Z" }, { id: "v1", edition: "researched", art: { kind: "procedural", seed: 2 }, createdAt: "2026-10-12T00:00:00Z" }] };
+    let commits = 0;
+    let resolveB;
+    const c = new GenerationController({ current: () => stub, revision: () => 0, isGone: () => false, commit: (s) => ((stub = s), commits++, true) }, localStorage);
+    c.attach();
+    const a = c.start({ via: "sheet", run: async () => ({ art: { kind: "procedural", seed: 11 } }) });
+    stub = { ...stub, currentVersionId: "v1" };
+    const first = await a;
+    assert.equal(first.op.phase, "ready");
+    const b = c.start({ via: "agent", run: () => new Promise((r) => (resolveB = r)) });
+    const before = commits;
+    c.apply(first.op.runId);
+    assert.equal(commits - before, 0);
+    assert.equal(c.get("neg").phase, "pending");
+    resolveB({ art: { kind: "procedural", seed: 12 } });
+    assert.equal((await b).op.phase, "applied", "B was dispatched on the current selection, so it applies");
+    assert.equal(commits, 1, "B committed exactly once; A never");
+    assert.equal(stub.versions.length, 3);
+  });
+
+  test("stale Retry A while B is pending or ready is ignored: no request, B untouched", async () => {
+    const ed = openEditor();
+    const a = ed.ask("sheet");
+    await tick();
+    calls[0].respond(500, { error: { code: "provider_unavailable", message: "down" } });
+    const idA = (await a).op.runId;
+    assert.equal(ed.gen.canRetry(idA), true);
+    const b = ed.ask("note"); // explicit new operation replaces A's failed status
+    await tick();
+    const idB = ed.gen.get("s1").runId;
+    assert.equal(ed.gen.canRetry(idA), false);
+    assert.equal(ed.gen.retry(idA), null, "B pending");
+    assert.equal(calls.length, 2);
+    ed.update(ops.setEdition(ed.stub, "minimal")); // move selection so B becomes ready
+    calls[1].ok("B");
+    assert.equal((await b).op.phase, "ready");
+    assert.equal(ed.gen.retry(idA), null, "B ready");
+    assert.equal(calls.length, 2, "no new request");
+    assert.equal(ed.gen.get("s1").runId, idB);
+    assert.equal(ed.gen.get("s1").phase, "ready");
+    assert.equal(ed.gen.apply(idB).phase, "applied", "B's explicit Apply still works, once");
+    ed.gen.apply(idB);
+    assert.equal(ed.stub.versions.length, 3);
+  });
+
+  test("late callbacks of retired runs (cancel, discard, dismiss, apply) cannot disturb the current one, in any order", async () => {
+    for (const order of [["apply", "discard", "cancel", "dismiss"], ["dismiss", "cancel", "discard", "apply"]]) {
+      localStorage.clear();
+      calls = [];
+      const ed = openEditor();
+      const { idA, b } = await readyAThenPendingB(ed);
+      const idB = ed.gen.get("s1").runId;
+      const before = snapshot(ed);
+      for (const m of order) ed.gen[m](idA);
+      assert.deepEqual(snapshot(ed), before);
+      assert.equal(ed.gen.get("s1").runId, idB);
+      assert.equal(ed.gen.get("s1").phase, "pending");
+      assert.equal(calls[1].signal.aborted, false, "B's transport untouched");
+      calls[1].ok("B");
+      assert.equal((await b).op.phase, "applied");
+      assert.equal(ed.stub.versions.length, 3, "B applied once");
+    }
+  });
+
+  test("A and B completions in either order; project, selection, history and edits are preserved", async () => {
+    for (const bFirst of [true, false]) {
+      localStorage.clear();
+      calls = [];
+      const ed = openEditor();
+      ed.update(ops.setFont(ed.stub, 2));
+      const { idA, b } = await readyAThenPendingB(ed);
+      ed.update(ops.setHidden(ed.stub, "date", true)); // an edit while B is pending
+      const chosen = ed.stub.currentVersionId;
+      const hist = versionsOf(ed.stub);
+      if (bFirst) calls[1].ok("B");
+      ed.gen.apply(idA);
+      if (!bFirst) calls[1].ok("B");
+      const { op } = await b;
+      assert.equal(op.phase, "applied", "selection unchanged since B started, so B applies");
+      assert.equal(ed.stub.personal.titleFont, 2);
+      assert.deepEqual(ed.stub.personal.hiddenFields, ["date"]);
+      assert.deepEqual(versionsOf(ed.stub).slice(0, hist.length), hist, "history kept in order");
+      assert.equal(ed.stub.versions.length, hist.length + 1);
+      assert.equal(currentVersion(ed.stub).parentId, chosen);
+      assert.equal(store.getStub("s1").versions.length, hist.length + 1);
+      assert.deepEqual(store.loadWall().map((s) => s.id), ["s1"]);
+    }
+  });
+});
