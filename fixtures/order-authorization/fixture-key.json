@@ -1,5 +1,5 @@
 {
-  "warning": "FIXTURE ONLY. NEVER PRODUCTION. Public on purpose: it signs test authorizations that carry mode fixture, and test consumer requests. Never set either key on a server; the server refuses any secret containing FIXTURE-ONLY.",
+  "warning": "FIXTURE ONLY. NEVER PRODUCTION. Public on purpose: it signs test authorizations that carry mode fixture, and test consumer requests. Never set either key on a server (not in ORDER_AUTH_SIGNING_KEYS, ORDER_AUTH_CONSUMER_KEY or CONTEXT_SECRET); the server refuses any key containing FIXTURE-ONLY and any key-set kid starting with fixture.",
   "kid": "fixture",
   "alg": "HS256",
   "key": "FIXTURE-ONLY-NEVER-PRODUCTION--ticketstub-order-authorization-key-v1",

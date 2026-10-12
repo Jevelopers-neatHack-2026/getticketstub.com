@@ -91,7 +91,8 @@ const out = {};
 function add(name, description, token, { intent = "verify", expect = expectOf(), state = live, verifyAt = NOW + 5 * MIN, consumer, outcome }) {
   out[name] = { fixture: name, description, intent, verifyAt: iso(verifyAt), token, expect, ...(state ? { state } : {}), ...(consumer ? { consumer } : {}), outcome };
 }
-const sign = (r, key = FIXTURE_KEY) => signOrderAuthorization(r, key);
+/** Every fixture token carries kid "fixture" in its header; a server refuses any kid starting "fixture". */
+const sign = (r, key = FIXTURE_KEY, kid = "fixture") => signOrderAuthorization(r, { kid, key });
 const good = sign(record());
 const claimRef = "clm_FIXTURE_ref_0001";
 const claimed = (keyMatches) => ({ ...live, claim: { reference: claimRef, keyMatches } });
@@ -105,6 +106,12 @@ add("unknown-malformed", "Not a token at all.", "not-a-token", { outcome: no("un
 add("unknown-no-record", "Signed correctly, but the issuer has no record of this id (a different deployment, or a wiped database). The issuer answers known: false.", good, { state: { ...live, known: false }, outcome: no("unknown") });
 add("unknown-approval-token", "A real, valid ticketstub.approval/1 token presented as an order authorization. An approval is not a purchase authorization: it is a different token type, signed with a different key, and is never accepted here.", approvalFixture.token, { outcome: no("unknown") });
 add("forged", "The same record signed with a different key.", sign(record(), "some-other-key-the-issuer-never-saw-0000"), { outcome: no("forged") });
+add("forged-unknown-kid", "Signed with the fixture key bytes, but under a kid the verifier holds no key for (a rotated-out or invented kid). Nothing verifies it.", sign(record(), FIXTURE_KEY, "fixture-g0-purged"), { outcome: no("forged") });
+add("forged-context-key", "Key confusion: the record signed under the order-authorization kid with the context-token key (the published context fixture key, standing in for CONTEXT_SECRET). Order authorizations have their own key set, so it is forged.", sign(record(), JSON.parse(readFileSync(join(here, "..", "context", "fixture-key.json"), "utf8")).key), { outcome: no("forged") });
+add("forged-approval-key", "Key confusion: the record signed under the order-authorization kid with the approval fixture key. Approvals and order authorizations have separate key sets, so it is forged.", sign(record(), JSON.parse(readFileSync(join(here, "..", "approval", "fixture-key.json"), "utf8")).key), { outcome: no("forged") });
+const noKid = sign(record()).split(".");
+noKid[0] = Buffer.from(JSON.stringify({ alg: "HS256", typ: "ticketstub.order-authorization" })).toString("base64url");
+add("unknown-no-kid", "A header without a kid (the pre-K4 format). A verifier can't pick a key, so it is not a token it reads.", noKid.join("."), { outcome: no("unknown") });
 const edited = good.split(".");
 const swapped = JSON.parse(Buffer.from(edited[1], "base64url").toString());
 swapped.authorization.terms.quote.amountMinor = 9900;
@@ -283,7 +290,7 @@ writeFileSync(
   join(here, "fixture-key.json"),
   `${JSON.stringify(
     {
-      warning: "FIXTURE ONLY. NEVER PRODUCTION. Public on purpose: it signs test authorizations that carry mode fixture, and test consumer requests. Never set either key on a server; the server refuses any secret containing FIXTURE-ONLY.",
+      warning: "FIXTURE ONLY. NEVER PRODUCTION. Public on purpose: it signs test authorizations that carry mode fixture, and test consumer requests. Never set either key on a server (not in ORDER_AUTH_SIGNING_KEYS, ORDER_AUTH_CONSUMER_KEY or CONTEXT_SECRET); the server refuses any key containing FIXTURE-ONLY and any key-set kid starting with fixture.",
       kid: "fixture",
       alg: "HS256",
       key: FIXTURE_KEY,

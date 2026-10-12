@@ -2,7 +2,8 @@
 // production server, plus the offline fixtures.
 //   node scripts/check-order-auth.mjs <baseUrl>
 // Fixture mode only. It needs the env the harness gives the server and this script alike: TICKETSTUB_DB (the throwaway database, for the
-// append-only and uniqueness checks), CONTEXT_SECRET and ORDER_AUTH_CONSUMER_KEY (random per run, never the published fixture keys).
+// append-only and uniqueness checks), ORDER_AUTH_SIGNING_KEYS (to mint an expired row), CONTEXT_SECRET (to show it never verifies an
+// authorization) and ORDER_AUTH_CONSUMER_KEY, all random per run, never the published fixture keys.
 // Two accounts (A and B), a guest, and a consumer that holds no cookie and signs its requests with the consumer key.
 import { createHash, randomBytes } from "node:crypto";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
@@ -16,7 +17,17 @@ import { ReferenceIssuer, fixtureNow, matchesOutcome, runFixture, runScenario } 
 const BASE = (process.argv[2] ?? process.env.SMOKE_URL ?? "http://localhost:3000").replace(/\/$/, "");
 const DB = process.env.TICKETSTUB_DB ?? "./data/ticketstub.sqlite";
 const CONSUMER_KEY = process.env.ORDER_AUTH_CONSUMER_KEY ?? "";
-const SERVER_KEY = process.env.CONTEXT_SECRET ?? "";
+const CONTEXT_KEY = process.env.CONTEXT_SECRET ?? "";
+const SIGNING_SET_RAW = process.env.ORDER_AUTH_SIGNING_KEYS ?? "";
+/** The active entry of ORDER_AUTH_SIGNING_KEYS, as the server signs with it: { kid, key bytes }. */
+const SERVER_SIGNER = (() => {
+  try {
+    const e = JSON.parse(SIGNING_SET_RAW).keys.find((k) => k.state === "active");
+    return { kid: e.kid, key: Buffer.from(e.key, "base64url"), text: e.key };
+  } catch {
+    return { kid: "", key: Buffer.alloc(0), text: "" };
+  }
+})();
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const FIXTURES = join(ROOT, "fixtures", "order-authorization");
 const run = randomBytes(4).toString("hex");
@@ -127,6 +138,7 @@ const expectOf = (rec, over = {}) => ({ tenant: rec.tenant.id, project: `stub:${
 async function main() {
   // ---------------------------------------------------------------- fixtures, offline
   const keyFile = JSON.parse(readFileSync(join(FIXTURES, "fixture-key.json"), "utf8"));
+  const fixtureKeys = { [keyFile.kid]: keyFile.key }; // fixture tokens carry kid "fixture"; a server refuses that kid
   const index = JSON.parse(readFileSync(join(FIXTURES, "index.json"), "utf8"));
   const content = JSON.parse(readFileSync(join(FIXTURES, "content.json"), "utf8"));
   const readme = existsSync(join(FIXTURES, "README.md")) ? readFileSync(join(FIXTURES, "README.md"), "utf8") : "";
@@ -139,8 +151,8 @@ async function main() {
   for (const f of onDisk) {
     const x = JSON.parse(readFileSync(join(FIXTURES, f), "utf8"));
     fx[x.fixture] = x;
-    const a = verifyOrderAuthorization(x.token, keyFile.key, x.expect, fixtureNow(x), x.state, x.intent); // the code the server runs
-    const b = runFixture(x, keyFile.key); // the reference verifier a consumer copies
+    const a = verifyOrderAuthorization(x.token, fixtureKeys, x.expect, fixtureNow(x), x.state, x.intent); // the code the server runs
+    const b = runFixture(x, fixtureKeys); // the reference verifier a consumer copies
     if (!matchesOutcome(a, x.outcome) || !matchesOutcome(b, x.outcome)) bad.push(x.fixture);
   }
   check("fixtures: the server verifier and the reference verifier give each token fixture its expected outcome", bad.length === 0, bad.join());
@@ -180,7 +192,8 @@ async function main() {
   check("separate: the order authorization never infers anything from an approval's purposes (it names print.compose and checks the approval's current state)", /purpose !== "print\.compose"/.test(oa));
 
   // ---------------------------------------------------------------- the live server
-  check("setup: this script holds a consumer key and a server key that are not the published fixture keys", CONSUMER_KEY.length >= 32 && !CONSUMER_KEY.includes("FIXTURE-ONLY") && SERVER_KEY.length >= 32 && !SERVER_KEY.includes("FIXTURE-ONLY") && CONSUMER_KEY !== SERVER_KEY);
+  check("setup: this script holds a consumer key, an order-authorization key set and a context secret, none of them a published fixture key and no two alike", CONSUMER_KEY.length >= 32 && !CONSUMER_KEY.includes("FIXTURE-ONLY") && SERVER_SIGNER.key.length >= 32 && /^order-auth-/.test(SERVER_SIGNER.kid) && CONTEXT_KEY.length >= 32 && new Set([CONSUMER_KEY, CONTEXT_KEY, SERVER_SIGNER.key.toString("latin1")]).size === 3);
+  check("static: order authorizations sign with ORDER_AUTH_SIGNING_KEYS, never CONTEXT_SECRET", /requireOrderAuthKeyring\(\)/.test(oa) && /orderAuthKeyring\(\)/.test(oa) && !/tokenSigningKey|CONTEXT_SECRET\b.*sign/.test(oa) && !/export function (tokenSigningKey|signingMode)/.test(srcOf("src/server/context.ts")));
   const A = client("A");
   const B = client("B");
   const emailA = `orderauth-a-${run}@example.com`;
@@ -266,6 +279,7 @@ async function main() {
   check("issue: it references the approval id and copies its binding hashes (art is the SHA-256 of the stored bytes)", au1.approval.id === S.approval.id && au1.approval.purpose === "print.compose" && au1.terms.approvalId === S.approval.id && au1.terms.design.versionId === `${S.id}-v1` && au1.terms.design.artHash === artHash && ["designHash", "artHash", "factsHash", "compositionHash"].every((k) => au1.terms.design[k] === S.approval.binding[k]));
   check("issue: capability version, membership revision, idempotency key and the command hash are in the record", au1.terms.capabilityVersion === CAPABILITY_VERSION && au1.membershipRevision === ctxA.membershipRevision && au1.idempotencyKey === `issue_${run}_${S.id}` && au1.command.hash === commandHash(au1.action, au1.provider, au1.terms) && /^act_[a-f0-9]{32}$/.test(au1.actionId));
   check("issue: fifteen minutes, mode sandbox, and what it never authorizes", Date.parse(au1.expiresAt) - Date.parse(au1.issuedAt) === 15 * 60_000 && au1.mode === "sandbox" && ORDER_AUTH_NOT_AUTHORIZED.every((x) => au1.notAuthorizes.includes(x)));
+  check("issue: the token header names the active ORDER_AUTH_SIGNING_KEYS kid", (() => { const h = JSON.parse(Buffer.from(i1.json.token.split(".")[0], "base64url").toString()); return Object.keys(h).sort().join() === "alg,kid,typ" && h.kid === SERVER_SIGNER.kid; })());
   check("issue: no address, phone or email anywhere in the record", !/@|street/i.test(JSON.stringify(au1)) && !/"(address|email|phone|street|line1|postcode|guestName)"/i.test(JSON.stringify(au1)));
   const again = await issue(A, body(S));
   check("issue: the same request and key is idempotent (same id and token, created false)", again.status === 200 && again.json.authorization.id === au1.id && again.json.created === false && again.json.token === i1.json.token);
@@ -492,7 +506,9 @@ async function main() {
   expRec.actionId = actionIdOf(expRec.tenant.id, expRec.project, expRec.action, expTerms.orderRef);
   expRec.command = { name: "submit_order", hash: commandHash(expRec.action, expRec.provider, expTerms) };
   db.prepare("INSERT INTO order_authorizations (id, tenant, project, action_id, idem_key, req_hash, record, issued_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)").run(expRec.id, expRec.tenant.id, expRec.project.id, expRec.actionId, expRec.idempotencyKey, "x", canonicalJson(expRec), Date.now() - 20 * 60_000, Date.now() - 5 * 60_000);
-  const expToken = signOrderAuthorization(expRec, SERVER_KEY);
+  const expToken = signOrderAuthorization(expRec, SERVER_SIGNER);
+  check("keys: a token signed with CONTEXT_SECRET under the active kid is forged on the server (no key confusion)", reasonOf(await verify(signOrderAuthorization(expRec, { kid: SERVER_SIGNER.kid, key: CONTEXT_KEY }), expectOf(expRec))) === "forged");
+  check("keys: a token under a kid the server does not hold is forged", reasonOf(await verify(signOrderAuthorization(expRec, { kid: "order-auth-g999", key: SERVER_SIGNER.key }), expectOf(expRec))) === "forged");
   check("expired: verify says expired (403)", reasonOf(await verify(expToken, expectOf(expRec))) === "expired");
   check("expired: claim says expired and commits nothing", reasonOf(await claim(expToken, expectOf(expRec), `claim_${run}_exp`)) === "expired" && claimsFor(expRec.id) === 0);
   check("expired: the owner's list reads it as expired", (await list(A, exp.s.id)).json.authorizations.some((x) => x.authorization.id === expRec.id && x.status === "expired"));
@@ -535,7 +551,7 @@ async function main() {
   check("events: they carry a provider, a 16-hex ref, a reason code, an op and flags only", evAll.every((e) => Object.entries(e.fields).every(([k, v]) => (k === "provider" && ["sandbox", "prodigi"].includes(v)) || (k === "authorization" && /^[a-f0-9]{16}$/.test(v)) || (k === "reason" && /^[a-z_]+$/.test(v)) || (k === "op" && ["claim", "revalidate"].includes(v)) || typeof v === "boolean")));
   check("events: no authorization id, token, hash, destination reference or email in the history", ![au1.id, i1.json.token, au1.terms.destination.ref, au1.terms.destination.digest, artHash, emailA].some((v) => ev.text.includes(v) || evRv.text.includes(v)));
   const joined = responses.join("\n");
-  const secrets = ["FIXTURE-ONLY", "CONTEXT_SECRET", "ORDER_AUTH_CONSUMER_KEY", CONSUMER_KEY, SERVER_KEY, "membership_revision", "__ticketstubContextKey", "RESEND_API_KEY", "OPENAI_API_KEY", ...cookies.filter((c) => c.length > 20)];
+  const secrets = ["FIXTURE-ONLY", "CONTEXT_SECRET", "ORDER_AUTH_CONSUMER_KEY", "ORDER_AUTH_SIGNING_KEYS", "__ticketstubKeyringFallback", CONSUMER_KEY, CONTEXT_KEY, SERVER_SIGNER.text, "membership_revision", "__ticketstubContextKey", "RESEND_API_KEY", "OPENAI_API_KEY", ...cookies.filter((c) => c.length > 20)];
   check("secrets: no response carries a key, a session or device cookie, or an internal name", !secrets.some((v) => joined.includes(v)), secrets.filter((v) => joined.includes(v)).join().slice(0, 100));
   const tokens = [...joined.matchAll(/"token":"([^"]+)"/g)].map((m) => m[1]).filter((tk) => tk.split(".").length === 3 && JSON.parse(Buffer.from(tk.split(".")[0], "base64url").toString()).typ === "ticketstub.order-authorization");
   const bodies = tokens.map((tk) => JSON.parse(Buffer.from(tk.split(".")[1], "base64url").toString()));

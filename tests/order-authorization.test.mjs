@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { randomBytes } from "node:crypto";
 import { test } from "node:test";
 import { APPROVAL_SCHEMA, NOT_AUTHORIZED, bindStub, sha256Hex, signApproval } from "../src/server/approval-token.ts";
 import {
@@ -21,6 +22,8 @@ import { VARIANTS, authorizationGate, variantFor } from "../src/customer/pages/c
 import { verifyOrderAuthorization as referenceVerify } from "../fixtures/order-authorization/verify.mjs";
 
 const KEY = "unit-test-key-not-a-secret-0000000000000000";
+const SIGNER = { kid: "order-auth-g1", key: KEY };
+const KEYS = { "order-auth-g1": KEY };
 const NOW = Date.parse("2026-10-10T12:00:00.000Z");
 const h = (s) => sha256Hex(s);
 const terms = () => ({
@@ -41,9 +44,9 @@ const record = (over = {}, t = terms(), provider = "sandbox") => ({
 });
 const expect = (over = {}) => ({ tenant: "t1", project: { kind: "stub", id: "s1" }, action: "fulfillment.submit", provider: "sandbox", terms: terms(), ...over });
 const live = { known: true, revoked: false, superseded: false, approval: "active", membershipRevision: 2, capabilityVersion: "2026-10-11.1", orderable: true, claim: null };
-const token = signOrderAuthorization(record(), KEY);
+const token = signOrderAuthorization(record(), SIGNER);
 const reason = (tok, e = expect(), state = live, intent = "verify", now = NOW + 60_000) => {
-  const r = verifyOrderAuthorization(tok, KEY, e, now, state, intent);
+  const r = verifyOrderAuthorization(tok, KEYS, e, now, state, intent);
   return r.ok ? "ok" : r.reason;
 };
 
@@ -93,9 +96,9 @@ test("the verifier checks in order: shape, forged, version, scope, terms, revoke
   assert.equal(reason(token), "ok");
   assert.equal(reason("nope"), "unknown");
   assert.equal(reason(token.slice(0, -3) + "AAA"), "forged");
-  assert.equal(reason(signOrderAuthorization(record(), "another-key-0000000000000000000000000")), "forged");
-  assert.equal(reason(signOrderAuthorization(record({ schema: "ticketstub.order-authorization/2" }), KEY)), "unsupported_version");
-  assert.equal(reason(signOrderAuthorization(record({ audience: "other" }), KEY)), "unknown");
+  assert.equal(reason(signOrderAuthorization(record(), { kid: "order-auth-g1", key: "another-key-0000000000000000000000000" })), "forged");
+  assert.equal(reason(signOrderAuthorization(record({ schema: "ticketstub.order-authorization/2" }), SIGNER)), "unsupported_version");
+  assert.equal(reason(signOrderAuthorization(record({ audience: "other" }), SIGNER)), "unknown");
   assert.equal(reason(token, expect({ tenant: "t2" })), "wrong_scope");
   assert.equal(reason(token, expect({ project: { kind: "stub", id: "s2" } })), "wrong_scope");
   assert.equal(reason(token, expect({ provider: "prodigi" })), "wrong_scope");
@@ -140,8 +143,8 @@ test("the reference verifier in fixtures agrees with the server verifier on ever
     for (const intent of ["verify", "claim", "revalidate"]) {
       for (const [tok, e] of [[token, expect({ claimReference: "clm_1" })], [token, expect({ terms: t })], ["nope", expect()]]) {
         for (const at of [NOW + 60_000, NOW + 20 * 60_000]) {
-          const a = verifyOrderAuthorization(tok, KEY, e, at, state, intent);
-          const b = referenceVerify(tok, KEY, e, { now: at, state, intent });
+          const a = verifyOrderAuthorization(tok, KEYS, e, at, state, intent);
+          const b = referenceVerify(tok, KEYS, e, { now: at, state, intent });
           assert.equal(a.ok, b.ok);
           if (!a.ok) assert.deepEqual([a.reason, a.fields], [b.reason, b.fields]);
         }
@@ -158,9 +161,9 @@ test("an approval token is never an authorization, and an authorization is never
   const binding = bindStub(stub, "classic", { hash: h("art"), source: "ref" });
   const approval = signApproval(
     { schema: APPROVAL_SCHEMA, id: "apr_unit_1", issuer: "ticketstub", tenant: { id: "t1" }, project: { kind: "stub", id: "s1" }, purpose: "print.compose", actor: { kind: "account", id: "t1" }, binding, membershipRevision: 2, notAuthorizes: NOT_AUTHORIZED, environment: "development", mode: "sandbox", issuedAt: new Date(NOW).toISOString(), expiresAt: new Date(NOW + 3600_000).toISOString() },
-    KEY,
+    SIGNER,
   );
-  assert.equal(reason(approval), "unknown"); // same key, same shape of token, different type: never accepted
+  assert.equal(reason(approval), "unknown"); // same key and kid, same shape of token, different type: never accepted
   assert.equal(orderAuthIdOf(approval), null);
   assert.equal(orderAuthIdOf(token), "oau_unit_1");
   assert.ok(ORDER_AUTH_NOT_AUTHORIZED.includes("payment") && ORDER_AUTH_NOT_AUTHORIZED.includes("destination_change"));
@@ -169,7 +172,7 @@ test("an approval token is never an authorization, and an authorization is never
 test("every failure reason is reachable and listed", () => {
   const reached = new Set();
   const add = (r) => r !== "ok" && reached.add(r);
-  add(reason("nope")); add(reason(token.slice(0, -3) + "AAA")); add(reason(signOrderAuthorization(record({ schema: "x/2" }), KEY))); add(reason(token, expect({ tenant: "t9" })));
+  add(reason("nope")); add(reason(token.slice(0, -3) + "AAA")); add(reason(signOrderAuthorization(record({ schema: "x/2" }), SIGNER))); add(reason(token, expect({ tenant: "t9" })));
   add(reason(token, expect({ terms: { ...terms(), sku: "S" } }))); add(reason(token, expect(), { ...live, revoked: true })); add(reason(token, expect(), live, "verify", NOW + 99 * 60_000));
   add(reason(token, expect(), { ...live, approval: "revoked" })); add(reason(token, expect(), { ...live, superseded: true })); add(reason(token, expect(), { ...live, orderable: false }));
   add(reason(token, expect(), { ...live, claim: { reference: "c", keyMatches: true } })); add(reason(token, expect({ claimReference: "c" }), live, "revalidate"));
@@ -335,5 +338,158 @@ test("readConsumerJson bounds the body in UTF-8 bytes before parsing or verifyin
   } finally {
     if (saved.k === undefined) delete process.env.ORDER_AUTH_CONSUMER_KEY; else process.env.ORDER_AUTH_CONSUMER_KEY = saved.k;
     if (saved.c !== undefined) process.env.CONTEXT_SECRET = saved.c;
+  }
+});
+
+// ---- ORDER_AUTH_SIGNING_KEYS (integration-evals decision 0003 K4): the real env binding, loaded through the same hook.
+const b64k = () => randomBytes(32).toString("base64url");
+const keyset = (...keys) => JSON.stringify({ v: 1, keys });
+const entry = (kid, key, over = {}) => ({ kid, state: "active", activatedAt: new Date(Date.now() - 3600_000).toISOString(), key, ...over });
+async function withEnv(env, fn) {
+  const names = ["TICKETSTUB_RUNTIME_MODE", "ORDER_AUTH_SIGNING_KEYS", "APPROVAL_SIGNING_KEYS", "CONTEXT_SECRET", "ORDER_AUTH_CONSUMER_KEY"];
+  const saved = Object.fromEntries(names.map((n) => [n, process.env[n]]));
+  for (const n of names) if (env[n] === undefined) delete process.env[n]; else process.env[n] = env[n];
+  const errors = [];
+  const origError = console.error;
+  console.error = (...a) => errors.push(a.join(" "));
+  try {
+    await loadReader(); // registers the hook
+    return await fn(await import("../src/server/signing-keys.ts"), errors);
+  } finally {
+    console.error = origError;
+    for (const n of names) if (saved[n] === undefined) delete process.env[n]; else process.env[n] = saved[n];
+  }
+}
+
+test("order authorizations sign with the active ORDER_AUTH_SIGNING_KEYS kid; a retired key verifies for 15 minutes, an unknown kid never", async () => {
+  const [k1, k2] = [b64k(), b64k()];
+  const now = Date.now();
+  const set = keyset(entry("order-auth-g2", k2, { activatedAt: new Date(now - 60_000).toISOString() }), entry("order-auth-g1", k1, { state: "retired", activatedAt: new Date(now - 90 * 86400_000).toISOString(), retiredAt: new Date(now - 60_000).toISOString() }));
+  await withEnv({ TICKETSTUB_RUNTIME_MODE: "live", ORDER_AUTH_SIGNING_KEYS: set }, async ({ orderAuthKeyring, requireOrderAuthKeyring }) => {
+    const kr = requireOrderAuthKeyring();
+    assert.equal(kr.mode, "live");
+    assert.equal(kr.signer().kid, "order-auth-g2");
+    const keys = (kid) => orderAuthKeyring().lookup(kid, now);
+    const fresh = signOrderAuthorization(record(), kr.signer());
+    assert.equal(JSON.parse(Buffer.from(fresh.split(".")[0], "base64url").toString()).kid, "order-auth-g2");
+    assert.equal(verifyOrderAuthorization(fresh, keys, expect(), NOW + 60_000).ok, true);
+    const old = signOrderAuthorization(record(), { kid: "order-auth-g1", key: Buffer.from(k1, "base64url") });
+    assert.equal(verifyOrderAuthorization(old, keys, expect(), NOW + 60_000).ok, true, "the retired key still verifies inside retention");
+    const end = now - 60_000 + 15 * 60_000 + 5 * 60_000; // retiredAt + 15 min TTL + 5 min skew
+    assert.ok(kr.lookup("order-auth-g1", end - 1));
+    assert.equal(kr.lookup("order-auth-g1", end), null, "past retention the retired key verifies nothing");
+    assert.equal(verifyOrderAuthorization(signOrderAuthorization(record(), { kid: "order-auth-g7", key: Buffer.from(k2, "base64url") }), keys, expect(), NOW + 60_000).reason, "forged", "unknown kid");
+  });
+});
+
+test("no key confusion: CONTEXT_SECRET, the approval keys and the consumer key never sign or verify an order authorization", async () => {
+  const ctx = randomBytes(32).toString("base64url");
+  const consumer = randomBytes(32).toString("base64url");
+  const k = b64k();
+  const ak = b64k();
+  const base = { TICKETSTUB_RUNTIME_MODE: "live", CONTEXT_SECRET: ctx, ORDER_AUTH_CONSUMER_KEY: consumer, APPROVAL_SIGNING_KEYS: keyset(entry("approval-g1", ak)) };
+  await withEnv({ ...base, ORDER_AUTH_SIGNING_KEYS: keyset(entry("order-auth-g1", k)) }, async ({ orderAuthKeyring, approvalKeyring }) => {
+    const kr = orderAuthKeyring();
+    const keys = (kid) => kr.lookup(kid);
+    for (const wrong of [ctx, Buffer.from(ak, "base64url"), consumer]) assert.equal(verifyOrderAuthorization(signOrderAuthorization(record(), { kid: "order-auth-g1", key: wrong }), keys, expect(), NOW + 60_000).reason, "forged");
+    // An approval signed under the approval keyring never reads as an order authorization, and vice versa.
+    assert.equal(verifyOrderAuthorization(signOrderAuthorization(record(), kr.signer()), (kid) => approvalKeyring().lookup(kid), expect(), NOW + 60_000).reason, "forged");
+  });
+  // A key set that reuses another secret's bytes is refused outright (fail closed), whichever secret it copies.
+  for (const reused of [Buffer.from(ctx).toString("base64url"), Buffer.from(consumer).toString("base64url"), ak]) {
+    await withEnv({ ...base, ORDER_AUTH_SIGNING_KEYS: keyset(entry("order-auth-g1", reused)) }, async ({ orderAuthKeyring, requireOrderAuthKeyring }, errors) => {
+      assert.equal(orderAuthKeyring(), null);
+      assert.throws(() => requireOrderAuthKeyring(), (e) => e.status === 503 && e.code === "signing_unavailable");
+      assert.ok(errors.every((line) => !line.includes(reused) && !line.includes(ctx)));
+    });
+  }
+});
+
+test("ORDER_AUTH_SIGNING_KEYS fails closed in live mode when unset or invalid, and falls back to a per-process key elsewhere", async () => {
+  for (const raw of [undefined, "", "{nope", keyset(entry("order-auth-g1", "c2hvcnQ"))]) {
+    await withEnv({ TICKETSTUB_RUNTIME_MODE: "live", ORDER_AUTH_SIGNING_KEYS: raw }, async ({ orderAuthKeyring, requireOrderAuthKeyring }, errors) => {
+      assert.equal(orderAuthKeyring(), null);
+      assert.throws(() => requireOrderAuthKeyring(), (e) => e.status === 503 && e.code === "signing_unavailable" && !/c2hvcnQ/.test(e.message));
+      assert.ok(errors.every((line) => /^\[signing-keys\] ORDER_AUTH_SIGNING_KEYS unavailable: [a-z_]+$/.test(line)), errors.join("\n"));
+    });
+  }
+  await withEnv({}, async ({ orderAuthKeyring, approvalKeyring }) => {
+    const a = orderAuthKeyring();
+    assert.equal(a.mode, "sandbox");
+    assert.equal(a.signer().kid, "sandbox");
+    assert.ok(a.signer().key.equals(orderAuthKeyring().signer().key), "the fallback key is stable for the process");
+    assert.ok(!a.signer().key.equals(approvalKeyring().signer().key), "each class has its own fallback key");
+  });
+  // Invalid outside live mode is still refused: a misconfigured secret is never silently replaced.
+  await withEnv({ ORDER_AUTH_SIGNING_KEYS: "{nope" }, async ({ orderAuthKeyring }) => assert.equal(orderAuthKeyring(), null));
+});
+
+// ---- Review fixes (#76 review M1, L3, N2)
+import { withSigningEnv } from "./lib/load-server.mjs";
+
+test("M1: the same string pasted into ORDER_AUTH_SIGNING_KEYS and CONTEXT_SECRET, ORDER_AUTH_CONSUMER_KEY or APPROVAL_SIGNING_KEYS is refused", async () => {
+  const s = b64k();
+  for (const [label, env] of [
+    ["CONTEXT_SECRET", { CONTEXT_SECRET: s }],
+    ["ORDER_AUTH_CONSUMER_KEY", { ORDER_AUTH_CONSUMER_KEY: s }],
+    ["APPROVAL_SIGNING_KEYS", { APPROVAL_SIGNING_KEYS: keyset(entry("approval-g1", s)) }],
+  ]) {
+    await withSigningEnv({ TICKETSTUB_RUNTIME_MODE: "live", ORDER_AUTH_SIGNING_KEYS: keyset(entry("order-auth-g1", s)), ...env }, async ({ orderAuthKeyring, approvalKeyring }, lines) => {
+      assert.equal(orderAuthKeyring(), null, `${label} reused as an order-authorization key must be refused`);
+      if (label === "APPROVAL_SIGNING_KEYS") assert.equal(approvalKeyring(), null, "and the approval set refuses the order key in turn");
+      assert.ok(lines.every((l) => !l.includes(s)));
+    });
+  }
+  await withSigningEnv({ TICKETSTUB_RUNTIME_MODE: "live", ORDER_AUTH_SIGNING_KEYS: keyset(entry("order-auth-g1", b64k())), APPROVAL_SIGNING_KEYS: keyset(entry("approval-g1", b64k())), CONTEXT_SECRET: b64k(), ORDER_AUTH_CONSUMER_KEY: b64k() }, async ({ orderAuthKeyring, approvalKeyring }) => {
+    assert.equal(orderAuthKeyring()?.mode, "live");
+    assert.equal(approvalKeyring()?.mode, "live");
+  });
+});
+
+test("L3: a production build outside live runtime warns once when it falls back to a per-process order-authorization key", async () => {
+  await withSigningEnv({ NODE_ENV: "production" }, async ({ orderAuthKeyring }, lines) => {
+    assert.equal(orderAuthKeyring().signer().kid, "sandbox");
+    orderAuthKeyring();
+    assert.equal(lines.filter((l) => l.includes("ORDER_AUTH_SIGNING_KEYS") && /not "live" in a production build/.test(l)).length, 1, lines.join("\n"));
+  });
+});
+
+test("N2: a retired order-authorization key refuses a token issued after its retirement plus skew", async () => {
+  const [k1, k2] = [b64k(), b64k()];
+  const retiredAt = NOW - 60_000;
+  const set = keyset(entry("order-auth-g2", k2, { activatedAt: new Date(retiredAt).toISOString() }), entry("order-auth-g1", k1, { state: "retired", activatedAt: new Date(NOW - 86400_000).toISOString(), retiredAt: new Date(retiredAt).toISOString() }));
+  await withSigningEnv({ TICKETSTUB_RUNTIME_MODE: "live", ORDER_AUTH_SIGNING_KEYS: set }, async ({ orderAuthKeyring }) => {
+    const kr = orderAuthKeyring();
+    const keys = (kid, issuedAt) => kr.lookup(kid, NOW + 60_000, issuedAt);
+    const old = { kid: "order-auth-g1", key: Buffer.from(k1, "base64url") };
+    const at = (issued) => signOrderAuthorization(record({ issuedAt: new Date(issued).toISOString(), expiresAt: new Date(issued + 15 * 60_000).toISOString() }), old);
+    assert.equal(verifyOrderAuthorization(at(retiredAt - 60_000), keys, expect(), NOW + 60_000).ok, true, "issued before retirement");
+    assert.equal(verifyOrderAuthorization(at(retiredAt + 5 * 60_000), keys, expect(), NOW + 60_000).ok, true, "inside the skew");
+    assert.equal(verifyOrderAuthorization(at(retiredAt + 5 * 60_000 + 1), keys, expect(), NOW + 60_000).reason, "forged", "issued after retirement");
+  });
+});
+
+test("re-review nit: ORDER_AUTH_CONSUMER_KEY equal to CONTEXT_SECRET, as the same string or either's base64url, turns the consumer port off", async () => {
+  const { readConsumerJson } = await loadReader();
+  const { secretsCollide } = await import("../src/server/keyring.ts");
+  const s = b64k();
+  assert.equal(secretsCollide(s, s), true);
+  assert.equal(secretsCollide(s, Buffer.from(s).toString("base64url")), true);
+  assert.equal(secretsCollide(Buffer.from(s).toString("base64url"), s), true);
+  assert.equal(secretsCollide(s, b64k()), false);
+  const req = () => new Request("http://localhost/api/order-authorizations/verify", { method: "POST", body: "{}" });
+  const saved = { k: process.env.ORDER_AUTH_CONSUMER_KEY, c: process.env.CONTEXT_SECRET };
+  try {
+    for (const [consumer, ctx] of [[s, s], [s, Buffer.from(s).toString("base64url")], [Buffer.from(s).toString("base64url"), s]]) {
+      process.env.ORDER_AUTH_CONSUMER_KEY = consumer;
+      process.env.CONTEXT_SECRET = ctx;
+      await assert.rejects(readConsumerJson(req(), 1000), (e) => e.status === 503 && e.code === "consumer_unavailable");
+    }
+    process.env.ORDER_AUTH_CONSUMER_KEY = s;
+    process.env.CONTEXT_SECRET = b64k();
+    await assert.rejects(readConsumerJson(req(), 1000), (e) => e.status === 401, "a distinct pair reaches signature checking");
+  } finally {
+    if (saved.k === undefined) delete process.env.ORDER_AUTH_CONSUMER_KEY; else process.env.ORDER_AUTH_CONSUMER_KEY = saved.k;
+    if (saved.c === undefined) delete process.env.CONTEXT_SECRET; else process.env.CONTEXT_SECRET = saved.c;
   }
 });

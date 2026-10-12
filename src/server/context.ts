@@ -171,7 +171,8 @@ export async function requireStaff(headers: Headers): Promise<RequestContext> {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Signing. CONTEXT_SECRET keys the HMAC. Outside live mode a missing secret falls back to a random
+// Signing. CONTEXT_SECRET keys the HMAC of context tokens, and nothing else: it is one key with no kid, because a
+// five-minute token gains little from rotation overlap (decision 0003 K4). Outside live mode a missing secret falls back to a random
 // per-process key and the context says mode "sandbox", so nobody mistakes it for a live issuer.
 // ---------------------------------------------------------------------------------------------
 
@@ -190,15 +191,8 @@ function signingKey(): string {
   return (g.__ticketstubContextKey ??= newToken(32));
 }
 
-/** The HMAC key for every token this server signs (context and approval). Throws 503 in live mode without CONTEXT_SECRET. */
-export function tokenSigningKey(): string {
-  return signingKey();
-}
-
-/** "live" only when CONTEXT_SECRET is set and the runtime is live; otherwise "sandbox". */
-export function signingMode(): "sandbox" | "live" {
-  return contextSecret() && isLiveRuntime() ? "live" : "sandbox";
-}
+// signingKey() is not exported: artwork approvals and order authorizations sign with their own key sets
+// (signing-keys.ts, decision 0003 K4), never with CONTEXT_SECRET.
 
 /** The deployment environment, as the context reports it. */
 export const contextEnvironment = environment;

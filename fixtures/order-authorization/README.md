@@ -1,6 +1,6 @@
 # Order authorization fixtures (`ticketstub.order-authorization/1`)
 
-> **FIXTURE ONLY. NEVER PRODUCTION.** `fixture-key.json` holds the HMAC key these authorizations are signed with, and a consumer key for the signed-request example. Both are public on purpose. Records made with them say `"mode": "fixture"`. The server refuses any `CONTEXT_SECRET` or `ORDER_AUTH_CONSUMER_KEY` containing `FIXTURE-ONLY`, so a production verifier rejects every token here as `forged`, and the consumer port answers 503 rather than accept the fixture consumer key. Fixture success shows a consumer reads the format and the protocol. It does not show integration with the live issuer, it is not a consumer-conformance receipt, and no fixture is authority for a paid action.
+> **FIXTURE ONLY. NEVER PRODUCTION.** `fixture-key.json` holds the HMAC key these authorizations are signed with, and a consumer key for the signed-request example. Both are public on purpose. Records made with them say `"mode": "fixture"`. Every token here names kid `fixture`. The server refuses any `ORDER_AUTH_SIGNING_KEYS` entry whose key contains `FIXTURE-ONLY` or whose kid starts with `fixture`, and any `ORDER_AUTH_CONSUMER_KEY` containing `FIXTURE-ONLY`, so a production verifier rejects every token here as `forged`, and the consumer port answers 503 rather than accept the fixture consumer key. Fixture success shows a consumer reads the format and the protocol. It does not show integration with the live issuer, it is not a consumer-conformance receipt, and no fixture is authority for a paid action.
 
 Everything is synthetic and **by reference**: opaque ids, SHA-256 digests, a destination *reference* and its digest. There is no address, name, email, phone, payment detail or art in any file. Regenerate with `node fixtures/order-authorization/generate.mjs` (deterministic). Check with `node fixtures/order-authorization/verify.mjs`, which has no dependencies: copy `verifyOrderAuthorization` into a consumer. It also holds `ReferenceIssuer` (the claim protocol as an in-memory model) and `runScenario`, which `scripts/check-order-auth.mjs` reuses to drive the same scenarios against a real server.
 
@@ -8,7 +8,7 @@ An order authorization says: this signed-in owner confirmed **this exact action*
 
 ## The token
 
-`header.body.signature`, three base64url parts, HMAC-SHA256 over `header.body`. Header `{"alg":"HS256","typ":"ticketstub.order-authorization"}` (an approval token has `typ` `ticketstub.approval`, a context token `ticketstub.context`: none verifies as another). Body `{"authorization": <record>}`.
+`header.body.signature`, three base64url parts, HMAC-SHA256 over `header.body`. Header `{"alg":"HS256","typ":"ticketstub.order-authorization","kid":"<key id>"}`, where `kid` (1-64 of `[A-Za-z0-9._-]`, `fixture` here) names the signing key (an approval token has `typ` `ticketstub.approval`, a context token `ticketstub.context`: none verifies as another). Body `{"authorization": <record>}`.
 
 | Field | Meaning |
 | --- | --- |
@@ -38,15 +38,15 @@ Revocation, staleness and claims are **not** in the token. They are the issuer's
 
 ## Verifying
 
-`verifyOrderAuthorization(token, key, expect, { now, state, intent })`. A consumer MUST pass `expect = { tenant, project: { kind, id }, action, provider, terms }` with the **full terms it holds** (every key of `terms`), taken from its own quote, bundle and destination, never from the token. `intent` is `verify` (read only), `claim` or `revalidate` (then `expect.claimReference` too).
+`verifyOrderAuthorization(token, keys, expect, { now, state, intent })`, where `keys` maps kid to HMAC key (`{ fixture: key }` here, or a function `kid => key | null`; look the kid up by own property only, and during an issuer rotation hold the previous kid's key until its tokens expire). A consumer MUST pass `expect = { tenant, project: { kind, id }, action, provider, terms }` with the **full terms it holds** (every key of `terms`), taken from its own quote, bundle and destination, never from the token. `intent` is `verify` (read only), `claim` or `revalidate` (then `expect.claimReference` too).
 
 Checks run in this order and the first failure wins:
 
 | Reason | Meaning |
 | --- | --- |
 | `invalid_clock` | checked first of all: `now` (the consumer's trusted clock, ms since the epoch) is not a finite number above zero (`NaN`, `Infinity`, `-1`, `0`, a string). A verifier that cannot read the time cannot say the authorization has not expired, so it refuses before judging anything |
-| `unknown` | not a token, malformed, wrong header or audience, or (with `state.known === false`) the issuer has no such record. Includes an approval token |
-| `forged` | the HMAC does not match: wrong key, edited payload, the fixture key against a production verifier |
+| `unknown` | not a token, malformed, wrong header (including a missing or malformed `kid`) or audience, or (with `state.known === false`) the issuer has no such record. Includes an approval token |
+| `forged` | no key for the token's `kid`, or the HMAC does not match: wrong key, a token keyed with the context or approval key, edited payload, the fixture key against a production verifier |
 | `unsupported_version` | correctly signed, but a `schema` this verifier does not know |
 | `wrong_scope` | tenant, project, action or provider differs from the consumer's (cross-tenant, cross-project, cancel, another provider) |
 | `changed_terms` | any term the consumer holds differs from the bound one (`fields` lists dotted names, never values): SKU, options, quote id, amount, currency, destination, design hashes, approval, order, capability version. A quote, budget hold or approval never substitutes: renewed authorization is required |
@@ -79,6 +79,9 @@ Token fixtures (`<name>.json`: `token`, `intent`, `verifyAt`, `expect`, `state`,
 | `valid-submit`, `valid-claim`, `valid-claim-replay-same-key`, `valid-revalidate` | ok (controls) |
 | `unknown-malformed`, `unknown-no-record`, `unknown-approval-token`, `unknown-wrong-audience` | `unknown` |
 | `forged`, `forged-edited-terms` | `forged` |
+| `forged-unknown-kid` | `forged` (the right key bytes under a kid the verifier holds no key for) |
+| `forged-context-key`, `forged-approval-key` | `forged` (key confusion: signed with the context or approval fixture key) |
+| `unknown-no-kid` | `unknown` (a header with no `kid`, the pre-K4 format) |
 | `unsupported-version` | `unsupported_version` |
 | `wrong-scope-tenant`, `-project`, `-provider`, `-action` | `wrong_scope` |
 | `changed-terms-amount`, `-currency`, `-quote-id`, `-quantity`, `-sku`, `-finish`, `-destination`, `-destination-digest`, `-art`, `-design-version`, `-approval`, `-order`, `-capability-version` | `changed_terms` |

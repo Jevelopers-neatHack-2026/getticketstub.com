@@ -1,6 +1,8 @@
 // Reference verifier for a ticketstub.approval/1 token. No dependencies: copy these functions into a consumer.
 //   node fixtures/approval/verify.mjs        checks every fixture in this folder against its expected outcome
-// verifyApproval(token, key, expect, { now, state }) -> { ok: true, approval } | { ok: false, reason }
+// verifyApproval(token, keys, expect, { now, state }) -> { ok: true, approval } | { ok: false, reason }
+// keys maps kid -> HMAC key ({ [kid]: key }, or a function kid => key | null). The token header names its kid; a kid you hold no
+// key for is forged. During a rotation hold the previous kid's key too, until its tokens have expired (seven days).
 // reason is one of: unknown | forged | expired | revoked | stale | wrong_scope | wrong_purpose | content_mismatch | content_missing
 //   | invalid_clock | unsupported_version
 // expect MUST name { tenant, project: { kind, id }, purpose, content } where content holds the hashes the consumer computed
@@ -18,6 +20,7 @@ import { fileURLToPath } from "node:url";
 const SCHEMA = "ticketstub.approval/1";
 const PURPOSES = ["print.compose", "artifact.download"];
 const HEX64 = /^[a-f0-9]{64}$/;
+const KID = /^[A-Za-z0-9._-]{1,64}$/;
 const HASH_KEYS = ["designHash", "artHash", "factsHash", "compositionHash"];
 /** The commitments each purpose requires the consumer to supply and compare ("all that apply"). */
 const REQUIRED_CONTENT = { "print.compose": HASH_KEYS, "artifact.download": ["artHash"] };
@@ -60,7 +63,7 @@ export function contentHashes(stub, size) {
   };
 }
 
-export function verifyApproval(token, key, expect, { now = Date.now(), state } = {}) {
+export function verifyApproval(token, keys, expect, { now = Date.now(), state } = {}) {
   if (typeof now !== "number" || !Number.isFinite(now) || now <= 0) return { ok: false, reason: "invalid_clock" };
   if (typeof token !== "string" || token.length > 8192) return { ok: false, reason: "unknown" };
   const parts = token.split(".");
@@ -72,7 +75,9 @@ export function verifyApproval(token, key, expect, { now = Date.now(), state } =
   } catch {
     return { ok: false, reason: "unknown" };
   }
-  if (!isObj(head) || head.alg !== "HS256" || head.typ !== "ticketstub.approval" || !isObj(body)) return { ok: false, reason: "unknown" };
+  if (!isObj(head) || head.alg !== "HS256" || head.typ !== "ticketstub.approval" || typeof head.kid !== "string" || !KID.test(head.kid) || !isObj(body)) return { ok: false, reason: "unknown" };
+  const key = typeof keys === "function" ? keys(head.kid) : isObj(keys) && Object.hasOwn(keys, head.kid) ? keys[head.kid] : null;
+  if (!(typeof key === "string" && key.length > 0) && !(Buffer.isBuffer(key) && key.length > 0)) return { ok: false, reason: "forged" };
   const want = createHmac("sha256", key).update(`${parts[0]}.${parts[1]}`).digest();
   const got = dec(parts[2]);
   if (got.length !== want.length || !timingSafeEqual(got, want)) return { ok: false, reason: "forged" };
@@ -126,19 +131,20 @@ export function consumerInputs(fx, contentDoc) {
   return { expect: { ...fx.expect, content }, now };
 }
 
-export function runFixture(fx, key, contentDoc) {
+export function runFixture(fx, keys, contentDoc) {
   const { expect, now } = consumerInputs(fx, contentDoc);
-  return verifyApproval(fx.token, key, expect, { now, state: fx.state });
+  return verifyApproval(fx.token, keys, expect, { now, state: fx.state });
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const here = dirname(fileURLToPath(import.meta.url));
-  const key = JSON.parse(readFileSync(join(here, "fixture-key.json"), "utf8")).key;
+  const kf = JSON.parse(readFileSync(join(here, "fixture-key.json"), "utf8"));
+  const keys = { [kf.kid]: kf.key };
   const index = JSON.parse(readFileSync(join(here, "index.json"), "utf8"));
   let bad = 0;
   for (const f of index.fixtures) {
     const fx = JSON.parse(readFileSync(join(here, f), "utf8"));
-    const r = runFixture(fx, key);
+    const r = runFixture(fx, keys);
     let ok = r.ok === fx.outcome.ok && (r.ok ? true : r.reason === fx.outcome.reason);
     // Revoked, but the stored bytes stay: authority ends, the bytes are kept and still match the binding, and they may not be used.
     if (ok && fx.retained) ok = hashBytes(Buffer.from(fx.retained.artBase64, "base64")) === fx.retained.mustStillHashTo && fx.retained.mayUse === false && !r.ok;

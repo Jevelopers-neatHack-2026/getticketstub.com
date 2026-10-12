@@ -95,11 +95,12 @@ const list = (c, stubId) => c.api("GET", `/api/approvals?project=stub:${stubId}`
 async function main() {
   // ---------------------------------------------------------------- fixtures, offline
   const keyFile = JSON.parse(readFileSync(join(FIXTURES, "fixture-key.json"), "utf8"));
+  const fixtureKeys = { [keyFile.kid]: keyFile.key }; // fixture tokens carry kid "fixture"; a server refuses that kid
   const index = JSON.parse(readFileSync(join(FIXTURES, "index.json"), "utf8"));
   const files = readdirSync(FIXTURES).filter((n) => n.endsWith(".json") && !["fixture-key.json", "index.json", "content.json"].includes(n));
   check("fixtures: the index lists every fixture file", index.fixtures.length === files.length && index.fixtures.every((f) => files.includes(f)));
   check("fixtures: the key is marked fixture only and contains FIXTURE-ONLY", /fixture only|never production/i.test(keyFile.warning) && keyFile.key.includes("FIXTURE-ONLY"));
-  const wanted = ["content-empty", "content-missing-design", "content-missing-art", "content-missing-facts", "content-missing-composition", "content-missing-art-download", "content-art-only-download", "content-malformed-hash", "clock-nan", "clock-infinity", "clock-negative", "clock-string", "valid-print-compose", "valid-artifact-download", "unknown-malformed", "unknown-no-record", "forged", "forged-edited-binding", "expired", "revoked", "revoked-bytes-retained", "stale-facts", "stale-composition", "stale-membership", "wrong-scope-tenant", "wrong-scope-project", "wrong-purpose", "not-a-purchase-authorization", "content-mismatch", "unsupported-version"];
+  const wanted = ["content-empty", "content-missing-design", "content-missing-art", "content-missing-facts", "content-missing-composition", "content-missing-art-download", "content-art-only-download", "content-malformed-hash", "clock-nan", "clock-infinity", "clock-negative", "clock-string", "valid-print-compose", "valid-artifact-download", "unknown-malformed", "unknown-no-record", "forged", "forged-edited-binding", "expired", "revoked", "revoked-bytes-retained", "stale-facts", "stale-composition", "stale-membership", "wrong-scope-tenant", "wrong-scope-project", "wrong-purpose", "not-a-purchase-authorization", "content-mismatch", "unsupported-version", "forged-unknown-kid", "forged-context-key", "unknown-no-kid"];
   check("fixtures: every required case is published", wanted.every((n) => files.includes(`${n}.json`)));
   const fx = {};
   const bad = [];
@@ -107,8 +108,8 @@ async function main() {
     const x = JSON.parse(readFileSync(join(FIXTURES, f), "utf8"));
     fx[x.fixture] = x;
     const inputs = consumerInputs(x); // every hash the consumer computes, and its clock
-    const a = verifyApproval(x.token, keyFile.key, inputs.expect, inputs.now, x.state); // the code the server runs
-    const b = runFixture(x, keyFile.key); // the reference verifier a consumer copies
+    const a = verifyApproval(x.token, fixtureKeys, inputs.expect, inputs.now, x.state); // the code the server runs
+    const b = runFixture(x, fixtureKeys); // the reference verifier a consumer copies
     const good = (r) => r.ok === x.outcome.ok && (r.ok || r.reason === x.outcome.reason);
     if (!good(a) || !good(b)) bad.push(x.fixture);
   }
@@ -124,18 +125,18 @@ async function main() {
     for (const [label, content] of Object.entries(shapes)) {
       for (const f of [v, d]) {
         const e = { ...f.expect, content };
-        const inA = verifyApproval(f.token, keyFile.key, e, Date.parse(f.verifyAt), f.state);
-        const inB = refVerify(f.token, keyFile.key, e, { now: Date.parse(f.verifyAt), state: f.state });
+        const inA = verifyApproval(f.token, fixtureKeys, e, Date.parse(f.verifyAt), f.state);
+        const inB = refVerify(f.token, fixtureKeys, e, { now: Date.parse(f.verifyAt), state: f.state });
         if (JSON.stringify([inA.ok, inA.reason]) !== JSON.stringify([inB.ok, inB.reason])) parity.push(`${f.expect.purpose}/${label}: server ${inA.reason ?? "ok"} vs reference ${inB.reason ?? "ok"}`);
       }
     }
     for (const now of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY, -1, 0, "1791633600000", null, "x"]) {
-      const inA = verifyApproval(v.token, keyFile.key, pe, now, v.state);
-      const inB = refVerify(v.token, keyFile.key, pe, { now, state: v.state });
+      const inA = verifyApproval(v.token, fixtureKeys, pe, now, v.state);
+      const inB = refVerify(v.token, fixtureKeys, pe, { now, state: v.state });
       if (inA.ok || inB.ok || inA.reason !== "invalid_clock" || inB.reason !== "invalid_clock") parity.push(`clock ${String(now)}: server ${inA.reason ?? "ok"} vs reference ${inB.reason ?? "ok"}`);
     }
     check("fixtures: the server verifier and the reference helper agree on every content shape, both purposes and every bad clock", parity.length === 0, parity.join("; "));
-    check("fixtures: print.compose with empty content or any one hash missing never passes, on both verifiers", ["empty", "no design", "no art", "no facts", "no composition", "art only"].every((k) => verifyApproval(v.token, keyFile.key, { ...v.expect, content: shapes[k] }, Date.parse(v.verifyAt), v.state).reason === "content_missing"));
+    check("fixtures: print.compose with empty content or any one hash missing never passes, on both verifiers", ["empty", "no design", "no art", "no facts", "no composition", "art only"].every((k) => verifyApproval(v.token, fixtureKeys, { ...v.expect, content: shapes[k] }, Date.parse(v.verifyAt), v.state).reason === "content_missing"));
   }
   const seen = new Set(Object.values(fx).map((x) => (x.outcome.ok ? "ok" : x.outcome.reason)));
   check("fixtures: the outcomes cover ok and every reason", seen.has("ok") && APPROVAL_FAILURES.every((r) => seen.has(r)), APPROVAL_FAILURES.filter((r) => !seen.has(r)).join());
@@ -364,11 +365,13 @@ async function main() {
   check("events: they carry a purpose, a 16-hex ref and flags only", evA.every((e) => Object.entries(e.fields).every(([k, v]) => (k === "purpose" && APPROVAL_PURPOSES.includes(v)) || (k === "approval" && /^[a-f0-9]{16}$/.test(v)) || typeof v === "boolean")));
   check("events: no approval id, token, hash or email in the history", ![re.json.approval.id, re.json.token, artHash, ap1.binding.factsHash, emailA].some((v) => ev.text.includes(v)));
   const joined = responses.join("\n");
-  const secrets = ["FIXTURE-ONLY", "CONTEXT_SECRET", "membership_revision", "__ticketstubContextKey", "RESEND_API_KEY", "OPENAI_API_KEY", ...cookies.filter((c) => c.length > 20)];
+  const secrets = ["FIXTURE-ONLY", "CONTEXT_SECRET", "APPROVAL_SIGNING_KEYS", "__ticketstubKeyringFallback", "membership_revision", "__ticketstubContextKey", "RESEND_API_KEY", "OPENAI_API_KEY", ...cookies.filter((c) => c.length > 20)];
   check("secrets: no response carries a key, a session or device cookie, or an internal name", !secrets.some((v) => joined.includes(v)), secrets.filter((v) => joined.includes(v)).join().slice(0, 100));
   const tokens = [...joined.matchAll(/"token":"([^"]+)"/g)].map((m) => m[1]).filter((tk) => tk.split(".").length === 3 && JSON.parse(Buffer.from(tk.split(".")[0], "base64url").toString()).typ === "ticketstub.approval");
   const bodies = tokens.map((tk) => JSON.parse(Buffer.from(tk.split(".")[1], "base64url").toString()));
   check("secrets: an approval token body holds only the record (no session reference, no email, no art url)", tokens.length > 0 && bodies.every((b) => Object.keys(b).join() === "approval" && !/"sid"|@|\/api\/files|data:/.test(JSON.stringify(b))));
+  const heads = tokens.map((tk) => JSON.parse(Buffer.from(tk.split(".")[0], "base64url").toString()));
+  check("keys: every approval token names its kid, and with no APPROVAL_SIGNING_KEYS in demo mode it is the per-process sandbox key", heads.length > 0 && heads.every((h) => Object.keys(h).sort().join() === "alg,kid,typ" && h.kid === "sandbox"), JSON.stringify(heads[0]));
   const emails = [emailA, emailB];
   check("secrets: no approval response carries an account email", !emails.some((e) => [r1.text, ls.text, ok1.text, rv.text].some((x) => x.includes(e))));
 
