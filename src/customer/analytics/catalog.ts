@@ -158,7 +158,7 @@ export const EVENTS = {
   claim_view: ev("claim", { flow: CLAIM_FLOW, result: oneOf("valid", "invalid", "expired", "claimed", "error"), error_code: ERROR_CODE }),
   claim_invalid: ev("claim", { flow: CLAIM_FLOW, reason: oneOf("name_missing") }),
   claim_complete: ev("claim", { flow: CLAIM_FLOW, result: oneOf("claimed", "error"), storage: STORAGE, error_code: ERROR_CODE }),
-  signin_choice: ev("account", { choice: oneOf("sign_in", "skip"), reason: oneOf("save", "checkout", "claim") }),
+  signin_choice: ev("account", { choice: oneOf("sign_in", "skip", "guest"), reason: oneOf("save", "checkout", "claim") }),
   sign_in_return: ev("account", { result: oneOf("signed_in", "not_signed_in", "expired") }),
   sign_in_link: ev("account", { reason: oneOf("save", "checkout", "claim"), result: oneOf("sent", "sandbox", "invalid", "error"), error_code: ERROR_CODE }),
   sign_out: ev("account", { result: oneOf("done", "offline") }),

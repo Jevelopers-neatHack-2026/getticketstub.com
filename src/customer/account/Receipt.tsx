@@ -7,7 +7,7 @@ import { Field, PaperButton, Stamped, TearLink } from "@/customer/desk/Desk";
 import { FeedbackNote, ProgressNote, type ProgressState } from "@/customer/feedback-messages/progress";
 import { EMAIL_RE } from "./api";
 import { type Placed } from "./orders";
-import { openSignIn } from "./signin";
+import { openSignIn, payReturnTo, usePayResumed } from "./signin";
 import { useAccount } from "./useAccount";
 import s from "./account.module.css";
 
@@ -18,6 +18,34 @@ export function useReceiptEmail() {
   const email = account ? account.email : typed.trim();
   const problem = !account && email !== "" && !EMAIL_RE.test(email) ? "That email doesn't look right. Check it, or leave it empty." : "";
   return { status, savingOff, signedIn: !!account, email, typed, setTyped, problem };
+}
+
+/**
+ * Pay was pressed signed out: open the sign-in sheet right there, with "Continue as guest" to go on as before.
+ * Returns whether the sheet took over; false (signed in, still loading, or saving off) means pay now.
+ */
+export function askToSignIn(r: ReturnType<typeof useReceiptEmail>, onGuest: () => void): boolean {
+  if (r.status !== "out" || r.savingOff) return false;
+  openSignIn({
+    reason: "checkout",
+    returnTo: payReturnTo(),
+    email: r.email || undefined,
+    title: "Sign in before you pay",
+    lede: "Sign in to keep your order and receipt with your wall. We'll send a link; it takes a few seconds.",
+    onGuest,
+  });
+  return true;
+}
+
+/** After the link brings them back: who they are now, and that paying is still theirs to do. */
+export function PayResumeNote({ r }: { r: ReturnType<typeof useReceiptEmail> }) {
+  const resumed = usePayResumed();
+  if (!resumed || !r.signedIn) return null;
+  return (
+    <p className={s.resume} data-announce>
+      Signed in as <strong className={s.addr}>{r.email}</strong>. Tap Pay to finish.
+    </p>
+  );
 }
 
 export function ReceiptField({ id, r, onChange, error }: { id: string; r: ReturnType<typeof useReceiptEmail>; onChange?: () => void; /** A problem with this address, shown on the field itself and tied to it for screen readers. */ error?: string }) {

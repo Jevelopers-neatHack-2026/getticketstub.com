@@ -1,12 +1,12 @@
 "use client";
 // Mounted once, in NavFrame, on every route. It owns the sign-in sheet, keeps the wall synced while
 // someone is signed in, and answers the two ways the emailed link can come back (?signedIn=1, ?signin=expired).
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Stamped, TearLink } from "@/customer/desk/Desk";
 import { haptic } from "@/customer/studio/feedback";
 import { messageFor } from "@/customer/feedback-messages/messages";
 import { SignInSheet } from "./SignInSheet";
-import { openSignIn, useSignInRequest } from "./signin";
+import { closeSignIn, markPayResumed, openSignIn, useSignInRequest } from "./signin";
 import { startSync, syncNow } from "./sync";
 import { getAccountState, refreshAccount, useAccount } from "./useAccount";
 import { flow } from "@/customer/flows/events";
@@ -72,6 +72,32 @@ export function AccountRoot() {
     void syncNow();
     return startSync();
   }, [status]);
+
+  // Link sent from a pay step, opened in another tab of this browser: the cookie is shared, so ask the server on focus
+  // and every few seconds, and when it says signed in, hand the person back to the pay step they left. A link opened
+  // on another device can't be seen from here: this tab stays as it is, and "Continue as guest" is still in the sheet.
+  const waiting = !!request?.onGuest && !!request.sent && status !== "in";
+  useEffect(() => {
+    if (!waiting) return;
+    const ask = () => void refreshAccount();
+    const t = setInterval(ask, 3000);
+    window.addEventListener("focus", ask);
+    document.addEventListener("visibilitychange", ask);
+    return () => {
+      clearInterval(t);
+      window.removeEventListener("focus", ask);
+      document.removeEventListener("visibilitychange", ask);
+    };
+  }, [waiting]);
+  const wasWaiting = useRef(false);
+  useEffect(() => {
+    if (waiting) wasWaiting.current = true;
+    else if (wasWaiting.current && status === "in") {
+      wasWaiting.current = false;
+      markPayResumed();
+      closeSignIn();
+    }
+  }, [waiting, status]);
 
   // A slip stays a few seconds, then lifts away. The expired one waits to be answered.
   useEffect(() => {

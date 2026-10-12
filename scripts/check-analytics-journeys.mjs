@@ -635,6 +635,8 @@ async function runViewport(vp) {
   check(T("checkout: Add to cart is one add_to_cart(context=checkout)"), named(ev, "add_to_cart").length === 1 && named(ev, "add_to_cart")[0].p.context === "checkout", fmt(ev));
   from = await mark();
   check(T("checkout: Pay with no receipt email"), await clickText("button", "Pay "));
+  // signed out, Pay opens the sign-in sheet first; Continue as guest is the choice that goes on (one signin_choice(sign_in), one guest)
+  check(T("checkout: Pay signed out opens the sheet, Continue as guest goes on"), (await page.waitFor(`document.querySelector('[role="dialog"]')`)) && (await clickText('[role="dialog"] button', "Continue as guest")));
   ev = await waitEvents(from, (e) => named(e, "sandbox_order").length > 0, 8000);
   const local = named(ev, "sandbox_order")[0]?.p ?? {};
   check(T("checkout: sandbox card chosen, then a placed local order (no email: the server needs one), never a purchase"), named(ev, "add_payment_info").length === 1 && named(ev, "add_payment_info")[0].p.capability === "sandbox" && same(pick(local, ["result", "receipt", "storage", "capability", "method", "error_code"]), { result: "placed", receipt: "local", storage: "ok", capability: "sandbox", method: "card", error_code: "unauthorized" }), fmt(ev) + JSON.stringify(local));
@@ -670,6 +672,8 @@ async function runViewport(vp) {
   await page.waitFor(`document.querySelector("#cart-email")`);
   await typeInto("#cart-email", SEED.email);
   await clickText("button", "Pay ");
+  await page.waitFor(`document.querySelector('[role="dialog"]')`);
+  await clickText('[role="dialog"] button', "Continue as guest");
   ev = await waitEvents(from, (e) => named(e, "sandbox_order").length > 0, 8000);
   const serverOrder = named(ev, "sandbox_order")[0]?.p ?? {};
   check(T("cart: begin_checkout(cart), sandbox card, then a placed order with a server receipt"), named(ev, "begin_checkout")[0]?.p.context === "cart" && named(ev, "add_payment_info").length === 1 && same(pick(serverOrder, ["result", "receipt", "storage", "capability"]), { result: "placed", receipt: "server", storage: "ok", capability: "sandbox" }), fmt(ev) + JSON.stringify(serverOrder));

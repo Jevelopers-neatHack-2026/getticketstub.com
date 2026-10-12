@@ -120,7 +120,7 @@ test property (not available to this work: no measurement id, no live traffic).
 | same | `/api/claim` answered | `claim_complete` | flow=`guest`, result (`claimed`/`error`), storage, error_code | the account has it | tsc, B, GA |
 | `src/app/organizer/claim/OrganizerClaimClient.tsx` | link read; claim with no name; claim stored | `claim_view`, `claim_invalid`, `claim_complete` | flow=`organizer` | a local claim | tsc, B, GA |
 | same | the attendee picked a photo: it could be read or not | `photo_add` | via=`organizer_claim`, result, photo_count (0/1) | never the photo or file name | T (catalog), B, GA |
-| `src/customer/account/signin.ts` | the sign-in sheet opened (once per opening); first-pin "Not now" | `signin_choice` | choice (`sign_in`/`skip`), reason | a choice, not a login | T, B, GA |
+| `src/customer/account/signin.ts` | the sign-in sheet opened (once per opening); first-pin "Not now"; "Continue as guest" on the Pay sign-in sheet | `signin_choice` | choice (`sign_in`/`skip`/`guest`), reason | a choice, not a login | T, B, GA |
 | `src/customer/account/SignInSheet.tsx` | bad email; `/api/auth/link` answered; "Not now" | `sign_in_link`, `signin_choice` | reason, result (`sent`/`sandbox` dev link/`invalid`/`error`), error_code | a link sent is not a sign-in | tsc, B, GA |
 | `src/customer/account/AccountRoot.tsx` | back from the emailed link: after `/api/auth/me` answered; or `?signin=expired` | `sign_in_return` | result (`signed_in` only when the server says so / `not_signed_in` / `expired`) | the only signed-in signal; GA `login` stays unused | tsc, B, GA |
 | `src/customer/account/useAccount.ts` | `/api/auth/signout` answered or failed | `sign_out` | result (`done`/`offline`) | — | tsc, B, GA |

@@ -193,7 +193,16 @@ const browser = await launchBrowser();
 try {
   await browser.conn.send("Browser.setDownloadBehavior", { behavior: "allow", downloadPath: dlDir });
   // Each comparison gets a fresh blank tab: one tab kept for the whole run stopped answering after many large images.
-  const within = (promise, what) => Promise.race([promise, new Promise((_, no) => setTimeout(() => no(new Error(`${what} did not finish in 60 s`)), 60_000))]);
+  const within = async (promise, what, ms = 60_000) => {
+    let timer;
+    try {
+      return await Promise.race([promise, new Promise((_, no) => {
+        timer = setTimeout(() => no(new Error(`${what} did not finish in ${ms / 1000} s`)), ms);
+      })]);
+    } finally {
+      clearTimeout(timer);
+    }
+  };
   async function inTab(call) {
     const tab = await browser.newPage({ width: 800, height: 600 });
     try {
@@ -233,10 +242,36 @@ try {
     }
     /** The stub on the studio screen: the biggest figure of that edition, screenshotted in device pixels. */
     async function screenStub(c, { flip = false, checkout = false } = {}) {
+      const figure = `[...document.querySelectorAll('figure[data-edition="${c.edition}"]')]
+        .map((f) => ({ f, r: f.getBoundingClientRect() }))
+        .filter((o) => o.r.width > 0 && o.r.height > 0)
+        .sort((a, b) => b.r.width * b.r.height - a.r.width * a.r.height)[0]?.f`;
+      await page.send("Page.bringToFront");
       // The editor's stub is made of edit buttons (`all: unset` there drops the foil title's gradient), so the front is
       // compared with the same stub on the checkout screen, which shows it plain. The back has no buttons: the editor shows it.
       if (checkout) {
         await page.goto(`${base}/checkout/demo-${c.key}`, { settle: 1200 });
+      }
+      if (flip) {
+        await page.eval(`(() => { const b = [...document.querySelectorAll("button")].find((x) => /^(Flip|Show the back)$/i.test((x.textContent || "").trim()) && x.getBoundingClientRect().width > 0); if (b) b.click(); return !!b; })()`);
+        await sleep(900);
+      }
+      // Checkout mounts its image after hydration, so loadEventFired and a stationary figure do not imply painted art.
+      // Wait for the actual figure's fonts and pictures, then decode and allow the scroll/layout change to paint.
+      const ready = await page.waitFor(`(() => {
+        const f = ${figure};
+        return f && document.fonts.status === "loaded" && [...f.querySelectorAll("img")].every((img) => img.complete && img.naturalWidth > 0 && img.naturalHeight > 0);
+      })()`, 15000);
+      if (!ready) throw new Error(`the ${c.edition} screen stub's fonts or images did not load in 15 s`);
+      await within(page.eval(`(async () => {
+        window.scrollTo(0, 0);
+        const f = ${figure};
+        await document.fonts.ready;
+        await Promise.all([...f.querySelectorAll("img")].map((img) => img.decode()));
+        await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+        return true;
+      })()`), "the screen stub's decode and paint", 15000);
+      if (checkout) {
         // the page settles in (it slides and fades): wait until the stub stops moving
         let last = "";
         for (let i = 0; i < 30; i++) {
@@ -246,20 +281,18 @@ try {
           await sleep(400);
         }
       }
-      if (flip) {
-        await page.eval(`(() => { const b = [...document.querySelectorAll("button")].find((x) => /^(Flip|Show the back)$/i.test((x.textContent || "").trim()) && x.getBoundingClientRect().width > 0); if (b) b.click(); return !!b; })()`);
-        await sleep(900);
-      }
       const info = await page.eval(`(() => {
-        window.scrollTo(0, 0);
-        const figs = [...document.querySelectorAll('figure[data-edition="${c.edition}"]')].map((f) => ({ f, r: f.getBoundingClientRect() })).filter((o) => o.r.width > 0 && o.r.height > 0);
-        figs.sort((a, b) => b.r.width * b.r.height - a.r.width * a.r.height);
-        const o = figs[0];
-        if (!o) return null;
-        const r = o.r;
-        const t = o.f.querySelector('[class*="_title"]');
+        const f = ${figure};
+        if (!f) return null;
+        const images = [...f.querySelectorAll("img")];
+        if (document.fonts.status !== "loaded" || images.some((img) => !img.complete || !img.naturalWidth || !img.naturalHeight)) throw new Error("screen stub readiness changed before capture");
+        const r = f.getBoundingClientRect();
+        const t = f.querySelector('[class*="_title"]');
         const tr = t ? t.getBoundingClientRect() : null;
-        return { x: r.x + scrollX, y: r.y + scrollY, width: r.width, height: r.height, title: tr ? { x: (tr.x - r.x) / r.width, y: (tr.y - r.y) / r.height, w: tr.width / r.width, h: tr.height / r.height } : null, flipped: o.f.getAttribute("aria-label") };
+        return { x: r.x + scrollX, y: r.y + scrollY, width: r.width, height: r.height, title: tr ? { x: (tr.x - r.x) / r.width, y: (tr.y - r.y) / r.height, w: tr.width / r.width, h: tr.height / r.height } : null, flipped: f.getAttribute("aria-label"), readiness: {
+          fonts: document.fonts.status,
+          images: images.map((img) => ({ complete: img.complete, naturalWidth: img.naturalWidth, naturalHeight: img.naturalHeight })),
+        } };
       })()`);
       if (!info) return null;
       const { data } = await page.send("Page.captureScreenshot", { format: "png", captureBeyondViewport: false, clip: { x: info.x, y: info.y, width: info.width, height: info.height, scale: 1 } });
@@ -301,6 +334,7 @@ try {
         rec.diff = { mean: +m.mean.toFixed(2), bad: +m.bad.toFixed(4) };
         rec.shape = m.shape;
         const tag = `${vp.name}-${c.key}-${c.edition}`;
+        rec.screen = shot.info;
         writeFileSync(join(outDir, `${tag}.png`), got.buf);
         writeFileSync(join(outDir, `${tag}-screen.png`), shot.png);
         writeFileSync(join(outDir, `${tag}-sidebyside.jpg`), Buffer.from(m.sides.split(",")[1], "base64"));
@@ -322,13 +356,17 @@ try {
         const got2 = await download("front");
         const shot2 = await screenStub(c, { checkout: true });
         if (!check(`${label}: the edited stub downloads`, !got2.error && !!shot2, got2.error)) continue;
+        rec.editedScreen = shot2.info;
+        writeFileSync(join(outDir, `${tag}-edited.png`), got2.buf);
+        writeFileSync(join(outDir, `${tag}-edited-screen.png`), shot2.png);
         const region = first.info.title;
         const d = await between(got.buf, got2.buf, region);
         rec.edit = { inside: +d.in.bad.toFixed(3), outside: +d.out.bad.toFixed(3) };
         check(`${label}: the edited title shows in the PNG (title region differs ${(d.in.bad * 100).toFixed(1)}%, the rest ${(d.out.bad * 100).toFixed(2)}%)`, !!region && d.in.bad > 0.05 && d.out.bad < 0.02, JSON.stringify(d));
-        const m2 = await against(shot2.png, got2.buf, false);
+        const m2 = await against(shot2.png, got2.buf, true);
+        rec.editedDiff = { mean: +m2.mean.toFixed(2), bad: +m2.bad.toFixed(4) };
+        writeFileSync(join(outDir, `${tag}-edited-sidebyside.jpg`), Buffer.from(m2.sides.split(",")[1], "base64"));
         check(`${label}: the edited PNG matches the edited screen (mean ${m2.mean.toFixed(2)}, differing ${(m2.bad * 100).toFixed(2)}%)`, m2.mean <= tol(c.edition).mean && m2.bad <= tol(c.edition).bad);
-        if (c.edition === "researched" || c.edition === "classic") writeFileSync(join(outDir, `${tag}-edited.png`), got2.buf);
 
         // the back, for the first two editions of each viewport (a landscape and a portrait)
         if (c.key === "pale" && c.edition === "researched" || c.edition === "letterpress") {
