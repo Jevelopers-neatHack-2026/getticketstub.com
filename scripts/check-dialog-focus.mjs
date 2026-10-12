@@ -58,223 +58,41 @@ const initialCases = [
 ];
 // Native sequential navigation must never enter a target excluded by focusables().
 const traversalCases = [
-  {
-    "name": "interior-forward",
-    "html": "<button id='first'>first</button><div aria-hidden='true'><button id='excluded'>excluded</button></div><button id='last'>last</button>",
-    "initial": "#first",
-    "keys": [
-      "Tab"
-    ],
-    "expected": [
-      "last"
-    ]
-  },
-  {
-    "name": "interior-reverse",
-    "html": "<button id='first'>first</button><div aria-hidden='true'><button id='excluded'>excluded</button></div><button id='last'>last</button>",
-    "initial": "#last",
-    "keys": [
-      "Shift+Tab"
-    ],
-    "expected": [
-      "first"
-    ]
-  },
-  {
-    "name": "dynamic-interior",
-    "html": "<button id='first'>first</button><div id='hidden'><button id='excluded'>excluded</button></div><button id='last'>last</button>",
-    "initial": "#first",
-    "setup": "document.getElementById('hidden').setAttribute('aria-hidden','true')",
-    "keys": [
-      "Tab"
-    ],
-    "expected": [
-      "last"
-    ]
-  },
-  {
-    "name": "removed-current-forward",
-    "html": "<button id='first'>first</button><div id='hidden'><button id='excluded'>excluded</button></div><button id='last'>last</button>",
-    "initial": "#excluded",
-    "setup": "document.getElementById('hidden').setAttribute('aria-hidden','true')",
-    "keys": [
-      "Tab"
-    ],
-    "expected": [
-      "last"
-    ]
-  },
-  {
-    "name": "removed-current-reverse",
-    "html": "<button id='first'>first</button><div id='hidden'><button id='excluded'>excluded</button></div><button id='last'>last</button>",
-    "initial": "#excluded",
-    "setup": "document.getElementById('hidden').setAttribute('aria-hidden','true')",
-    "keys": [
-      "Shift+Tab"
-    ],
-    "expected": [
-      "first"
-    ]
-  },
-  {
-    "name": "positive-order-forward",
-    "html": "<button id='zero'>zero</button><button id='second' tabindex='2'>two</button><div aria-hidden='true'><button id='excluded' tabindex='3'>excluded</button></div><button id='first' tabindex='1'>one</button>",
-    "initial": "#first",
-    "keys": [
-      "Tab",
-      "Tab",
-      "Tab"
-    ],
-    "expected": [
-      "second",
-      "zero",
-      "first"
-    ]
-  },
-  {
-    "name": "positive-order-reverse",
-    "html": "<button id='zero'>zero</button><button id='second' tabindex='2'>two</button><div aria-hidden='true'><button id='excluded' tabindex='3'>excluded</button></div><button id='first' tabindex='1'>one</button>",
-    "initial": "#zero",
-    "keys": [
-      "Shift+Tab",
-      "Shift+Tab",
-      "Shift+Tab"
-    ],
-    "expected": [
-      "second",
-      "first",
-      "zero"
-    ]
-  },
-  {
-    "name": "checked-radio-forward",
-    "html": "<button id='first'>first</button><div aria-hidden='true'><button id='excluded'>excluded</button></div><input type='radio' name='g' id='one'><input type='radio' name='g' id='two' checked><input type='radio' name='g' id='three'><button id='last'>last</button>",
-    "initial": "#first",
-    "keys": [
-      "Tab",
-      "Tab"
-    ],
-    "expected": [
-      "two",
-      "last"
-    ]
-  },
-  {
-    "name": "checked-radio-reverse",
-    "html": "<button id='first'>first</button><div aria-hidden='true'><button id='excluded'>excluded</button></div><input type='radio' name='g' id='one'><input type='radio' name='g' id='two' checked><input type='radio' name='g' id='three'><button id='last'>last</button>",
-    "initial": "#last",
-    "keys": [
-      "Shift+Tab",
-      "Shift+Tab"
-    ],
-    "expected": [
-      "two",
-      "first"
-    ]
-  },
-  {
-    "name": "unchecked-radio-forward",
-    "html": "<button id='first'>first</button><input type='radio' name='g' id='one'><input type='radio' name='g' id='two'><input type='radio' name='g' id='three'><button id='last'>last</button>",
-    "initial": "#first",
-    "keys": [
-      "Tab",
-      "Tab"
-    ],
-    "expected": [
-      "one",
-      "last"
-    ]
-  },
-  {
-    "name": "unchecked-radio-reverse",
-    "html": "<button id='first'>first</button><input type='radio' name='g' id='one'><input type='radio' name='g' id='two'><input type='radio' name='g' id='three'><button id='last'>last</button>",
-    "initial": "#last",
-    "keys": [
-      "Shift+Tab",
-      "Shift+Tab"
-    ],
-    "expected": [
-      "three",
-      "first"
-    ]
-  },
-  {
-    "name": "different-form-radios",
-    "html": "<button id='first'>first</button><form><input type='radio' name='g' id='one' checked></form><form><input type='radio' name='g' id='two' checked></form><button id='last'>last</button>",
-    "initial": "#first",
-    "keys": [
-      "Tab",
-      "Tab",
-      "Tab"
-    ],
-    "expected": [
-      "one",
-      "two",
-      "last"
-    ]
-  },
-  {
-    "name": "unnamed-radios",
-    "html": "<button id='first'>first</button><input type='radio' id='one'><input type='radio' id='two'><button id='last'>last</button>",
-    "initial": "#first",
-    "keys": [
-      "Tab",
-      "Tab",
-      "Tab"
-    ],
-    "expected": [
-      "one",
-      "two",
-      "last"
-    ]
-  },
-  {
-    "name": "heading-interior-forward",
-    "html": "<button id='first'>first</button><h2 id='heading' tabindex='-1'>Heading</h2><div aria-hidden='true'><button id='excluded'>excluded</button></div><button id='last'>last</button>",
-    "initial": "#heading",
-    "keys": [
-      "Tab"
-    ],
-    "expected": [
-      "last"
-    ]
-  },
-  {
-    "name": "heading-interior-reverse",
-    "html": "<button id='first'>first</button><h2 id='heading' tabindex='-1'>Heading</h2><div aria-hidden='true'><button id='excluded'>excluded</button></div><button id='last'>last</button>",
-    "initial": "#heading",
-    "keys": [
-      "Shift+Tab"
-    ],
-    "expected": [
-      "first"
-    ]
-  },
-  {
-    "name": "one-control",
-    "html": "<button id='first'>first</button>",
-    "initial": "#first",
-    "keys": [
-      "Tab",
-      "Shift+Tab"
-    ],
-    "expected": [
-      "first",
-      "first"
-    ]
-  },
-  {
-    "name": "widget-prevents-tab",
-    "html": "<button id=\"first\">first</button><button id=\"last\">last</button>",
-    "initial": "#first",
-    "setup": "document.getElementById(\"first\").addEventListener(\"keydown\", e => { if(e.key === \"Tab\") e.preventDefault(); })",
-    "keys": [
-      "Tab"
-    ],
-    "expected": [
-      "first"
-    ]
-  }
+  {"name": "interior-forward", "html": "<button id='first'>first</button><div aria-hidden='true'><button id='excluded'>excluded</button></div><button id='last'>last</button>", "initial": "#first", "keys": ["Tab"], "expected": ["last"]},
+  {"name": "interior-reverse", "html": "<button id='first'>first</button><div aria-hidden='true'><button id='excluded'>excluded</button></div><button id='last'>last</button>", "initial": "#last", "keys": ["Shift+Tab"], "expected": ["first"]},
+  {"name": "dynamic-interior", "html": "<button id='first'>first</button><div id='hidden'><button id='excluded'>excluded</button></div><button id='last'>last</button>", "initial": "#first", "setup": "document.getElementById('hidden').setAttribute('aria-hidden','true')", "keys": ["Tab"], "expected": ["last"]},
+  {"name": "removed-current-forward", "html": "<button id='first'>first</button><div id='hidden'><button id='excluded'>excluded</button></div><button id='last'>last</button>", "initial": "#excluded", "setup": "document.getElementById('hidden').setAttribute('aria-hidden','true')", "keys": ["Tab"], "expected": ["last"]},
+  {"name": "removed-current-reverse", "html": "<button id='first'>first</button><div id='hidden'><button id='excluded'>excluded</button></div><button id='last'>last</button>", "initial": "#excluded", "setup": "document.getElementById('hidden').setAttribute('aria-hidden','true')", "keys": ["Shift+Tab"], "expected": ["first"]},
+  {"name": "positive-order-forward", "html": "<button id='zero'>zero</button><button id='second' tabindex='2'>two</button><div aria-hidden='true'><button id='excluded' tabindex='3'>excluded</button></div><button id='first' tabindex='1'>one</button>", "initial": "#first", "keys": ["Tab", "Tab", "Tab"], "expected": ["second", "zero", "first"]},
+  {"name": "positive-order-reverse", "html": "<button id='zero'>zero</button><button id='second' tabindex='2'>two</button><div aria-hidden='true'><button id='excluded' tabindex='3'>excluded</button></div><button id='first' tabindex='1'>one</button>", "initial": "#zero", "keys": ["Shift+Tab", "Shift+Tab", "Shift+Tab"], "expected": ["second", "first", "zero"]},
+  {"name": "checked-radio-forward", "html": "<button id='first'>first</button><div aria-hidden='true'><button id='excluded'>excluded</button></div><input type='radio' name='g' id='one'><input type='radio' name='g' id='two' checked><input type='radio' name='g' id='three'><button id='last'>last</button>", "initial": "#first", "keys": ["Tab", "Tab"], "expected": ["two", "last"]},
+  {"name": "checked-radio-reverse", "html": "<button id='first'>first</button><div aria-hidden='true'><button id='excluded'>excluded</button></div><input type='radio' name='g' id='one'><input type='radio' name='g' id='two' checked><input type='radio' name='g' id='three'><button id='last'>last</button>", "initial": "#last", "keys": ["Shift+Tab", "Shift+Tab"], "expected": ["two", "first"]},
+  {"name": "unchecked-radio-forward", "html": "<button id='first'>first</button><input type='radio' name='g' id='one'><input type='radio' name='g' id='two'><input type='radio' name='g' id='three'><button id='last'>last</button>", "initial": "#first", "keys": ["Tab", "Tab"], "expected": ["one", "last"]},
+  {"name": "unchecked-radio-reverse", "html": "<button id='first'>first</button><input type='radio' name='g' id='one'><input type='radio' name='g' id='two'><input type='radio' name='g' id='three'><button id='last'>last</button>", "initial": "#last", "keys": ["Shift+Tab", "Shift+Tab"], "expected": ["three", "first"]},
+  {"name": "different-form-radios", "html": "<button id='first'>first</button><form><input type='radio' name='g' id='one' checked></form><form><input type='radio' name='g' id='two' checked></form><button id='last'>last</button>", "initial": "#first", "keys": ["Tab", "Tab", "Tab"], "expected": ["one", "two", "last"]},
+  {"name": "unnamed-radios", "html": "<button id='first'>first</button><input type='radio' id='one'><input type='radio' id='two'><button id='last'>last</button>", "initial": "#first", "keys": ["Tab", "Tab", "Tab"], "expected": ["one", "two", "last"]},
+  {"name": "heading-interior-forward", "html": "<button id='first'>first</button><h2 id='heading' tabindex='-1'>Heading</h2><div aria-hidden='true'><button id='excluded'>excluded</button></div><button id='last'>last</button>", "initial": "#heading", "keys": ["Tab"], "expected": ["last"]},
+  {"name": "heading-interior-reverse", "html": "<button id='first'>first</button><h2 id='heading' tabindex='-1'>Heading</h2><div aria-hidden='true'><button id='excluded'>excluded</button></div><button id='last'>last</button>", "initial": "#heading", "keys": ["Shift+Tab"], "expected": ["first"]},
+  {"name": "one-control", "html": "<button id='first'>first</button>", "initial": "#first", "keys": ["Tab", "Shift+Tab"], "expected": ["first", "first"]},
+  {"name": "widget-prevents-tab", "html": "<button id=\"first\">first</button><button id=\"last\">last</button>", "initial": "#first", "setup": "document.getElementById(\"first\").addEventListener(\"keydown\", e => { if(e.key === \"Tab\") e.preventDefault(); })", "keys": ["Tab"], "expected": ["first"]},
+  {"name": "radio-only-boundary", "html": "<input id='a' type='radio' name='g'><input id='b' type='radio' name='g' checked><input id='c' type='radio' name='g'>", "initial": "#b", "keys": ["Tab", "Shift+Tab"], "expected": ["b", "b"]},
+  {"name": "radio-first-boundary", "html": "<input id='a' type='radio' name='g'><input id='b' type='radio' name='g' checked><input id='c' type='radio' name='g'><button id='last'>last</button>", "initial": "#b", "keys": ["Shift+Tab"], "expected": ["last"]},
+  {"name": "radio-last-boundary", "html": "<button id='first'>first</button><input id='a' type='radio' name='g'><input id='b' type='radio' name='g' checked><input id='c' type='radio' name='g'>", "initial": "#b", "keys": ["Tab"], "expected": ["first"]},
+  {"name": "summary-only-boundary", "html": "<details><summary id='summary'>summary</summary><button id='inside'>inside</button></details>", "initial": "#summary", "keys": ["Tab", "Shift+Tab"], "expected": ["summary", "summary"]}
+];
+
+const nativeCases = [
+  {"name": "summary-and-open-details", "html": "<button id='first'>first</button><details><summary id='summary'>summary</summary><button id='inside'>inside</button></details><button id='last'>last</button>", "initial": "#first", "keys": ["Tab", "Enter", "Tab", "Tab"], "nativeMustVisit": "summary"},
+  {"name": "native-audio-controls", "html": "<button id='first'>first</button><audio id='audio' controls></audio><button id='last'>last</button>", "initial": "#first", "untilLast": true, "nativeMustVisit": "audio"},
+  {"name": "native-video-controls", "html": "<button id='first'>first</button><video id='video' controls width='160' height='90'></video><button id='last'>last</button>", "initial": "#first", "untilLast": true, "nativeMustVisit": "video"},
+  {"name": "native-editing-host", "html": "<button id='first'>first</button><div id='edit' contenteditable='plaintext-only'>editable</div><button id='last'>last</button>", "initial": "#first", "keys": ["Tab", "Tab"], "nativeMustVisit": "edit"},
+  {"name": "document-delegated-widget", "html": "<button id='first'>first</button><button id='last'>last</button>", "initial": "#first", "setup": "document.addEventListener('keydown',e=>{if(e.key==='Tab'){e.preventDefault();window.__widget=(window.__widget??0)+1}})", "keys": ["Tab", "Shift+Tab"], "nativeMustVisit": "first"},
+  {"name": "native-unchecked-radio-reverse", "html": "<button id='first'>first</button><input type='radio' name='g' id='one'><input type='radio' name='g' id='two'><input type='radio' name='g' id='three'><button id='last'>last</button>", "initial": "#last", "keys": ["Shift+Tab", "Shift+Tab"], "nativeRadioEntry": true},
+  {"name": "external-checked-form-radio", "outside": "<form id='shared'></form><input id='external' type='radio' form='shared' name='g' checked>", "html": "<button id='first'>first</button><input id='inside' type='radio' form='shared' name='g'><button id='last'>last</button>", "initial": "#first", "keys": ["Tab"], "nativeMustVisit": "last"},
+  {"name": "external-disabled-checked-radio", "outside": "<form id='shared'></form><input id='external' type='radio' form='shared' name='g' checked disabled>", "html": "<button id='first'>first</button><input id='inside' type='radio' form='shared' name='g'><button id='last'>last</button>", "initial": "#first", "keys": ["Tab", "Tab"], "nativeMustVisit": "inside"},
+  {"name": "external-inert-checked-radio", "outside": "<form id='shared'></form><div inert><input id='external' type='radio' form='shared' name='g' checked></div>", "html": "<button id='first'>first</button><input id='inside' type='radio' form='shared' name='g'><button id='last'>last</button>", "initial": "#first", "keys": ["Tab", "Tab"], "nativeMustVisit": "inside"},
+  {"name": "radio-arrow-selection", "html": "<button id='first'>first</button><input type='radio' name='g' id='one' checked><input type='radio' name='g' id='two'><input type='radio' name='g' id='three'><button id='last'>last</button>", "initial": "#first", "keys": ["Tab", "ArrowRight", "Tab"], "nativeMustVisit": "two"},
+  {"name": "native-audio-boundary", "html": "<button id='first'>first</button><audio id='audio' controls></audio>", "initial": "#first", "untilOutside": true, "nativeMustVisit": "audio", "wrapTarget": "first"}
 ];
 
 let browser;
@@ -289,12 +107,12 @@ try {
     if (event.method === "Network.requestWillBeSent" && /^https?:/.test(event.params.request.url)) requests++;
     if (event.method === "Runtime.exceptionThrown") exceptions++;
   });
-  async function withPage(width, html, work) {
+  async function withPage(width, html, work, outside = "") {
     const page = await browser.newPage({ width, height: 844, mobile: width < 700 });
     try {
       await page.send("Network.setBlockedURLs", { urls: ["http://*", "https://*"] });
       await page.send("Page.bringToFront");
-      const fixture = '<button id="opener">open</button><div id="dialog" role="dialog" aria-modal="true">' + html + '</div><button id="outside">outside</button>';
+      const fixture = outside + '<button id="opener">open</button><div id="dialog" role="dialog" aria-modal="true">' + html + '</div><button id="outside">outside</button>';
       await page.eval(`(() => {
         document.body.innerHTML = ${JSON.stringify(fixture)};
         const exports = {};
@@ -351,6 +169,22 @@ try {
       });
     }
     for (const test of traversalCases) {
+      let expected = test.expected;
+      if (test.name.startsWith("unchecked-radio-")) {
+        // Radio entry varies with browser implementation/feature state. Measure this browser's
+        // untrapped native sequence instead of codifying either first/last reverse entry.
+        expected = [];
+        await withPage(width, test.html, async (page) => {
+          await page.eval(`document.querySelector(${JSON.stringify(test.initial)}).focus(); true`);
+          for (const key of test.keys) {
+            await page.key("Tab", { shift: key === "Shift+Tab" });
+            expected.push(await active(page));
+          }
+        });
+        check(`${width}:${test.name}:native-entry-control`, expected.length === 2
+          && ["one", "three"].includes(expected[0])
+          && expected[1] === (test.name.endsWith("reverse") ? "first" : "last"), true);
+      }
       await withPage(width, test.html, async (page) => {
         await start(page, test.initial);
         if (test.setup) await page.eval(test.setup);
@@ -365,7 +199,7 @@ try {
           await page.key("Tab", { shift: key === "Shift+Tab" });
           actual.push(await active(page));
         }
-        check(`${width}:${test.name}`, actual, test.expected);
+        check(`${width}:${test.name}`, actual, expected);
         check(`${width}:${test.name}:trusted-no-hidden-focus`, await page.eval('({ keys: window.__keys, hidden: window.__badFocus })'),
           { keys: test.keys.map(() => true), hidden: [] });
       });
@@ -404,8 +238,108 @@ try {
         check(`${width}:${placement}:return-to-parent`, await active(page), "outer-first");
       });
     }
+    for (const test of nativeCases) {
+      const native = [], nativeKeys = [];
+      let keys = test.keys ?? [];
+      await withPage(width, test.html, async (page) => {
+        await page.eval(`document.querySelector(${JSON.stringify(test.initial)}).focus(); true`);
+        if (test.setup) await page.eval(`${test.setup}; true`);
+        await page.eval(`(() => { window.__nativeKeys = [];
+          document.addEventListener("keydown", (e) => { if (e.key !== "Shift") window.__nativeKeys.push(e.isTrusted); }, true);
+          return true;
+        })()`);
+        if (test.untilLast || test.untilOutside) {
+          keys = [];
+          for (let step = 0; step < 12; step++) {
+            keys.push("Tab");
+            await page.key("Tab");
+            native.push(await active(page));
+            if (native.at(-1) === (test.untilOutside ? "outside" : "last")) break;
+          }
+        } else {
+          for (const key of keys) {
+            await page.key(key === "Shift+Tab" ? "Tab" : key, { shift: key === "Shift+Tab" });
+            native.push(await active(page));
+          }
+        }
+        nativeKeys.push(...await page.eval("window.__nativeKeys"));
+      }, test.outside);
+      const nativeExercised = native.length > 0 && nativeKeys.length > 0 && nativeKeys.every((trusted) => trusted === true)
+        && (test.nativeRadioEntry ? ["one", "three"].includes(native[0]) && native.at(-1) === "first" : native.includes(test.nativeMustVisit))
+        && (!(test.untilLast || test.untilOutside) || native.at(-1) === (test.untilOutside ? "outside" : "last") && native.length <= 12);
+      check(`${width}:${test.name}:native-control-exercised`, nativeExercised, true);
+      await withPage(width, test.html, async (page) => {
+        await start(page, test.initial);
+        if (test.setup) await page.eval(`${test.setup}; true`);
+        await page.eval(`(() => {
+          window.__keys = []; window.__badFocus = [];
+          document.addEventListener("keydown", (e) => { if (e.key !== "Shift") window.__keys.push(e.isTrusted); }, true);
+          document.addEventListener("focusin", (e) => { if (e.target.closest('[aria-hidden="true"]')) window.__badFocus.push(e.target.id); }, true);
+          return true;
+        })()`);
+        const actual = [];
+        for (const key of keys) {
+          await page.key(key === "Shift+Tab" ? "Tab" : key, { shift: key === "Shift+Tab" });
+          actual.push(await active(page));
+        }
+        check(`${width}:${test.name}:native-parity`, actual, test.wrapTarget ? [...native.slice(0, -1), test.wrapTarget] : native);
+        // Browser-owned media controls can consume an internal key before it reaches the document.
+        // Compare with the measured native dispatch trace, not a guessed one-event-per-command count.
+        check(`${width}:${test.name}:trusted-no-hidden-focus`, await page.eval('({ keys: window.__keys, hidden: window.__badFocus })'),
+          { keys: nativeKeys, hidden: [] });
+      }, test.outside);
+    }
+    for (const intent of ["pointer", "document-widget"]) {
+      await withPage(width, '<button id="first">first</button><button id="last">last</button>', async (page) => {
+        await start(page, "#first");
+        await page.key("Tab");
+        if (intent === "pointer") {
+          const point = await page.eval('(() => { const r = document.getElementById("outside").getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; })()');
+          await page.click(point.x, point.y);
+        } else {
+          await page.eval(`(() => { document.addEventListener("keydown", (e) => {
+            if (e.key === "Tab") { e.preventDefault(); document.getElementById("outside").focus(); }
+          }, { once: true }); return true; })()`);
+          await page.key("Tab");
+        }
+        check(`${width}:${intent}:clears-native-continuation`, await active(page), "outside");
+        await page.eval("window.__cleanup(); window.__cleanup = null; true");
+        check(`${width}:${intent}:cleanup-preserves-intent`, await active(page), "outside");
+      });
+    }
+    const maskFixture = '<button id="first">first</button><div id="hidden" aria-hidden="true"><button id="excluded">excluded</button></div><div id="owned" aria-hidden="true" inert="owner"><button>owner</button></div><button id="last">last</button>';
+    for (const mutation of ["none", "same-value", "new-value", "remove"]) {
+      await withPage(width, maskFixture, async (page) => {
+        await start(page, "#first");
+        const script = mutation === "same-value" ? 'h.setAttribute("inert", "");'
+          : mutation === "new-value" ? 'h.setAttribute("inert", "other-owner");'
+          : mutation === "remove" ? 'h.removeAttribute("inert"); e.preventDefault();' : "";
+        await page.eval(`(() => { window.addEventListener("keydown", (e) => {
+          if (e.key !== "Tab") return;
+          const h = document.getElementById("hidden"); window.__masked = h.hasAttribute("inert");
+          ${script}
+        }, { once: true }); return true; })()`);
+        await page.key("Tab");
+        await page.eval("new Promise((r) => setTimeout(() => r(true), 20))");
+        check(`${width}:mask-${mutation}:applied-before-default`, await page.eval("window.__masked"), true);
+        check(`${width}:mask-${mutation}:owned-cleanup`, await page.eval('({ hidden: document.getElementById("hidden").getAttribute("inert"), existing: document.getElementById("owned").getAttribute("inert") })'),
+          { hidden: mutation === "same-value" ? "" : mutation === "new-value" ? "other-owner" : null, existing: "owner" });
+      });
+    }
+    await withPage(width, maskFixture, async (page) => {
+      await start(page, "#first");
+      await page.eval(`(() => { window.addEventListener("keydown", (e) => {
+        if (e.key !== "Tab") return;
+        window.__masked = document.getElementById("hidden").hasAttribute("inert");
+        window.__cleanup(); window.__cleanup = null; e.preventDefault();
+      }, { once: true }); return true; })()`);
+      await page.key("Tab");
+      check(`${width}:mask-unmount:observed-before-cleanup`, await page.eval("window.__masked"), true);
+      check(`${width}:mask-unmount:restores-owned-only`, await page.eval('({ hidden: document.getElementById("hidden").getAttribute("inert"), existing: document.getElementById("owned").getAttribute("inert"), focus: document.activeElement.id })'),
+        { hidden: null, existing: "owner", focus: "opener" });
+    });
   }
-  check("complete unique native matrix", [report.checks.length, new Set(report.checks.map((item) => item.name)).size], [128, 128]);
+  check("complete unique native matrix", [report.checks.length, new Set(report.checks.map((item) => item.name)).size], [242, 242]);
   check("no page HTTP requests", requests, 0);
   check("no page exceptions", exceptions, 0);
   check("source and runtime metadata present", /^[a-f0-9]{40}$/.test(report.revision ?? "") && /^[a-f0-9]{40}$/.test(report.tree ?? "") && report.worktreeStatus === "" && /^\d+\.\d+\.\d+$/.test(report.npm ?? ""), true);
