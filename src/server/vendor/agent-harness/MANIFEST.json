@@ -1,13 +1,22 @@
 {
   "repository": "https://github.com/Jevelopers-neatHack-2026/agent-harness",
-  "commit": "340f5abff0837c8fb8f7c9a5454aee58ee2071fb",
+  "commit": "fd4eaf2a54cb68740c960d5e061d4c4b11e79251",
   "files": {
-    "src/integrations/ticketstub/index.js": "774f452ee856e96c88408f5d258dedcf79518e64717c636422642c174965db2f",
-    "src/integrations/ticketstub/index.d.ts": "8bccd82c0af444c8f09cd9f338b523d3f1ba93c471f1d30bbc2cce19b7c4867e",
-    "src/observability/private/neatlogs-config.js": "b47ac380e070d110a2ec134fd23a99f71797eb53b1b43d8177de249faf139d71",
-    "src/observability/private/neatlogs-live.js": "c816ebc500ed30274f7647bd753c792a010961a89f5c9ec27d7e8f1b375d3a2b",
+    "src/integrations/ticketstub/index.js": "f0f5f22524d4ee3dd74de1fb2f4a379e9139179e14857237fffa8ee6ab4218f6",
+    "src/integrations/ticketstub/index.d.ts": "8e1a826b184632e07b1676c62c9fd1439684a8c10e724a1445d5595618620ae0",
+    "src/observability/private/neatlogs-config.js": "44a055b63638ff6dfd7f7776f3dd2259bbbddc297f4ca28f630bd4cbcbc7baf5",
+    "src/observability/private/neatlogs-live.js": "8d1e9436cf65c9e7c454ca4d332a0884178660af9deda235beb8e76ccaf60914",
     "src/observability/private/neatlogs-otlp.js": "a565f300990b3a99d475e4b27ce3ad98a350b9c3901c2b2191fec595cc243dab",
-    "src/observability/private/neatlogs-delivery-queue.js": "dd23ac81425c53e69f7dfba39fd69c8403fd2f744747499c6a953dada2b83f01",
-    "src/observability/private/neatlogs-sdk-mapper.js": "e0ea5b335f9c0f553c53b0cf67830af9b93f7ca653d03e9ee0b2b291f3a77710"
+    "src/observability/private/neatlogs-delivery-queue.js": "6c198fb0a1ad4bccf1430a366e9f19693f3e400995be7f42864b48fd6197ee35",
+    "src/observability/private/neatlogs-sdk-mapper.js": "e0ea5b335f9c0f553c53b0cf67830af9b93f7ca653d03e9ee0b2b291f3a77710",
+    "src/decisions/index.js": "ac236ca1675a1571442e6d49c75f0a48db34d30ccb1eaa787da2eb3fecf02eb4",
+    "src/decisions/index.d.ts": "047dbe3f716947ce3c42a58f33da0e198003b9f4d6cd35d7f1c4b83a15d238fa",
+    "src/development/index.js": "e04d1ea885699942eefc6120d1542814d7122e1ff52629c3b92e7f4431b53657",
+    "src/development/index.d.ts": "0cfdcbd5726ba53ef1fab4cf393be7932ea1d76e9aebdbe166e07ceff9eadd69",
+    "src/adapters/jev/http-transport.js": "086e7a16d64e0cfc2f4338f3161b59f22ca43879492f79661b256bbbc42f4a2d",
+    "src/adapters/jev/address-policy.js": "7b83fc2c26f6ca4d87d62837a19e273f696416a628cec3ebf854273f95c5ee50",
+    "src/adapters/jev/request-validation.js": "85c7c6e757ccf9a4536e9674fb7f9a712c0304d65f856c1a7ab86f7a212deeaf",
+    "src/adapters/jev/response-validation.js": "903cdecbced9cc36f99ba4662539d62b4f768bc752b8dc156bda379e70c638f9",
+    "src/adapters/jev/safe-json.js": "43291866ed881f453c3705d7f37501a52a00419cb57a0179bc0e6b6cc7d784c5"
   }
 }

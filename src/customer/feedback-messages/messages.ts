@@ -92,6 +92,12 @@ export const MESSAGES = {
   unsupported_provider_response: { message: "A helper sent back something we couldn't use, so we ignored it. Try again.", action: RETRY, retryable: true },
   invalid_image_response: { message: "The art that came back wasn't usable, so we threw it out. Try again.", action: RETRY, retryable: true },
 
+  // Supplier callbacks (POST /api/fulfillment/prodigi/callbacks/{token}). The reader is Prodigi's sender, not a person.
+  callback_invalid: { message: "That callback wasn't in the shape we accept, so nothing changed. Send it again as documented.", action: RETRY, retryable: true },
+  callback_oversized: { message: "That callback was more than we take in one go, so nothing changed. Send a smaller one.", action: RETRY, retryable: true },
+  callback_source_mismatch: { message: "That callback came from a source we don't expect, so nothing changed. Try again shortly.", action: RETRY, retryable: true },
+  callbacks_unavailable: { message: "We can't take callbacks right now, and nothing changed. Try again shortly.", action: RETRY, retryable: true },
+
   // Browser side
   network: { message: "You look offline. Check your connection, then try again.", action: RETRY, retryable: true },
   timeout: { message: "That's taking longer than it should, and we can't tell yet whether it went through. Check before you try again.", action: RETRY, retryable: true },

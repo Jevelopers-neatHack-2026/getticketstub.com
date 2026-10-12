@@ -1,5 +1,5 @@
 export const TICKETSTUB_EVENT_SCHEMA: 'ticketstub.event/1';
-export const TICKETSTUB_INTAKE_SCHEMA: 'agent-harness.ticketstub-intake.v1';
+export const TICKETSTUB_INTAKE_SCHEMA: 'agent-harness.ticketstub-intake.v2';
 export const HARNESS_TELEMETRY_KEY_NAME: 'AGENT_HARNESS_TELEMETRY_KEY';
 
 export type TicketstubFieldKind = 'ref' | 'code' | 'count' | 'ts' | 'flag' | readonly string[];
@@ -49,25 +49,39 @@ export interface TicketstubAcceptResult {
   readonly accepted: number;
   readonly duplicates: number;
   readonly refused: number;
+  readonly conflicts: number;
   readonly invalid: number;
 }
 
 export interface NeatlogsDrainSummary {
   readonly leased: boolean;
+  /** The pass stopped because its owner/fence no longer held the drain lease. */
+  readonly leaseLost: boolean;
   readonly sent: number;
+  /** Actual HTTP POST attempts, not send-helper invocations. */
   readonly sendRequests: number;
+  readonly sendBatches: number;
   readonly retried: number;
   readonly failed: number;
   readonly verified: number;
   readonly regenerated: number;
   readonly waiting: number;
+  /** Unresolved remote outcomes retained in the bounded sent-row domain. */
+  readonly held: number;
   readonly readbackStatus: string | null;
   readonly sendStatus: string | null;
   readonly pruned: number;
 }
 
 export interface NeatlogsOutboxDiagnostics {
-  readonly counts: Readonly<{ queued: number; sent: number; verified: number; failed: number }>;
+  readonly counts: Readonly<{
+    queued: number;
+    sent: number;
+    verified: number;
+    failed: number;
+    legacyHeld: number;
+    unresolvedHeld: number;
+  }>;
   readonly latest: ReadonlyArray<Readonly<{
     traceId: string;
     workflowName: string;
@@ -76,6 +90,8 @@ export interface NeatlogsOutboxDiagnostics {
     generation: number;
     lastStatus: string | null;
     lastReason: string | null;
+    legacyHeld: boolean;
+    postAttempts: number;
     duplicateTraceIds: readonly string[];
   }>>;
 }
@@ -90,7 +106,7 @@ export interface TicketstubHarnessExporter {
   drain(): Promise<NeatlogsDrainSummary | null>;
   scheduleDrain(delayMs?: number): void;
   status(): Readonly<{
-    counters: Readonly<Record<'accepted' | 'duplicates' | 'refused' | 'invalid' | 'drains' | 'drainErrors', number>>;
+    counters: Readonly<Record<'accepted' | 'duplicates' | 'refused' | 'conflicts' | 'invalid' | 'drains' | 'drainErrors', number>>;
     outbox: NeatlogsOutboxDiagnostics;
     lastDrain: NeatlogsDrainSummary | null;
   }>;
@@ -105,7 +121,9 @@ export interface TicketstubHarnessExporterOptions {
   tags?: readonly string[];
   fetch?: typeof fetch;
   clock?: () => number;
-  outboxOptions?: Readonly<Record<string, number>>;
+  outboxOptions?: Readonly<Partial<Record<'maxUnsettled' | 'maxSettledRows' | 'retentionMs' | 'readbackDelayMs'
+    | 'missingAfterMs' | 'pendingGiveUpMs' | 'retryBaseMs' | 'retryMaxMs' | 'drainLeaseMs'
+    | 'maxBatchesPerDrain', number>>>;
   drainDelayMs?: number;
 }
 

@@ -1,4 +1,5 @@
 import { createHmac, randomUUID } from 'node:crypto';
+import { isProxy } from 'node:util/types';
 import { loadNeatlogsConfig } from '../../observability/private/neatlogs-config.js';
 import {
   NEATLOGS_TICKETSTUB_WORKFLOW_NAME,
@@ -15,11 +16,11 @@ import { validateNeatlogsTags } from '../../observability/private/neatlogs-otlp.
 // The harness does not trust the producer's sanitizer. Every event is checked
 // again against this copy of the ticketstub.event/1 contract and refused, not
 // repaired, when anything is outside it. Request IDs and the producer's
-// 16-hex refs are replaced by HMAC tokens under a server-held key, so what
-// reaches Neatlogs cannot be joined back to TicketStub IDs without that key.
+// 16-hex refs are replaced by domain-separated HMAC tokens under the key
+// explicitly injected by the host.
 
 export const TICKETSTUB_EVENT_SCHEMA = 'ticketstub.event/1';
-export const TICKETSTUB_INTAKE_SCHEMA = 'agent-harness.ticketstub-intake.v1';
+export const TICKETSTUB_INTAKE_SCHEMA = 'agent-harness.ticketstub-intake.v2';
 export const HARNESS_TELEMETRY_KEY_NAME = 'AGENT_HARNESS_TELEMETRY_KEY';
 
 const ENUM = values => Object.freeze(values);
@@ -65,8 +66,20 @@ export class TicketstubIntakeError extends Error {
 }
 
 function plainRecord(value) {
-  return value !== null && typeof value === 'object' && !Array.isArray(value)
+  return value !== null && typeof value === 'object' && !Array.isArray(value) && !isProxy(value)
     && (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null);
+}
+
+function ownDataSnapshot(value, allowedKeys) {
+  if (!plainRecord(value)) return null;
+  const snapshot = {};
+  for (const key of Reflect.ownKeys(value)) {
+    if (typeof key !== 'string' || !allowedKeys.has(key)) return null;
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (!descriptor || !descriptor.enumerable || !Object.hasOwn(descriptor, 'value')) return null;
+    snapshot[key] = descriptor.value;
+  }
+  return snapshot;
 }
 
 function clean(value) {
@@ -92,42 +105,42 @@ function fits(kind, value) {
  * field's kind are refused.
  */
 export function validateTicketstubEvent(event) {
-  if (!plainRecord(event)) throw new TicketstubIntakeError('INVALID_EVENT');
-  if (event.schema !== TICKETSTUB_EVENT_SCHEMA) throw new TicketstubIntakeError('UNSUPPORTED_SCHEMA');
-  for (const key of Object.keys(event)) {
-    if (!EVENT_KEYS.has(key)) throw new TicketstubIntakeError('INVALID_EVENT');
-  }
-  const spec = Object.hasOwn(TICKETSTUB_EVENT_SPEC, event.type) ? TICKETSTUB_EVENT_SPEC[event.type] : null;
-  const actorOk = ['account', 'guest', 'anonymous'].includes(event.actor);
-  if (!spec || !Number.isSafeInteger(event.at) || event.at <= 0 || event.at >= 8.64e15
-      || typeof event.requestId !== 'string' || !REQUEST_ID.test(event.requestId)
-      || !actorOk || !['sandbox', 'live'].includes(event.mode) || !plainRecord(event.fields)) {
+  const input = ownDataSnapshot(event, EVENT_KEYS);
+  if (!input) throw new TicketstubIntakeError('INVALID_EVENT');
+  if (input.schema !== TICKETSTUB_EVENT_SCHEMA) throw new TicketstubIntakeError('UNSUPPORTED_SCHEMA');
+  if (typeof input.type !== 'string') throw new TicketstubIntakeError('INVALID_EVENT');
+  const spec = Object.hasOwn(TICKETSTUB_EVENT_SPEC, input.type) ? TICKETSTUB_EVENT_SPEC[input.type] : null;
+  const fields = spec ? ownDataSnapshot(input.fields, new Set(Object.keys(spec))) : null;
+  const actorOk = ['account', 'guest', 'anonymous'].includes(input.actor);
+  if (!spec || !fields || !Number.isSafeInteger(input.at) || input.at <= 0 || input.at >= 8.64e15
+      || typeof input.requestId !== 'string' || !REQUEST_ID.test(input.requestId)
+      || !actorOk || !['sandbox', 'live'].includes(input.mode)) {
     throw new TicketstubIntakeError('INVALID_EVENT');
   }
-  if (event.actorRef !== undefined
-      && (event.actor === 'anonymous' || typeof event.actorRef !== 'string' || !REF.test(event.actorRef))) {
+  if (input.actorRef !== undefined
+      && (input.actor === 'anonymous' || typeof input.actorRef !== 'string' || !REF.test(input.actorRef))) {
     throw new TicketstubIntakeError('INVALID_EVENT');
   }
-  if (event.projectRef !== undefined && (typeof event.projectRef !== 'string' || !REF.test(event.projectRef))) {
+  if (input.projectRef !== undefined && (typeof input.projectRef !== 'string' || !REF.test(input.projectRef))) {
     throw new TicketstubIntakeError('INVALID_EVENT');
   }
-  const fields = {};
-  for (const key of Object.keys(event.fields).sort()) {
-    if (!Object.hasOwn(spec, key) || !fits(spec[key], event.fields[key])) {
+  const normalizedFields = {};
+  for (const key of Object.keys(fields).sort()) {
+    if (!Object.hasOwn(spec, key) || !fits(spec[key], fields[key])) {
       throw new TicketstubIntakeError('INVALID_EVENT');
     }
-    fields[key] = event.fields[key];
+    normalizedFields[key] = fields[key];
   }
   return Object.freeze({
     schema: TICKETSTUB_EVENT_SCHEMA,
-    type: event.type,
-    at: event.at,
-    requestId: event.requestId,
-    actor: event.actor,
-    ...(event.actorRef !== undefined ? { actorRef: event.actorRef } : {}),
-    ...(event.projectRef !== undefined ? { projectRef: event.projectRef } : {}),
-    mode: event.mode,
-    fields: Object.freeze(fields)
+    type: input.type,
+    at: input.at,
+    requestId: input.requestId,
+    actor: input.actor,
+    ...(input.actorRef !== undefined ? { actorRef: input.actorRef } : {}),
+    ...(input.projectRef !== undefined ? { projectRef: input.projectRef } : {}),
+    mode: input.mode,
+    fields: Object.freeze(normalizedFields)
   });
 }
 
@@ -139,7 +152,8 @@ export function parseHarnessTelemetryKey(value) {
 }
 
 const TOKEN_KINDS = new Set([
-  'ticketstub.event', 'ticketstub.request', 'ticketstub.actor', 'ticketstub.project'
+  'ticketstub.event', 'ticketstub.request', 'ticketstub.actor', 'ticketstub.project',
+  'ticketstub.fact', 'ticketstub.version', 'ticketstub.share', 'ticketstub.order'
 ]);
 
 export function createTicketstubTokenizer(keyBytes) {
@@ -165,6 +179,17 @@ export function ticketstubOutboxEntry(event, tokenize) {
   const request = tokenize('ticketstub.request', valid.requestId);
   const actor = valid.actorRef === undefined ? null : tokenize('ticketstub.actor', valid.actorRef);
   const project = valid.projectRef === undefined ? null : tokenize('ticketstub.project', valid.projectRef);
+  const referenceScope = project ?? request;
+  const exportedFields = {};
+  for (const [key, value] of Object.entries(valid.fields)) {
+    if (TICKETSTUB_EVENT_SPEC[valid.type][key] !== 'ref') {
+      exportedFields[key] = value;
+      continue;
+    }
+    const kind = key === 'fact' ? 'fact' : key === 'version' ? 'version' : key === 'share' ? 'share' : key === 'order' ? 'order' : null;
+    if (!kind) throw new TicketstubIntakeError('TOKENIZE_FAILED');
+    exportedFields[key] = tokenize(`ticketstub.${kind}`, `${referenceScope}\0${value}`);
+  }
   const input = JSON.stringify({
     schema: TICKETSTUB_INTAKE_SCHEMA,
     source: TICKETSTUB_EVENT_SCHEMA,
@@ -175,7 +200,7 @@ export function ticketstubOutboxEntry(event, tokenize) {
     actorToken: actor,
     projectToken: project,
     requestToken: request,
-    fields: valid.fields
+    fields: exportedFields
   });
   return validateNeatlogsQueueEntry({
     eventToken: tokenize('ticketstub.event', JSON.stringify(valid)),
@@ -212,9 +237,12 @@ export function createTicketstubHarnessExporter({
   }
   const outbox = NeatlogsDeliveryQueue.open({ databasePath, ...(clock ? { clock } : {}), ...outboxOptions });
   const ownerId = `ticketstub-${randomUUID()}`;
-  const counters = { accepted: 0, duplicates: 0, refused: 0, invalid: 0, drains: 0, drainErrors: 0 };
+  const counters = { accepted: 0, duplicates: 0, refused: 0, conflicts: 0, invalid: 0, drains: 0, drainErrors: 0 };
   let timer = null;
   let running = null;
+  let scheduledWork = Promise.resolve();
+  let scheduledFailure = null;
+  let closePromise = null;
   let closed = false;
   let lastDrain = null;
 
@@ -240,14 +268,19 @@ export function createTicketstubHarnessExporter({
     if (closed || timer) return;
     timer = setTimeout(() => {
       timer = null;
-      void drain().then(() => {
+      const scheduled = drain().then(() => {
         // Keep going while work remains (retries, readback windows).
-        const { counts } = outbox.diagnostics({ recent: 0 });
-        if (counts.queued + counts.sent > 0) scheduleDrain(Math.max(drainDelayMs, 15_000));
-      }, () => {});
+        if (!closed && outbox.hasRunnableWork()) scheduleDrain(Math.max(drainDelayMs, 15_000));
+      }).catch(error => {
+        scheduledFailure ??= error;
+        counters.drainErrors += 1;
+      });
+      scheduledWork = Promise.all([scheduledWork, scheduled]).then(() => undefined);
     }, delayMs);
     timer.unref?.();
   }
+
+  if (outbox.hasRunnableWork()) scheduleDrain();
 
   return Object.freeze({
     summary: Object.freeze({
@@ -270,12 +303,14 @@ export function createTicketstubHarnessExporter({
           invalid += 1;
         }
       }
-      const stored = entries.length > 0 ? outbox.enqueue(entries) : { accepted: 0, duplicates: 0, refused: 0 };
+      const stored = entries.length > 0 ? outbox.enqueue(entries)
+        : { accepted: 0, duplicates: 0, refused: 0, conflicts: 0 };
       counters.accepted += stored.accepted;
       counters.duplicates += stored.duplicates;
       counters.refused += stored.refused;
+      counters.conflicts += stored.conflicts;
       counters.invalid += invalid;
-      if (stored.accepted > 0) scheduleDrain();
+      if (stored.accepted > 0 || stored.duplicates > 0) scheduleDrain();
       return Object.freeze({ ...stored, invalid });
     },
     drain,
@@ -288,12 +323,18 @@ export function createTicketstubHarnessExporter({
       });
     },
     async close() {
+      if (closePromise) return closePromise;
       if (closed) return;
       closed = true;
       if (timer) clearTimeout(timer);
       timer = null;
-      if (running) await running;
-      outbox.close();
+      closePromise = (async () => {
+        if (running) await running;
+        await scheduledWork;
+        outbox.close();
+        if (scheduledFailure) throw scheduledFailure;
+      })();
+      return closePromise;
     }
   });
 }

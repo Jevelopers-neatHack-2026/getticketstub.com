@@ -65,11 +65,53 @@ The `captureQualification` record states the selected scope and exact expected, 
 `DOWNLOAD_ONLY`/`DOWNLOAD_VP` retain their diagnostic-subset meaning and do not qualify the complete gate.
 
 Before application navigation, `browserSessions` records the actual browser PID from `SystemInfo.getProcessInfo`,
-the throwaway profile argument from `SystemInfo.getInfo`, filesystem creation metadata, blank initial targets,
-and the unchanged launcher's source hash. Only the profile path hash is retained; raw command lines, GPU/model
+the throwaway profile argument from `SystemInfo.getInfo`, filesystem creation metadata, the startup target inventory,
+and the launcher's source hash. At least one blank application page/tab is required. Blank application targets,
+blank browser descriptors and recognized browser-owned UI have separate `recordedKinds` counts. Accepted UI is
+not blank: `initialTargetsBlank` is false when it is present, while `initialApplicationTargetsBlank` and its count
+describe the application targets only. An over-cap inventory leaves `allTargetsBlank` unknown. Only the profile
+path hash is retained; raw command lines, GPU/model
 data and target URLs are omitted. Protocol, size, path, creation-time or uniqueness failures leave isolation
 unconfirmed and fail the pair. These startup metadata queries can affect timing; they do not establish pixel
 readiness. A generated session label alone is not isolation evidence.
+
+The runtime workflow first runs `node scripts/check-download-browser-identity.mjs --evidence-dir <directory>`
+before dependency installation and application checks. This single-session native preflight creates no application
+page and performs no capture; it does not qualify the six-pair matrix. Its JSON is retained by the workflow's
+existing always-run artifact step even on failure. Startup target evidence records at most 32 fixed type/URL/subtype
+classes, explicit omissions and precise rejection reasons; no target title, ID or URL is retained. Internal pages
+with content, workers and extensions remain rejected. A valid task profile can be retained privately
+for removal verification even when target validation fails; confirmed removal never converts that identity failure
+into a pass. The launcher requests `about:blank`; diagnostics do not infer which startup target caused a failure
+that omitted its inventory. A startup target must have an absent subtype and either be a blank page/tab/browser
+descriptor (`about:blank` or an empty URL), or have the exact `browser_ui` type and one of these two observed URLs:
+`chrome://omnibox-popup.top-chrome/` or `chrome://omnibox-popup.top-chrome/omnibox_popup_aim.html`.
+Their fixed `browserUiUrlClass` values are `omnibox_popup` and `omnibox_popup_aim`. The same URLs on a content,
+worker or unknown target do not qualify. Recognized UI cannot substitute for the required blank application target.
+The unobserved tab-search form keeps its diagnostic name and remains rejected. Other URLs, including query,
+fragment, lookalike and encoded variants, remain `unrecognized`; even `browser_ui` with a blank URL is rejected.
+The retained [Chrome154 preflight](https://github.com/Jevelopers-neatHack-2026/getticketstub.com/pull/120#issuecomment-6133199603)
+observed the two accepted shapes with absent subtypes alongside a blank page. That diagnostic run remains a
+failure with application checks skipped; recognizing its browser-owned UI does not retroactively qualify it.
+
+Download qualification requests the launcher's explicit `downloadIsolation` option for its baseline session,
+all four additional sessions and the identity preflight. Only this option adds `--disable-extensions` and
+`--disable-component-extensions-with-background-pages`; other browser suites keep their existing arguments.
+The `launchPolicy` field records a request, not proof that Chrome honored the flags. Actual startup target,
+process/profile and cleanup checks still decide qualification. This changes the download
+verifier's browser environment; it is neither a compositor repair nor evidence of image readiness. The flags and
+diagnostic type are defined in Chromium revision `b510e9d7cd3a2fbd78d0ddc42234103206c5f78d`, the measured browser
+revision of the retained failed preflight: [extension switch](https://github.com/chromium/chromium/blob/b510e9d7cd3a2fbd78d0ddc42234103206c5f78d/extensions/common/switches.h),
+[component switch](https://github.com/chromium/chromium/blob/b510e9d7cd3a2fbd78d0ddc42234103206c5f78d/chrome/common/chrome_switches.h),
+[component loading](https://github.com/chromium/chromium/blob/b510e9d7cd3a2fbd78d0ddc42234103206c5f78d/chrome/browser/extensions/component_loader.cc)
+and [browser UI type](https://github.com/chromium/chromium/blob/b510e9d7cd3a2fbd78d0ddc42234103206c5f78d/content/browser/devtools/devtools_agent_host_impl.cc).
+The [pinned internal URL constants](https://github.com/chromium/chromium/blob/b510e9d7cd3a2fbd78d0ddc42234103206c5f78d/chrome/common/webui_url_constants.h)
+ground the exact names. Chrome's [target classification](https://github.com/chromium/chromium/blob/b510e9d7cd3a2fbd78d0ddc42234103206c5f78d/chrome/browser/devtools/chrome_devtools_manager_delegate.cc)
+assigns `browser_ui` through [browser-owned WebUI detection](https://github.com/chromium/chromium/blob/b510e9d7cd3a2fbd78d0ddc42234103206c5f78d/chrome/browser/ui/webui_browser/webui_browser.cc).
+The [omnibox controller](https://github.com/chromium/chromium/blob/b510e9d7cd3a2fbd78d0ddc42234103206c5f78d/chrome/browser/ui/webui/omnibox_popup/omnibox_popup_ui.h)
+inherits the [top Chrome UI-element disposition](https://github.com/chromium/chromium/blob/b510e9d7cd3a2fbd78d0ddc42234103206c5f78d/chrome/browser/ui/webui/top_chrome/top_chrome_web_ui_controller.cc).
+This source and the observed inventory support only the two bounded browser-owned UI forms; they do not
+authorize arbitrary internal pages or establish compositor readiness.
 
 Each session's collector starts before application navigation and remains attached through bounded browser
 shutdown. Its final snapshot is then retained and the listener detached. Process exit, profile removal and
@@ -78,6 +120,16 @@ Every action, producer, native GUID, event and violation is aggregated with its 
 from separate processes are not deduplicated. Per-case receipts and `downloadReceipts.directories` bind every
 saved GUID to its own session directory. Missing sessions, unsupported setup, late events and incomplete cleanup
 remain explicit and fail closed while the remaining fixed pairs are still attempted. There is no browser retry.
+
+Only the download launch mode adds counted profile removal after confirmed process exit. It has a two-second
+overall observation budget and at most four attempts, retaining fixed error codes, removal/absence status and
+every requested delay. Only the transient errors documented by [Node22.23.3](https://github.com/nodejs/node/blob/v22.23.3/doc/api/fs.md#fsrmsyncpath-options)
+permit 100/200/300ms cleanup backoffs; each individual removal disables hidden retries. These filesystem delays
+occur after the browser exits and never delay or retry an image capture. Unknown errors, missing receipts,
+deadline expiry or unverified absence remain incomplete; a late filesystem completion cannot revise a timeout.
+The manager also checks profile absence independently after close. A failed removal keeps the already proven
+process exit truthful, but still fails cleanup and session qualification. Other browser consumers keep their
+existing close behavior. No profile path or raw filesystem error message is retained.
 
 The existing final pre-screenshot evaluation also records bounded computed state for the actual image, figure
 and up to sixteen ancestors per image, including ancestors above the figure. It records numeric transforms,

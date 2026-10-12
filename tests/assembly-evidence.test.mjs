@@ -443,7 +443,9 @@ syncBuiltinESMExports();
 test("the real checkout's inputs build a manifest whose pending pins stay pending", () => {
   const manifest = buildManifest(REAL_ROOT, { allowDirty: true });
   const pending = manifest.components.required.filter((c) => c.status === "pending").map((c) => c.name);
-  assert.ok(pending.includes("event-intelligence") && pending.includes("creative-engine"));
+  assert.ok(pending.includes("event-intelligence"));
+  assert.equal(manifest.components.required.find((c) => c.name === "creative-engine").status, "installed-vendored");
+  assert.equal(manifest.components.required.find((c) => c.name === "cost-intelligence").status, "installed-vendored");
   assert.equal(manifest.components.required.find((c) => c.name === "agent-harness").status, "installed-vendored");
   assert.equal(manifest.acceptance.status, "not_accepted");
 });

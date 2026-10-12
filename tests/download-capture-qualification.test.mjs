@@ -130,6 +130,32 @@ test("a selected diagnostic viewport is labeled as a subset, never the full gate
   assert.equal(subset.passed, false);
 });
 
+for (const names of [["390"], ["1440"], ["390", "1440"]]) {
+  test(`all passing diagnostic captures at ${names.join("/")} cannot qualify the complete gate`, () => {
+    const selectedPlan = captureQualificationPlan(names.map((name) => ({ name })));
+    const ledger = new CaptureQualification(selectedPlan, { diagnosticSubset: true });
+    for (const item of selectedPlan) {
+      const id = pairId(item);
+      ledger.begin(id);
+      capture(ledger, id, "original");
+      capture(ledger, id, "edited");
+      ledger.finish(id, 0);
+    }
+    const selectedSessions = ["baseline", ...names.flatMap((name) => [1, 2].map((trial) => `cold-${name}-${trial}`))];
+    const record = ledger.snapshot({ schema: "ticketstub.download-browser-sessions.v1", expectedSessions: selectedSessions,
+      complete: true, passed: true, sessions: selectedSessions.map((sessionId) => ({ sessionId, passed: true })) });
+    // Preserve the complete diagnostic observations without promoting their scope to qualification.
+    assert.equal(record.scope, "diagnostic_subset");
+    assert.equal(record.complete, true);
+    assert.equal(record.capturesComplete, true);
+    assert.equal(record.isolationComplete, true);
+    assert.equal(record.recordedFirstCaptures, names.length * 6);
+    assert.ok(record.pairs.every((pair) => pair.status === "passed"));
+    assert.deepEqual(record.violations, []);
+    assert.equal(record.passed, false);
+  });
+}
+
 test("empty, duplicated or missing viewport plans cannot declare a complete full gate", () => {
   for (const invalid of [[], plan.slice(0, -1), [...plan, plan[0]], captureQualificationPlan([{ name: "390" }])]) {
     const result = new CaptureQualification(invalid).snapshot();

@@ -191,6 +191,8 @@ for (const image of [{ b64_json: png, media_type: "image/svg+xml" }, { b64_json:
 test("direct Anthropic and OpenAI paths keep their original wire contracts", async () => {
   process.env.TICKETSTUB_RUNTIME_MODE = "live";
   delete process.env.TICKETSTUB_AGENT_PROVIDER; delete process.env.TICKETSTUB_ART_PROVIDER;
+  delete process.env.GPT_IMAGE_MODEL;
+  process.env.TICKETSTUB_ART_MODEL = "gpt-image-1"; // Explicit compatibility selection, no implicit default.
   process.env.ANTHROPIC_API_KEY = "offline-direct-key"; process.env.OPENAI_API_KEY = "offline-direct-key";
   globalThis.fetch = async (url, init) => {
     const body = JSON.parse(init.body);
@@ -230,13 +232,13 @@ test("research rejects malformed enrichment with a safe provider error", async (
   assert.equal(result.status, 502); assert.equal((await result.json()).error.code, "invalid_provider_response");
 });
 
-test("optional direct-provider paths still simulate without credentials", async () => {
+test("optional direct text simulates but live art requires server API credentials", async () => {
   process.env.TICKETSTUB_RUNTIME_MODE = "live";
   delete process.env.TICKETSTUB_AGENT_PROVIDER; delete process.env.TICKETSTUB_ART_PROVIDER;
   delete process.env.OPENAI_API_KEY; delete process.env.ANTHROPIC_API_KEY;
   globalThis.fetch = () => { assert.fail("missing direct keys attempted network"); };
   assert.equal((await agent.POST(req({ event, message: "Hello?" }))).status, 204);
-  assert.equal((await (await art.POST(req({ event }))).json()).provenance, "simulated");
+  await assert.rejects(generateImage("test"), e => e.code === "missing_provider_key");
 });
 
 

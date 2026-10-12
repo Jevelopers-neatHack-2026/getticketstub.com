@@ -1,0 +1,125 @@
+name: Runtime order gates
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/runtime-order-gates.yml'
+      - 'scripts/check-runtime-order-gates.mjs'
+      - 'scripts/lib/cdp.mjs'
+      - 'scripts/lib/fixture-network-guard.mjs'
+      - 'src/app/layout.tsx'
+      - 'src/app/checkout/**'
+      - 'src/app/cart/**'
+      - 'src/app/api/orders/**'
+      - 'src/customer/pages/capabilities.ts'
+      - 'src/customer/pages/commerce.ts'
+      - 'src/customer/studio/types.ts'
+      - 'src/customer/studio/store.ts'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.nvmrc'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/runtime-order-gates.yml'
+      - 'scripts/check-runtime-order-gates.mjs'
+      - 'scripts/lib/cdp.mjs'
+      - 'scripts/lib/fixture-network-guard.mjs'
+      - 'src/app/layout.tsx'
+      - 'src/app/checkout/**'
+      - 'src/app/cart/**'
+      - 'src/app/api/orders/**'
+      - 'src/customer/pages/capabilities.ts'
+      - 'src/customer/pages/commerce.ts'
+      - 'src/customer/studio/types.ts'
+      - 'src/customer/studio/store.ts'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.nvmrc'
+
+permissions:
+  contents: read
+
+jobs:
+  runtime-order-gates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Select pinned npm
+        run: npm install --global npm@11.16.0
+      - run: npm ci
+      - name: Build once with a deliberately stale public demo mirror
+        id: build
+        env:
+          NEXT_PUBLIC_TICKETSTUB_RUNTIME_MODE: demo
+          NEXT_TELEMETRY_DISABLED: '1'
+        run: npm run build
+      - name: Exercise both server modes on the same build
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/runtime-order-gates"
+          mkdir -p "$evidence"
+          printf 'runtime\texit\n' > "$evidence/positive-exits.tsv"
+          failed=0
+          for mode in demo live; do
+            code=0
+            node scripts/check-runtime-order-gates.mjs --runtime "$mode" --evidence-dir "$evidence/$mode" > "$evidence/$mode.log" 2>&1 || code=$?
+            cat "$evidence/$mode.log"
+            printf '%s\t%s\n' "$mode" "$code" >> "$evidence/positive-exits.tsv"
+            if [ "$code" -ne 0 ]; then failed=1; fi
+          done
+          test "$failed" -eq 0
+      - name: Prove absent runtime hint fails preview controls, not the safety controls
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/runtime-order-gates"
+          mkdir -p "$evidence"
+          code=0
+          node scripts/check-runtime-order-gates.mjs --runtime live --without-runtime-attribute --evidence-dir "$evidence/missing-hint" > "$evidence/missing-hint.log" 2>&1 || code=$?
+          cat "$evidence/missing-hint.log"
+          printf '%s\n' "$code" > "$evidence/missing-hint-exit.txt"
+          node --input-type=module - "$evidence/missing-hint/result.json" "$code" <<'NODE'
+          import assert from 'node:assert/strict';
+          import { readFileSync } from 'node:fs';
+          const report = JSON.parse(readFileSync(process.argv[2], 'utf8'));
+          assert.equal(Number(process.argv[3]), 1, 'the deliberate mutation must fail');
+          assert.equal(report.mutation, 'remove server runtime attribute before hydration');
+          assert.deepEqual(report.completedViewports, [390, 1280]);
+          const names = report.checks.map(check => check.name);
+          assert.equal(new Set(names).size, names.length, 'every assertion has a unique name');
+          const must = (name, ok) => assert.equal(report.checks.find(check => check.name === name)?.ok, ok, name);
+          for (const width of [390, 1280]) {
+            for (const material of ['card', 'print', 'framed']) {
+              must(`${width}.checkout.${material}.gate`, false);
+              must(`${width}.cart.${material}.gate`, false);
+            }
+            for (const name of ['checkout.digital.gate', 'checkout.digital.adds', 'checkout.return-digital.gate',
+              'checkout.return-digital.adds', 'checkout.holo.blocked', 'cart.digital.gate', 'cart.stale-digital.gate',
+              'cart.stale-digital.inert', 'cart.stale-digital.reload', 'browser.no-exceptions']) must(`${width}.${name}`, true);
+          }
+          for (const name of ['health.runtime', 'network.guard.refuses-before-transport', 'network.browser.no-egress',
+            'network.server.no-egress', 'browser.no-order-submissions', 'matrix.all-viewports-completed',
+            'server.card.forged-preview-denied', 'server.print.forged-preview-denied', 'server.framed.forged-preview-denied']) must(name, true);
+          const failed = report.checks.filter(check => !check.ok);
+          assert.equal(report.failed, failed.length);
+          assert.equal(report.skipped, 0);
+          assert(failed.every(check => /^(390|1280)\.(checkout|cart)\.(card|print|framed)\.(gate|explanation|inert|reload)$/.test(check.name)),
+            'unrelated failures never qualify as an expected negative');
+          console.log(`Expected mutation rejected by ${failed.length} preview assertions; all safety and digital controls passed.`);
+          NODE
+      - name: Retain all outcomes, including failures and the deliberate negative
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-order-gates-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/runtime-order-gates
+          if-no-files-found: warn

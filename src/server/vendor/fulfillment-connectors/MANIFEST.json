@@ -1,0 +1,21 @@
+{
+  "repository": "https://github.com/Jevelopers-neatHack-2026/fulfillment-connectors",
+  "commit": "64b52c4f39d4946a4c47086d4a5df1ef3860dad5",
+  "build": "tsc 6.0.3 -p tsconfig.json",
+  "files": {
+    "dist/prodigi-callbacks.js": "930601de8417b16bfae9ac9989fbba3cf39d9b40a7923d2cb87ed1aca747797f",
+    "dist/prodigi-callbacks.d.ts": "eb2d125bdefcd94b0be6d8dc65331fa0b26bae56c4983b65156e5ceff8d28933",
+    "dist/prodigi-sandbox.js": "ccf642cd1b883c13a0e7e47be921cf7fc88c3cb3ccf6e8ebcb0a3565982eb584",
+    "dist/prodigi-sandbox.d.ts": "56841319f970011f7d4f714877e1b5efde28dc1b74d0adbabccc34082023c349",
+    "dist/prodigi-secrets.js": "40d32734c048b563204289ad1bbdcfa457b116f3d04429adb7c43f53b9c354d8",
+    "dist/prodigi-secrets.d.ts": "412e29bac095d5b9973729d2fadeeab9526442e4778e43fd6266cea5da939a57",
+    "dist/provider-matrix.js": "703391e446c002faa3ff94ebbdf173049734d7f15d84b7bdeadc864929dcc1b2",
+    "dist/provider-matrix.d.ts": "b1ef69f7c73fe7eafac34e76b3ad8edfeffac4da7c8ef26d735a24eb1e309f48",
+    "dist/security.js": "bafa17fff82dfb651d728027e9394009065e2f342666600f50d992c1582d3a6e",
+    "dist/security.d.ts": "d0df473e126768641faafe46ffcc930f5e4b2115ac2668fc49ebef9b6664a2c4",
+    "dist/types.d.ts": "36e758b0532b170920d051e0e292c58bd1bb44dda68c98efb74b676402d20c03",
+    "dist/quotes.d.ts": "b4f78206f2207bd34492168088e5019464f7ba7823cea2dd4dbf2aa4d90d4a8a",
+    "dist/catalog.d.ts": "251c9d34aebf062a874da115feb0d9af02325a34e02e4cec95e0ac936e00d0db",
+    "dist/contracts.d.ts": "cc13a4932ceb0c0ff677ed457364b4b9664af8ef3fe63c45d20158112ae40eb3"
+  }
+}
