@@ -1,7 +1,27 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { beforeEach, describe, test } from "node:test";
+import { registerHooks } from "node:module";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import "./analytics-hooks.mjs";
+
+// The REAL account file custody (src/server/files.ts: strict data-URL pattern, magic-number sniff, sha256 of the decoded bytes) is
+// imported as it is. Only two server-only seams are stubbed so Node can load it: the `server-only` marker and the HttpError class
+// (the next/server response helpers it lives beside are not needed for hashing or validation).
+registerHooks({
+  resolve(spec, ctx, next) {
+    if (spec === "server-only") return { url: "data:text/javascript,export{}", shortCircuit: true };
+    if (spec === "./http" && String(ctx.parentURL).endsWith("/src/server/files.ts")) {
+      return { url: "data:text/javascript,export class HttpError extends Error{constructor(status,code,message){super(message);this.status=status;this.code=code}}", shortCircuit: true };
+    }
+    return next(spec, ctx);
+  },
+});
+const filesDir = mkdtempSync(join(tmpdir(), "gen-unit-files-"));
+process.env.TICKETSTUB_FILES = filesDir;
+process.on("exit", () => rmSync(filesDir, { recursive: true, force: true }));
 
 // One shared art-generation lifecycle (issues #98 and #97). The editor owns ONE controller; deferred /api/art responses
 // are resolved in either order against the real client, the real controller, the real local persistence (upsertStub)
@@ -35,19 +55,7 @@ let calls = [];
 // A tiny in-memory account for the REAL sync client (account/sync.ts syncNow): it records every upsert it is sent.
 const account = { stubs: new Map(), upserts: [], syncs: 0, externalize: false };
 const resetAccount = () => Object.assign(account, { stubs: new Map(), upserts: [], syncs: 0, externalize: false });
-// What src/server/files.ts does on a real sync: every inline image becomes /api/files/<sha256 of the decoded bytes>.<ext>, the
-// version id and updatedAt untouched.
-const externalizeLikeServer = (v) =>
-  typeof v === "string"
-    ? (() => {
-        const m = /^data:image\/(png|jpe?g|webp);base64,(.+)$/.exec(v);
-        return m ? `/api/files/${createHash("sha256").update(Buffer.from(m[2], "base64")).digest("hex")}.${m[1] === "jpeg" ? "jpg" : m[1]}` : v;
-      })()
-    : Array.isArray(v)
-      ? v.map(externalizeLikeServer)
-      : v && typeof v === "object"
-        ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, externalizeLikeServer(x)]))
-        : v;
+const serverFiles = await import("../src/server/files.ts");
 globalThis.fetch = (url, init = {}) => {
   if (String(url) === "/api/wall/sync") {
     const { stubs, deleted } = JSON.parse(init.body);
@@ -56,7 +64,7 @@ globalThis.fetch = (url, init = {}) => {
     for (const s of stubs) {
       if (!deleted.includes(s.id)) {
         account.upserts.push(s.id);
-        account.stubs.set(s.id, account.externalize ? externalizeLikeServer(s) : s);
+        account.stubs.set(s.id, account.externalize ? serverFiles.externalizeArt(s) : s);
       }
     }
     return Promise.resolve(new Response(JSON.stringify({ stubs: [...account.stubs.values()], deleted: [], now: Date.now() }), { status: 200, headers: { "content-type": "application/json" } }));
@@ -1220,40 +1228,86 @@ describe("a server-externalized picture is the same body, not a conflict (PR100-
     assert.equal(localStorage.getItem("ticketstub.wall.v1"), before, "nothing written");
   });
 
-  test("a reference THIS editor's own sync wrote is attested: naming need not be re-derived; a later change to it voids that", async () => {
-    const odd = (v) => (typeof v === "string" ? (v.startsWith("data:") ? "/api/files/odd-name-from-a-future-server.png" : v) : Array.isArray(v) ? v.map(odd) : v && typeof v === "object" ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, odd(x)])) : v);
+  test("the client's derived name equals what the REAL server module assigns (PNG and JPEG), and the real server refuses a non-PNG payload", () => {
+    const real = serverFiles.externalizeArt({ versions: [{ art: { src: png } }, { art: { src: jpg } }] });
+    assert.equal(real.versions[0].art.src, nameOf(PNG_B64, "png"));
+    assert.equal(real.versions[1].art.src, nameOf(JPG_B64, "jpg"));
+    assert.equal(identity.compareArtSrc(png, real.versions[0].art.src), "same");
+    assert.equal(identity.compareArtSrc(jpg, real.versions[1].art.src), "same");
+    assert.throws(() => serverFiles.externalizeArt({ versions: [{ art: { src: "data:image/png;base64,AAAAAAAA" } }] }), (e) => e.status === 400, "the real server would refuse the old Opus-N1 payload");
+  });
+
+  // Reason recorded: an earlier revision upgraded "unverifiable" to "same" when this tab's own WALL_SYNCED fired. The sync emits that
+  // event even when its local write failed (known open bug) and nothing binds the event to an authenticated reply or a project
+  // incarnation, so it is not evidence about bytes. These tests assert the proper guard instead: an event never makes two pictures the same.
+  async function legacyRefScenario(fire) {
     const ed = openEditor();
     const a = ed.ask("sheet");
     await tick();
     calls[0].respond(200, { kind: "image", src: png, seed: 61, provenance: "live" });
     await a;
-    // the account moves the picture under a name this client cannot derive (e.g. the server changed its scheme)
-    const real = globalThis.fetch;
-    globalThis.fetch = async (url, init) => {
-      if (String(url) !== "/api/wall/sync") return real(url, init);
-      const { stubs } = JSON.parse(init.body);
-      return new Response(JSON.stringify({ stubs: stubs.map(odd), deleted: [], now: Date.now() }), { status: 200 });
-    };
-    assert.equal((await sync.syncNow()).ok, true);
-    globalThis.fetch = real;
-    assert.equal(store.getStub("s1").versions[1].art.src, "/api/files/odd-name-from-a-future-server.png");
+    const stored = store.getStub("s1");
+    store.upsertStub({ ...stored, versions: stored.versions.map((v, i) => (i === 1 ? { ...v, art: { ...v.art, src: "/api/files/legacy-or-forged-reference.png" } } : v)) });
+    await fire();
+    const before = localStorage.getItem("ticketstub.wall.v1");
+    const draft = JSON.stringify(ed.stub);
     const b = ed.ask("note");
     await tick();
-    calls[calls.length - 1].ok("attested");
-    assert.equal((await b).op.phase, "applied", "own sync's rewrite is not a conflict");
-    // a peer now points that same version at another file: the attestation no longer matches
-    const stored = store.getStub("s1");
-    store.upsertStub({ ...stored, versions: stored.versions.map((v) => (v.id === ed.stub.versions[1].id ? { ...v, art: { ...v.art, src: "/api/files/someone-elses.png" } } : v)) });
-    const before = localStorage.getItem("ticketstub.wall.v1");
-    const c = ed.ask("note");
-    await tick();
-    calls[calls.length - 1].ok("voided");
-    assert.equal((await c).op.phase, "ready");
-    assert.equal(localStorage.getItem("ticketstub.wall.v1"), before);
-  });
+    calls[calls.length - 1].ok("forged");
+    const { op } = await b;
+    return { ed, op, before, draft };
+  }
 
-  test("the event name the controller listens for is the sync's own", () => {
-    assert.equal(sync.WALL_SYNCED, "ticketstub:wall-synced");
+  for (const [label, fire] of [
+    ["a foreign/forged WALL_SYNCED event", async () => window.dispatchEvent(new CustomEvent(sync.WALL_SYNCED, { detail: { count: 1 } }))],
+    ["a WALL_SYNCED whose local write FAILED (the sync's known false success)", async () => {
+      localStorage.mode = "blocked";
+      await sync.syncNow().catch(() => undefined);
+      localStorage.mode = "ok";
+    }],
+    ["storage events", async () => window.dispatchEvent(new Event("storage"))],
+  ]) {
+    test(`${label} with an unverifiable legacy reference changes nothing: held, not applied, nothing written`, async () => {
+      const { ed, op, before, draft } = await legacyRefScenario(fire);
+      assert.equal(op.phase, "ready");
+      assert.equal(op.code, "art_unverifiable");
+      assert.equal(localStorage.getItem("ticketstub.wall.v1"), before);
+      assert.equal(JSON.stringify(ed.stub), draft);
+      assert.equal(ed.gen.apply(op.runId).phase, "ready", "an explicit Apply cannot merge what it cannot compare");
+      assert.equal(localStorage.getItem("ticketstub.wall.v1"), before);
+    });
+  }
+
+  test("references that are malformed, other bytes, or unsupported are never accepted as the same picture", async () => {
+    const other = nameOf(PNG2_B64, "png");
+    const table = [
+      ["server-named file of OTHER bytes", other, "discarded", "version_conflict"],
+      ["a different, non-server path", "/art/somewhere-else.webp", "discarded", "version_conflict"],
+      ["unsupported extension in the server's directory", `/api/files/${"a".repeat(64)}.gif`, "ready", "art_unverifiable"],
+      ["truncated server name", "/api/files/abc.png", "ready", "art_unverifiable"],
+    ];
+    for (const [label, ref, phase, code] of table) {
+      localStorage.clear();
+      calls = [];
+      const ed = openEditor();
+      const a = ed.ask("sheet");
+      await tick();
+      calls[0].respond(200, { kind: "image", src: png, seed: 71, provenance: "live" });
+      await a;
+      const stored = store.getStub("s1");
+      store.upsertStub({ ...stored, versions: stored.versions.map((v, i) => (i === 1 ? { ...v, art: { ...v.art, src: ref } } : v)) });
+      const before = localStorage.getItem("ticketstub.wall.v1");
+      const b = ed.ask("note");
+      await tick();
+      calls[calls.length - 1].ok("x");
+      const { op } = await b;
+      assert.equal(op.phase, phase, label);
+      assert.equal(op.code, code, label);
+      assert.equal(localStorage.getItem("ticketstub.wall.v1"), before, `${label}: nothing written`);
+    }
+    // an inline picture the server would refuse (malformed) against a real-looking reference is not accepted either
+    const bad = identity.compareArtSrc("data:image/png;base64,AAAAAAAA", nameOf(PNG_B64, "png"));
+    assert.equal(bad, "unverifiable");
   });
 
   test("a stored reference the server never produces is held, typed, never merged and never applied", async () => {

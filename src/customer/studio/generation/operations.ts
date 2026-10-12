@@ -9,7 +9,7 @@ import type { ArtLayer, Stub } from "../types";
 import { currentVersion } from "../types";
 import { addArtVersion } from "../editor/ops";
 import { readStoredStub } from "../store";
-import { compareVersions, reconcileVersions } from "./reconcile";
+import { reconcileVersions } from "./reconcile";
 import { forgetStatus, loadStatus, saveStatus, type GenerationOp, type GenerationVia } from "./status-store";
 
 export type { GenerationOp, GenerationPhase, GenerationVia } from "./status-store";
@@ -88,9 +88,6 @@ interface Entry {
 }
 
 /** Only these end states can be started again; a discarded run (superseded, removed, project changed) never is. */
-/** Fired by the account sync (src/customer/account/sync.ts WALL_SYNCED) after it wrote the merged wall to this device. */
-export const WALL_SYNCED_EVENT = "ticketstub:wall-synced";
-
 const RETRYABLE = new Set<GenerationOp["phase"]>(["failed", "canceled", "interrupted"]);
 
 let seq = 0;
@@ -106,9 +103,6 @@ export class GenerationController {
   /** Projects this editor has seen saved on the device, and those it has since seen removed (for this editor session). */
   private seen = new Set<string>();
   private removed = new Set<string>();
-  /** `${stubId}\0${versionId}` -> the file reference this editor's own sync wrote in place of that version's inline picture. */
-  private attested = new Map<string, string>();
-  private onSynced = (): void => this.attestSync();
 
   constructor(
     private host: GenerationHost,
@@ -120,8 +114,6 @@ export class GenerationController {
     this.attached = true;
     this.seen.clear();
     this.removed.clear();
-    this.attested.clear();
-    if (typeof window !== "undefined") window.addEventListener(WALL_SYNCED_EVENT, this.onSynced);
     const id = this.host.current()?.id;
     if (id) this.watch(id);
     if (id && !this.latest.has(id)) {
@@ -137,7 +129,6 @@ export class GenerationController {
   /** The editor unmounted (navigation away, project switch): nothing may write after this; pending work becomes unknown. */
   detach(): void {
     this.attached = false;
-    if (typeof window !== "undefined") window.removeEventListener(WALL_SYNCED_EVENT, this.onSynced);
     for (const [runId, e] of [...this.entries]) {
       const op = this.ops.get(runId);
       if (!op || (op.phase !== "pending" && op.phase !== "ready")) continue;
@@ -337,29 +328,6 @@ export class GenerationController {
     return p;
   }
 
-  /**
-   * This editor's own sync just wrote the merged wall. Where it moved one of this draft's inline pictures to a file, remember
-   * the reference it wrote, so the same version is not mistaken for a conflicting body when its picture cannot be compared
-   * byte for byte. Only a version whose every other field already matches, only an inline draft picture, only a stored
-   * `/api/files/` reference; a later change to that reference voids it.
-   */
-  private attestSync(): void {
-    const cur = this.host.current();
-    if (!this.attached || !cur || !this.host.presence) return;
-    const read = readStoredStub(cur.id);
-    if (read.status !== "present") return;
-    const have = new Map((read.stub.versions ?? []).map((v) => [v.id, v]));
-    for (const v of cur.versions) {
-      const other = have.get(v.id);
-      if (!other || !other.art.src || !v.art.src?.startsWith("data:") || !other.art.src.startsWith("/api/files/")) continue;
-      if (compareVersions(v, other) === "unverifiable") this.attested.set(`${cur.id}\u0000${v.id}`, other.art.src);
-    }
-  }
-
-  private attestedFor(stubId: string): (versionId: string) => string | undefined {
-    return (versionId) => this.attested.get(`${stubId}\u0000${versionId}`);
-  }
-
   /** The project was seen removed or replaced: retire its live operations for good, for this editor session. */
   private latchRemoved(stubId: string, message: string, code: string): void {
     this.removed.add(stubId);
@@ -389,7 +357,7 @@ export class GenerationController {
     if (read.status === "unknown") return { kind: "unknown" };
     if (read.status !== "present") return { kind: "removed" };
     const stored = read.stub;
-    const r = reconcileVersions(cur.versions, stored.versions ?? [], this.attestedFor(stubId));
+    const r = reconcileVersions(cur.versions, stored.versions ?? []);
     if (r.status === "replaced") return { kind: "replaced" };
     if (r.status === "conflict") return { kind: "conflict", versionId: r.versionId };
     if (r.status === "unverifiable") return { kind: "unverifiable", versionId: r.versionId };
@@ -469,7 +437,7 @@ export class GenerationController {
     let next = addArtVersion(cur, art);
     // ...and every version the stored project already has (another editor's, saved meanwhile) is kept alongside it
     if (stored && !memoryOnly) {
-      const merged = reconcileVersions(next.versions, stored.versions ?? [], this.attestedFor(cur.id));
+      const merged = reconcileVersions(next.versions, stored.versions ?? []);
       if (merged.status === "ok") next = { ...next, versions: merged.versions };
     }
     const saved = this.host.commit(next, memoryOnly ? { persist: false } : undefined);

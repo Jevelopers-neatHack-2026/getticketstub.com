@@ -24,12 +24,7 @@ export type Reconciled =
   | { status: "conflict"; versionId: string } // the same id with a different body: cannot be merged safely
   | { status: "unverifiable"; versionId: string }; // the same id, but its picture cannot be compared with the stored reference
 
-/**
- * `attested` answers, for a version id, the stored picture reference THIS editor's own account sync wrote for it (see the
- * controller): the account's custody path moved this editor's inline picture to that file. A reference only counts while the
- * stored copy still carries exactly it, and only when everything else about the version already matched.
- */
-export function reconcileVersions(draft: DesignVersion[], stored: DesignVersion[], attested?: (versionId: string) => string | undefined): Reconciled {
+export function reconcileVersions(draft: DesignVersion[], stored: DesignVersion[]): Reconciled {
   const have = new Map(stored.map((v) => [v.id, v]));
   const mine = new Set(draft.map((v) => v.id));
   let shared = 0;
@@ -37,8 +32,7 @@ export function reconcileVersions(draft: DesignVersion[], stored: DesignVersion[
     const other = have.get(v.id);
     if (!other) continue;
     shared++;
-    let rel = compareVersions(v, other);
-    if (rel === "unverifiable" && v.art.src?.startsWith("data:") && other.art.src && attested?.(v.id) === other.art.src) rel = "same";
+    const rel = compareVersions(v, other);
     if (rel === "different") return { status: "conflict", versionId: v.id };
     if (rel === "unverifiable") return { status: "unverifiable", versionId: v.id };
   }
