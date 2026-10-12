@@ -85,6 +85,7 @@ try {
   const upsertsFor = (p, id, sinceIdx) => p.eval(`window.__sync.slice(${sinceIdx}).filter(x=>x.status===200&&JSON.parse(x.body||'{}').stubs?.some(s=>s.id===${JSON.stringify(id)})).length`);
 
   async function openStudio(id) {
+    await page.goto(`${base}/wall`); // a fresh page context: earlier cases patch Storage in the page
     await page.eval(`localStorage.clear();localStorage.setItem('ticketstub.wall.v1',${JSON.stringify(JSON.stringify([mkStub(id)]))});localStorage.setItem('ticketstub.hint.swipe.v1','1')`);
     await page.goto(`${base}/studio/${id}`, { settle: 2000 });
     await page.waitFor(`window.__sync.some(x=>x.status===200&&x.body.includes(${JSON.stringify(id)}))`, 12000);
@@ -212,6 +213,65 @@ try {
   await page.eval("window.__art[0]()");
   check("write-failure case: applied once with the unsaved warning", await page.waitFor(`document.querySelector('[aria-label="Art generation status"]')?.getAttribute('data-phase')==='applied'&&/could not be saved/.test(document.querySelector('[aria-label="Art generation status"]').textContent)`, 6000));
   check("write-failure case: the stored project is untouched", (await localStub(page, wid))?.versions.length === 1);
+
+  // ---- 7. a peer's SAVED version survives a late result, through the real account and a reload (PR100-ASTRA-005) ----
+  const hid = `acct-h-${Date.now()}`;
+  await openStudio(hid);
+  const h1 = await api("POST", "/api/approvals", { stubId: hid, purpose: "print.compose", expectedVersionId: "v0" });
+  check("history case: approval for the saved selected version", h1.status === 200, h1.status);
+  check("history case: note request pending", (await noteMoodier(page)) && (await page.waitFor("window.__art.length===1", 5000)));
+  const peerVersion = { id: "peer-v1", parentId: "v0", edition: "researched", art: { kind: "procedural", seed: 4242, vibe: "peer", provenance: "simulated" }, createdAt: "2026-10-02T00:00:00.000Z" };
+  const peer2 = await browser.newPage({ width: 1280, height: 900 });
+  await peer2.goto(`${base}/wall`, { settle: 1800 });
+  await peer2.eval(`(()=>{const w=JSON.parse(localStorage.getItem('ticketstub.wall.v1'));const s=w.find(x=>x.id===${JSON.stringify(hid)});s.versions=[...s.versions,${JSON.stringify(peerVersion)}];s.updatedAt=Date.now();localStorage.setItem('ticketstub.wall.v1',JSON.stringify(w))})()`);
+  await sleep(600);
+  await peer2.close();
+  check("history case: the peer's saved version is in storage before the response", (await localStub(page, hid))?.versions.some((v) => v.id === "peer-v1"));
+  await page.eval("window.__art[0]()");
+  await page.waitFor(`JSON.parse(localStorage.getItem('ticketstub.wall.v1')||'[]').find(s=>s.id===${JSON.stringify(hid)})?.versions.length===3`, 8000);
+  const hs = await localStub(page, hid);
+  check("history case: stored project keeps v0, the peer's version (exact body) and the new art", hs?.versions.length === 3 && JSON.stringify(hs.versions.find((v) => v.id === "peer-v1")) === JSON.stringify(peerVersion), hs?.versions.map((v) => v.id));
+  await page.waitFor(`window.__sync.some(x=>x.status===200&&x.body.includes(${JSON.stringify(hs.currentVersionId)}))`, 12000);
+  const acct = (await api("POST", "/api/wall/sync", { stubs: [], deleted: [] })).body.stubs.find((x) => x.id === hid);
+  check("history case: the ACCOUNT copy holds all three versions including the peer's", acct?.versions.length === 3 && acct.versions.some((v) => v.id === "peer-v1"), acct?.versions.map((v) => v.id));
+  const stale = await api("POST", "/api/approvals/verify", { token: h1.body.token, expect: { tenant: h1.body.approval.tenant.id, project: `stub:${hid}`, purpose: "print.compose", content: Object.fromEntries(["designHash", "artHash", "factsHash", "compositionHash"].map((k) => [k, h1.body.approval.binding[k]])) } });
+  check("history case: the old approval is stale (403) after the result", stale.status === 403 && stale.body.reason === "stale", { status: stale.status });
+  const hf = await api("POST", "/api/approvals", { stubId: hid, purpose: "print.compose", expectedVersionId: hs.currentVersionId });
+  check("history case: a fresh approval for the new selected version is accepted", hf.status === 200);
+  await page.goto(`${base}/wall`);
+  await page.eval("localStorage.removeItem('ticketstub.wall.v1')");
+  await page.goto(`${base}/wall`, { settle: 2000 });
+  await page.waitFor(`JSON.parse(localStorage.getItem('ticketstub.wall.v1')||'[]').some(s=>s.id===${JSON.stringify(hid)})`, 12000);
+  const hr = await localStub(page, hid);
+  check("history case: after a reload from an empty cache all three versions are recovered", hr?.versions.length === 3 && hr.versions.some((v) => v.id === "peer-v1"));
+
+  // ---- 8. quota/write failure, then recovery: the unsaved version is persisted, not called a replacement (PR100-ASTRA-004) ----
+  const rid2 = `acct-r-${Date.now()}`;
+  await openStudio(rid2);
+  check("recovery case: first note request pending", (await noteMoodier(page)) && (await page.waitFor("window.__art.length===1", 5000)));
+  await page.eval(`(()=>{window.__origSet=Storage.prototype.setItem;Storage.prototype.setItem=function(k,v){if(k==='ticketstub.wall.v1')throw new DOMException('full','QuotaExceededError');return window.__origSet.call(this,k,v)}})()`);
+  await page.eval("window.__art[0]()");
+  check("recovery case: first art applied in the open editor with the unsaved warning", await page.waitFor(`document.querySelector('[aria-label="Art generation status"]')?.getAttribute('data-phase')==='applied'&&/could not be saved/.test(document.querySelector('[aria-label="Art generation status"]').textContent)`, 6000));
+  check("recovery case: storage still has only v0", (await localStub(page, rid2))?.versions.length === 1);
+  await page.eval("Storage.prototype.setItem=window.__origSet");
+  await click(page, "Dismiss");
+  await sleep(300);
+  // the note was used up by the first request, so the second one comes from the real Remix sheet
+  check("recovery case: second request (sheet) is dispatched after storage recovers", (await click(page, "Remix")) && (await sleep(500), await click(page, "Remix the art")));
+  await page.waitFor("window.__art.length===2", 6000);
+  await page.eval("window.__art[1]()");
+  await page.waitFor(`JSON.parse(localStorage.getItem('ticketstub.wall.v1')||'[]').find(s=>s.id===${JSON.stringify(rid2)})?.versions.length===3`, 8000);
+  const rs = await localStub(page, rid2);
+  check("recovery case: the earlier unsaved version and the new one are both persisted", rs?.versions.length === 3, rs?.versions.map((v) => v.id));
+  check("recovery case: the result says applied and saved, never 'replaced'", await page.eval(`(()=>{const t=document.querySelector('[aria-label="Art generation status"]')?.textContent||'';return /New art applied/.test(t)&&!/replaced|could not be saved/.test(t)})()`));
+  await page.waitFor(`window.__sync.some(x=>x.status===200&&x.body.includes(${JSON.stringify(rs.currentVersionId)}))`, 12000);
+  const acct2 = (await api("POST", "/api/wall/sync", { stubs: [], deleted: [] })).body.stubs.find((x) => x.id === rid2);
+  check("recovery case: the account holds all three versions", acct2?.versions.length === 3);
+  await page.goto(`${base}/wall`);
+  await page.eval("localStorage.removeItem('ticketstub.wall.v1')");
+  await page.goto(`${base}/wall`, { settle: 2000 });
+  await page.waitFor(`JSON.parse(localStorage.getItem('ticketstub.wall.v1')||'[]').some(s=>s.id===${JSON.stringify(rid2)})`, 12000);
+  check("recovery case: after a reload from an empty cache all three versions are recovered", (await localStub(page, rid2))?.versions.length === 3);
 
   check("fixture network guard: no outbound attempt", readFileSync(netLog, "utf8").split("\n").filter(Boolean).length === 0, readFileSync(netLog, "utf8"));
   exitCode = failed ? 1 : 0;

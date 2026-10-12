@@ -9,6 +9,7 @@ import type { ArtLayer, Stub } from "../types";
 import { currentVersion } from "../types";
 import { addArtVersion } from "../editor/ops";
 import { readStoredStub } from "../store";
+import { reconcileVersions } from "./reconcile";
 import { forgetStatus, loadStatus, saveStatus, type GenerationOp, type GenerationVia } from "./status-store";
 
 export type { GenerationOp, GenerationPhase, GenerationVia } from "./status-store";
@@ -66,6 +67,8 @@ export interface StartResult {
   op: GenerationOp;
 }
 
+export const CONFLICT_MESSAGE = "Nothing was applied: a version with the same id differs between this editor and what is stored, so they can't be merged safely. Your open draft and the stored project are both unchanged.";
+export const PEER_SELECTED_MESSAGE = "New art ready, not applied: another editor on this project added or selected a version while this was generating. Apply it to add it as a new version alongside theirs (their versions are kept), or discard it.";
 export const CHANGED_MESSAGE = "This project was replaced on this device (for example restored from elsewhere) while art was being made, so nothing was applied. What is stored now is unchanged.";
 export const UNREADABLE_HOLD_MESSAGE = "New art ready, not applied automatically: this device's storage can't be read right now, so the project can't be updated safely. Apply it to use it in this open editor only (it will not be saved), or discard it.";
 export const REMOVED_MESSAGE = "This project was removed from this device while art was being made, so nothing was applied. Your open draft is unchanged.";
@@ -252,15 +255,16 @@ export class GenerationController {
     if (!op || !this.isLatest(op) || op.phase !== "ready" || !entry?.candidate) return op ?? null;
     const cur = this.guard(op);
     if (!cur) return this.discardGone(runId);
-    const v = this.verdict(op.stubId, cur);
-    if (v === "removed" || v === "changed") {
-      this.latchRemoved(op.stubId, v === "removed" ? REMOVED_MESSAGE : CHANGED_MESSAGE, v === "removed" ? "project_removed" : "project_changed");
+    const v = this.inspect(op.stubId, cur);
+    if (v.kind === "removed" || v.kind === "replaced") {
+      this.latchRemoved(op.stubId, v.kind === "removed" ? REMOVED_MESSAGE : CHANGED_MESSAGE, v.kind === "removed" ? "project_removed" : "project_changed");
       return this.ops.get(runId) ?? null;
     }
+    if (v.kind === "conflict") return this.finish(runId, { phase: "discarded", code: "version_conflict", message: CONFLICT_MESSAGE });
     const { art } = entry.candidate;
     entry.candidate = undefined;
     // an explicit Apply on an unreadable store changes the open editor only: it writes nothing, so nothing can be erased
-    return this.commitArt(runId, cur, art, !!op.fallback, undefined, v === "unknown");
+    return this.commitArt(runId, cur, art, !!op.fallback, undefined, v.kind === "unknown", v.kind === "ok" || v.kind === "peer_selected" ? v.stored : undefined);
   }
 
   /** Throw away a ready candidate (or stop a pending run). The draft is untouched. */
@@ -333,18 +337,28 @@ export class GenerationController {
   }
 
   /**
-   * Immediately before a write: what is stored is the project this draft came from. Independent of any event or queue.
-   * "removed": absent (or queued for deletion); "changed": a different project now holds the id (versions the draft was
-   * built on are missing); "unknown": the store cannot be read. A host without a store has nothing to check.
+   * Immediately before a write, what is stored compared with this draft; independent of any event or queue.
+   * removed: absent (or queued for deletion). replaced: no version in common, so a different project holds the id.
+   * conflict: the same version id with a different body. unknown: the store cannot be read (never a removal).
+   * peer_selected: another editor selected a version this one has never seen (never silently switched).
+   * ok: carries the stored project so its versions are kept alongside this draft's, own unsaved ones included.
+   * A host without a store has nothing to check.
    */
-  private verdict(stubId: string, cur: Stub): "ok" | "removed" | "changed" | "unknown" {
-    if (!this.host.presence) return "ok";
-    if (this.host.isGone(stubId)) return "removed";
-    const stored = readStoredStub(stubId);
-    if (stored.status === "unknown") return "unknown";
-    if (stored.status !== "present") return "removed";
-    const have = new Set((stored.stub.versions ?? []).map((v) => v.id));
-    return cur.versions.every((v) => have.has(v.id)) ? "ok" : "changed";
+  private inspect(stubId: string, cur: Stub):
+    | { kind: "ok"; stored?: Stub }
+    | { kind: "removed" | "replaced" | "unknown" }
+    | { kind: "conflict"; versionId: string }
+    | { kind: "peer_selected"; stored: Stub } {
+    if (!this.host.presence) return { kind: "ok" };
+    if (this.host.isGone(stubId)) return { kind: "removed" };
+    const read = readStoredStub(stubId);
+    if (read.status === "unknown") return { kind: "unknown" };
+    if (read.status !== "present") return { kind: "removed" };
+    const stored = read.stub;
+    const r = reconcileVersions(cur.versions, stored.versions ?? []);
+    if (r.status === "replaced") return { kind: "replaced" };
+    if (r.status === "conflict") return { kind: "conflict", versionId: r.versionId };
+    return r.peerOnly.includes(stored.currentVersionId) ? { kind: "peer_selected", stored } : { kind: "ok", stored };
   }
 
   /** The current draft, when this operation may still write to it: it is the open project, and not seen removed. */
@@ -386,24 +400,39 @@ export class GenerationController {
       });
       return;
     }
-    const v = this.verdict(op.stubId, cur);
-    if (v === "removed" || v === "changed") {
-      this.latchRemoved(op.stubId, v === "removed" ? REMOVED_MESSAGE : CHANGED_MESSAGE, v === "removed" ? "project_removed" : "project_changed");
+    const v = this.inspect(op.stubId, cur);
+    if (v.kind === "removed" || v.kind === "replaced") {
+      this.latchRemoved(op.stubId, v.kind === "removed" ? REMOVED_MESSAGE : CHANGED_MESSAGE, v.kind === "removed" ? "project_removed" : "project_changed");
       return;
     }
-    if (v === "unknown") {
+    if (v.kind === "conflict") {
+      this.finish(runId, { phase: "discarded", code: "version_conflict", message: CONFLICT_MESSAGE });
+      return;
+    }
+    if (v.kind === "peer_selected") {
+      entry.candidate = produced;
+      this.finish(runId, { phase: "ready", fallback, code: "peer_selected", message: PEER_SELECTED_MESSAGE });
+      return;
+    }
+    if (v.kind === "unknown") {
       // storage cannot be read: "saved" and "removed" cannot be told apart, and a write could erase other projects. Never call it
       // deleted, never write; keep the result for an explicit, honest Apply.
       entry.candidate = produced;
       this.finish(runId, { phase: "ready", fallback, message: UNREADABLE_HOLD_MESSAGE });
       return;
     }
-    this.commitArt(runId, cur, produced.art, fallback, produced.limitNote);
+    this.commitArt(runId, cur, produced.art, fallback, produced.limitNote, false, v.kind === "ok" ? v.stored : undefined);
   }
 
-  private commitArt(runId: string, cur: Stub, art: ArtLayer, fallback: boolean, limitNote?: string, memoryOnly = false): GenerationOp {
+  private commitArt(runId: string, cur: Stub, art: ArtLayer, fallback: boolean, limitNote?: string, memoryOnly = false, stored?: Stub): GenerationOp {
     // art-only: the new version is built from the CURRENT draft, so every other field stays as the person left it
-    const saved = this.host.commit(addArtVersion(cur, art), memoryOnly ? { persist: false } : undefined);
+    let next = addArtVersion(cur, art);
+    // ...and every version the stored project already has (another editor's, saved meanwhile) is kept alongside it
+    if (stored && !memoryOnly) {
+      const merged = reconcileVersions(next.versions, stored.versions ?? []);
+      if (merged.status === "ok") next = { ...next, versions: merged.versions };
+    }
+    const saved = this.host.commit(next, memoryOnly ? { persist: false } : undefined);
     if (memoryOnly) {
       return this.finish(runId, {
         phase: "applied",

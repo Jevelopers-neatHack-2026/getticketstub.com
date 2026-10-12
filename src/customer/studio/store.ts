@@ -154,17 +154,23 @@ export function upsertStub(stub: Stub): boolean {
     storageFailure("wall", "read", e);
     return false;
   }
+  // Unparseable or non-list content is UNKNOWN, not empty: replacing it with just this stub would destroy whatever it holds.
   let stored: Stub[] = [];
-  try {
-    stored = raw ? (JSON.parse(raw) as Stub[]) : [];
-  } catch (e) {
-    storageFailure("wall", "read", e); // a malformed wall is replaced, as before
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      if (!Array.isArray(parsed)) throw new Error("wall is not a list");
+      stored = parsed as Stub[];
+    } catch (e) {
+      storageFailure("wall", "read", e);
+      return false;
+    }
   }
-  const wall = stored.filter((s) => s.id !== stub.id);
+  const wall = stored.filter((s) => s?.id !== stub.id);
   const gone = loadDeleted();
   if (gone.includes(stub.id)) saveDeleted(gone.filter((id) => id !== stub.id));
   // a copy that had to let go of a picture takes it back from what is stored, if that still has it
-  return saveWall([{ ...retainArt(stub, stored.find((s) => s.id === stub.id)), updatedAt: Date.now() }, ...wall]);
+  return saveWall([{ ...retainArt(stub, stored.find((s) => s?.id === stub.id)), updatedAt: Date.now() }, ...wall]);
 }
 
 /** A stub's correction history, oldest first. Entries are only ever appended (an undo is a new entry). */

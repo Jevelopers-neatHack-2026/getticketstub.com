@@ -942,13 +942,153 @@ describe("boundary repairs: first-observation unknown, and a removal that restor
     assert.deepEqual(store.getStub("s1").versions.map((v) => v.id), ["restored-v0"]);
   });
 
-  test("a readable project that gained versions elsewhere is still a valid target (peer edits do not block generation)", async () => {
+});
+
+describe("version history is reconciled, never dropped (PR100-ASTRA-004 / 005)", () => {
+  const peerVersion = { id: "peer-v1", parentId: "v0", edition: "researched", art: { kind: "image", src: "/api/files/peer-bytes.png", seed: 5, vibe: "peer", provenance: "live" }, createdAt: "2026-10-02T00:00:00.000Z", context: { material: "card", finish: "matte", keptFacts: [], personal: { titleFont: 0, titleColor: "", foilTitle: false, hiddenFields: [] } } };
+  const withPeer = (s0, extra = {}) => ({ ...s0, versions: [...s0.versions, peerVersion], ...extra });
+  const ids = (s0) => s0.versions.map((v) => v.id);
+
+  test("a peer version saved BEFORE the old result survives: stored, live, account and reload all keep its exact body", async () => {
+    const ed = openEditor();
+    await sync.syncNow();
+    const p = ed.ask("sheet");
+    await tick();
+    store.upsertStub(withPeer(store.getStub("s1"))); // another editor saved a version; the project was not removed
+    calls[0].ok("late");
+    const { op } = await p;
+    assert.equal(op.phase, "applied");
+    const stored = store.getStub("s1");
+    const added = ids(stored).filter((id) => id !== "v0" && id !== "peer-v1");
+    assert.equal(stored.versions.length, 3);
+    assert.equal(added.length, 1, "exactly one new version besides v0 and the peer's");
+    assert.deepEqual(stored.versions.find((v) => v.id === "peer-v1"), peerVersion, "the peer's version body is byte-equal");
+    assert.deepEqual(stored.versions.find((v) => v.id === "v0"), makeStub("s1").versions[0]);
+    assert.equal(stored.currentVersionId, added[0], "selection is this editor's new art");
+    assert.ok(ed.stub.versions.some((v) => v.id === "peer-v1"), "the open editor also holds the peer version");
+    await sync.syncNow();
+    assert.deepEqual(account.stubs.get("s1").versions.map((v) => v.id), ids(stored), "the account copy keeps the peer version too");
+    assert.deepEqual(account.stubs.get("s1").versions.find((v) => v.id === "peer-v1"), peerVersion);
+  });
+
+  test("a peer that SELECTED its own version is never silently switched: held for an explicit Apply that keeps both", async () => {
+    const ed = openEditor();
+    const p = ed.ask("note");
+    await tick();
+    store.upsertStub(withPeer(store.getStub("s1"), { currentVersionId: "peer-v1" }));
+    const before = JSON.stringify(store.getStub("s1"));
+    calls[0].ok("held");
+    const { op } = await p;
+    assert.equal(op.phase, "ready");
+    assert.equal(op.code, "peer_selected");
+    assert.equal(JSON.stringify(store.getStub("s1")), before, "nothing was written");
+    assert.equal(ed.gen.apply(op.runId).phase, "applied");
+    const stored = store.getStub("s1");
+    assert.equal(stored.versions.length, 3);
+    assert.deepEqual(stored.versions.find((v) => v.id === "peer-v1"), peerVersion);
+    ed.gen.apply(op.runId);
+    assert.equal(store.getStub("s1").versions.length, 3, "at most once");
+  });
+
+  test("the same version id with a different body is a typed conflict: nothing merged, nothing written, no fake success", async () => {
     const ed = openEditor();
     const p = ed.ask("sheet");
     await tick();
-    const peer = store.getStub("s1");
-    store.upsertStub({ ...peer, versions: [...peer.versions, { id: "peer-v1", edition: "researched", art: { kind: "procedural", seed: 5 }, createdAt: "2026-10-02T00:00:00.000Z" }] });
-    calls[0].ok("ok");
-    assert.equal((await p).op.phase, "applied");
+    const stored = store.getStub("s1");
+    store.upsertStub({ ...stored, versions: [{ ...stored.versions[0], art: { kind: "image", src: "/api/files/other.png", seed: 99, provenance: "live" } }] });
+    const before = JSON.stringify(store.getStub("s1"));
+    const draft = JSON.stringify(ed.stub);
+    calls[0].ok("conflict");
+    const { op } = await p;
+    assert.equal(op.phase, "discarded");
+    assert.equal(op.code, "version_conflict");
+    assert.match(op.message, /can't be merged safely/);
+    assert.equal(JSON.stringify(store.getStub("s1")), before);
+    assert.equal(JSON.stringify(ed.stub), draft);
+  });
+
+  test("after a write failure the editor's own unsaved version is NOT a replacement: the next generation applies and recovers persistence", async () => {
+    const ed = openEditor();
+    localStorage.mode = "blocked";
+    const first = ed.ask("sheet");
+    await tick();
+    calls[0].ok("first");
+    const a = await first;
+    assert.equal(a.op.phase, "applied");
+    assert.equal(a.op.saved, false);
+    assert.equal(store.getStub("s1").versions.length, 1, "storage has only v0");
+    const unsavedBody = JSON.parse(JSON.stringify(ed.stub.versions[1]));
+    localStorage.mode = "ok";
+    const second = ed.ask("note");
+    await tick();
+    assert.equal(ed.gen.get("s1").phase, "pending", "the next request is dispatched, not discarded");
+    calls[calls.length - 1].ok("second");
+    const r = await second;
+    assert.equal(r.op.phase, "applied");
+    assert.notEqual(r.op.code, "project_changed");
+    const stored = store.getStub("s1");
+    assert.equal(stored.versions.length, 3, "v0, the earlier unsaved art and the new art are all persisted now");
+    assert.deepEqual(stored.versions[1], unsavedBody, "the previously unsaved version body is persisted unchanged");
+    assert.equal(r.op.saved, true);
+    // and a third generation still works: nothing was latched removed
+    const third = ed.ask("note");
+    await tick();
+    calls[calls.length - 1].ok("third");
+    assert.equal((await third).op.phase, "applied");
+    assert.equal(store.getStub("s1").versions.length, 4);
+  });
+
+  test("memory-only Apply on an unreadable store, then recovery: the next generation persists the whole history", async () => {
+    const ed = openEditor();
+    const p = ed.ask("sheet");
+    await tick();
+    localStorage.readFails = true;
+    calls[0].ok("held");
+    const { op } = await p;
+    assert.equal(op.phase, "ready");
+    assert.equal(ed.gen.apply(op.runId).saved, false);
+    const memOnly = JSON.parse(JSON.stringify(ed.stub.versions[1]));
+    localStorage.readFails = false;
+    assert.equal(store.getStub("s1").versions.length, 1);
+    const next = ed.ask("agent", "offer");
+    await tick();
+    calls[calls.length - 1].ok("again");
+    const r = await next;
+    assert.equal(r.op.phase, "applied");
+    assert.equal(r.op.saved, true);
+    assert.deepEqual(store.getStub("s1").versions[1], memOnly);
+    assert.equal(store.getStub("s1").versions.length, 3);
+  });
+
+  test("own unsaved history AND a peer's saved version are both kept in one commit", async () => {
+    const ed = openEditor();
+    localStorage.mode = "blocked";
+    const first = ed.ask("sheet");
+    await tick();
+    calls[0].ok("own");
+    await first;
+    localStorage.mode = "ok";
+    store.upsertStub(withPeer(store.getStub("s1")));
+    const second = ed.ask("sheet");
+    await tick();
+    calls[calls.length - 1].ok("both");
+    assert.equal((await second).op.phase, "applied");
+    const stored = store.getStub("s1");
+    assert.equal(stored.versions.length, 4);
+    assert.ok(stored.versions.some((v) => v.id === "peer-v1"));
+    assert.ok(ed.stub.versions.every((v) => stored.versions.some((w) => w.id === v.id)), "every version the editor had is stored");
+  });
+
+  test("strict upsert: malformed or non-list storage is never replaced by a one-project wall", () => {
+    for (const raw of ["{not json", '{"a":1}', '"text"']) {
+      localStorage.clear();
+      localStorage.setItem("ticketstub.wall.v1", raw);
+      assert.equal(store.upsertStub(makeStub("x")), false, `reported unsaved for ${raw}`);
+      assert.equal(localStorage.getItem("ticketstub.wall.v1"), raw, "the unknown content is untouched");
+    }
+    localStorage.clear();
+    localStorage.setItem("ticketstub.wall.v1", JSON.stringify([makeStub("keep")]));
+    assert.equal(store.upsertStub(makeStub("x")), true, "a valid wall is merged");
+    assert.match(localStorage.getItem("ticketstub.wall.v1"), /"id":"keep"/, "the unrelated project is preserved");
   });
 });
