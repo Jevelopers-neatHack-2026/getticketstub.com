@@ -1,0 +1,154 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 960" data-foil="ink">
+  <defs>
+    <filter id="vy-cotton" x="0" y="0" width="1" height="1" filterUnits="objectBoundingBox" color-interpolation-filters="sRGB">
+      <feTurbulence type="fractalNoise" baseFrequency="0.32 0.36" numOctaves="3" seed="21" result="n"/>
+      <feDiffuseLighting in="n" surfaceScale="1.1" diffuseConstant="1" lighting-color="#fff" result="lit">
+        <feDistantLight azimuth="235" elevation="58"/>
+      </feDiffuseLighting>
+      <feColorMatrix in="lit" type="matrix" values="0 0 0 0 0.10  0 0 0 0 0.09  0 0 0 0 0.07  -1.1 0 0 0 0.98"/>
+      <feComposite in2="SourceGraphic" operator="in"/>
+    </filter>
+    <filter id="vy-riso" x="-3%" y="-3%" width="106%" height="106%" color-interpolation-filters="sRGB">
+      <feTurbulence type="fractalNoise" baseFrequency="0.7" numOctaves="2" seed="9" result="rough"/>
+      <feDisplacementMap in="SourceGraphic" in2="rough" scale="0.45" xChannelSelector="R" yChannelSelector="G" result="d"/>
+      <feTurbulence type="fractalNoise" baseFrequency="1.3" numOctaves="1" seed="4" result="n"/>
+      <feColorMatrix in="n" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  7 0 0 0 -4.95" result="specks"/>
+      <feComposite in="d" in2="specks" operator="out" result="speckled"/>
+      <!-- uneven coverage: big solids breathe a little, like a drum running low on ink -->
+      <feTurbulence type="fractalNoise" baseFrequency="0.035 0.05" numOctaves="3" seed="17" result="m"/>
+      <feColorMatrix in="m" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0.16 0 0 0 0.91" result="mottle"/>
+      <feComposite in="speckled" in2="mottle" operator="in"/>
+    </filter>
+    <radialGradient id="vy-sheenG" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#fffdf6" stop-opacity="0.26"/>
+      <stop offset="0.5" stop-color="#fffdf6" stop-opacity="0.07"/>
+      <stop offset="1" stop-color="#fffdf6" stop-opacity="0"/>
+    </radialGradient>
+    <style>
+      svg[data-mode="print"] .vy-light { display: none; }
+      .vy-sheen { transform: translate(calc((var(--lx, 38%) - 50%) * 1.4), calc((var(--ly, 30%) - 50%) * 1.0)); mix-blend-mode: screen; opacity: calc(0.1 + var(--glow, 0.1) * 0.9); }
+      .vy-hi { transform: translate(calc((var(--lx, 38%) - 50%) * -0.006), calc((var(--ly, 30%) - 50%) * -0.004)); opacity: calc(0.45 + var(--glow, 0.1) * 0.55); }
+      .vy-lo { transform: translate(calc((var(--lx, 38%) - 50%) * 0.006), calc((var(--ly, 30%) - 50%) * 0.004)); opacity: calc(0.35 + var(--glow, 0.1) * 0.5); }
+    </style>
+    <clipPath id="vy-panel"><rect x="26" y="40" width="428" height="632" rx="22"/></clipPath>
+    <linearGradient id="vy-bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1c1c1c"/>
+      <stop offset="0.45" stop-color="#3a3a3a"/>
+      <stop offset="0.8" stop-color="#262626"/>
+      <stop offset="1" stop-color="#050505"/>
+    </linearGradient>
+    <linearGradient id="vy-beam" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fff" stop-opacity="0.85"/>
+      <stop offset="0.7" stop-color="#fff" stop-opacity="0.25"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </linearGradient>
+    <radialGradient id="vy-disc" cx="0.42" cy="0.38" r="0.65">
+      <stop offset="0" stop-color="#cfcfcf"/>
+      <stop offset="0.6" stop-color="#a6a6a6"/>
+      <stop offset="1" stop-color="#6e6e6e"/>
+    </radialGradient>
+    <radialGradient id="vy-pool" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#fff" stop-opacity="0.7"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="vy-floorG" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#000" stop-opacity="0"/>
+      <stop offset="1" stop-color="#000" stop-opacity="0.92"/>
+    </linearGradient>
+    <filter id="vy-smoke" x="0" y="0" width="1" height="1" filterUnits="objectBoundingBox" color-interpolation-filters="sRGB">
+      <feTurbulence type="fractalNoise" baseFrequency="0.011 0.018" numOctaves="5" seed="12" result="n"/>
+      <feColorMatrix in="n" type="matrix" values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  2.6 0 0 0 -1.15"/>
+      <feComposite in2="SourceGraphic" operator="in"/>
+    </filter>
+    <filter id="vy-tone" color-interpolation-filters="sRGB">
+      <feColorMatrix type="matrix" values="0.30 0.59 0.11 0 0  0.30 0.59 0.11 0 0  0.30 0.59 0.11 0 0  0 0 0 1 0"/>
+      <feComponentTransfer>
+        <feFuncR type="table" tableValues="0.04 0.24 0.52 0.78 0.93 1"/>
+        <feFuncG type="table" tableValues="0.04 0.24 0.52 0.78 0.93 1"/>
+        <feFuncB type="table" tableValues="0.04 0.24 0.52 0.78 0.93 1"/>
+      </feComponentTransfer>
+    </filter>
+    <radialGradient id="vy-dot" cx="0.5" cy="0.5" r="0.7072">
+      <stop offset="0" stop-color="#000"/>
+      <stop offset="1" stop-color="#fff"/>
+    </radialGradient>
+    <pattern id="vy-screen" width="4.4" height="4.4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <rect width="4.4" height="4.4" fill="url(#vy-dot)"/>
+    </pattern>
+    <linearGradient id="vy-artfadeG" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0.86" stop-color="#fff"/>
+      <stop offset="1" stop-color="#000"/>
+    </linearGradient>
+    <mask id="vy-artfade" maskUnits="userSpaceOnUse" x="0" y="0" width="480" height="960">
+      <rect x="0" y="40" width="480" height="632" fill="url(#vy-artfadeG)"/>
+    </mask>
+    <!-- the screen: tone + dot screen (50/50) + grain, thresholded to one ink -->
+    <filter id="vy-halftone" x="26" y="40" width="428" height="632" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feTurbulence type="fractalNoise" baseFrequency="1.1" numOctaves="2" seed="3" result="n"/>
+      <feColorMatrix in="n" type="matrix" values="1 0 0 0 0  1 0 0 0 0  1 0 0 0 0  0 0 0 0 1" result="ng"/>
+      <feComposite in="SourceGraphic" in2="ng" operator="arithmetic" k2="0.86" k3="0.14" k4="-0.07" result="mix"/>
+      <feColorMatrix in="mix" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  -1 0 0 0 1" result="dark"/>
+      <feComponentTransfer in="dark" result="bits"><feFuncA type="discrete" tableValues="0 1"/></feComponentTransfer>
+      <feFlood flood-color="#1a1917" result="ink"/>
+      <feComposite in="ink" in2="bits" operator="in" result="plate"/>
+      <feTurbulence type="fractalNoise" baseFrequency="0.03 0.045" numOctaves="3" seed="29" result="m"/>
+      <feColorMatrix in="m" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0.14 0 0 0 0.92" result="mottle"/>
+      <feComposite in="plate" in2="mottle" operator="in"/>
+    </filter>
+    <filter id="vy-choke" x="-10%" y="-10%" width="120%" height="120%" color-interpolation-filters="sRGB">
+      <feMorphology in="SourceAlpha" operator="dilate" radius="3.2" result="fat"/>
+      <feGaussianBlur in="fat" stdDeviation="2.2" result="soft"/>
+      <feFlood flood-color="#000" flood-opacity="0.9"/>
+      <feComposite in2="soft" operator="in"/>
+    </filter>
+  </defs>
+  <g data-layer="paper">
+    <rect width="480" height="960" fill="#ebe7de"/>
+    <rect width="480" height="960" fill="#000" filter="url(#ts-fibre)" opacity="0.05"/>
+  </g>
+  <g data-layer="art" clip-path="url(#vy-panel)">
+    <g filter="url(#vy-halftone)" transform="translate(0.7 0.5)">
+      <rect x="26" y="40" width="428" height="632" fill="url(#vy-bg)"/>
+      <rect x="26" y="40" width="428" height="632" fill="#fff" filter="url(#vy-smoke)" opacity="0.55"/>
+      <path d="M200 40 L280 40 L430 672 L50 672Z" fill="url(#vy-beam)" opacity="0.55"/>
+      <circle cx="240" cy="270" r="176" fill="url(#vy-disc)"/>
+      <g><circle cx="240" cy="270" r="62" fill="none" stroke="#000" stroke-opacity="0.22" stroke-width="2.2"/><circle cx="240" cy="270" r="66" fill="none" stroke="#000" stroke-opacity="0.32" stroke-width="0.9"/><circle cx="240" cy="270" r="70" fill="none" stroke="#000" stroke-opacity="0.42" stroke-width="0.9"/><circle cx="240" cy="270" r="74" fill="none" stroke="#000" stroke-opacity="0.22" stroke-width="0.9"/><circle cx="240" cy="270" r="78" fill="none" stroke="#000" stroke-opacity="0.32" stroke-width="2.2"/><circle cx="240" cy="270" r="82" fill="none" stroke="#000" stroke-opacity="0.42" stroke-width="0.9"/><circle cx="240" cy="270" r="86" fill="none" stroke="#000" stroke-opacity="0.22" stroke-width="0.9"/><circle cx="240" cy="270" r="90" fill="none" stroke="#000" stroke-opacity="0.32" stroke-width="0.9"/><circle cx="240" cy="270" r="94" fill="none" stroke="#000" stroke-opacity="0.42" stroke-width="2.2"/><circle cx="240" cy="270" r="98" fill="none" stroke="#000" stroke-opacity="0.22" stroke-width="0.9"/><circle cx="240" cy="270" r="102" fill="none" stroke="#000" stroke-opacity="0.32" stroke-width="0.9"/><circle cx="240" cy="270" r="106" fill="none" stroke="#000" stroke-opacity="0.42" stroke-width="0.9"/><circle cx="240" cy="270" r="110" fill="none" stroke="#000" stroke-opacity="0.22" stroke-width="2.2"/><circle cx="240" cy="270" r="114" fill="none" stroke="#000" stroke-opacity="0.32" stroke-width="0.9"/><circle cx="240" cy="270" r="118" fill="none" stroke="#000" stroke-opacity="0.42" stroke-width="0.9"/><circle cx="240" cy="270" r="122" fill="none" stroke="#000" stroke-opacity="0.22" stroke-width="0.9"/><circle cx="240" cy="270" r="126" fill="none" stroke="#000" stroke-opacity="0.32" stroke-width="2.2"/><circle cx="240" cy="270" r="130" fill="none" stroke="#000" stroke-opacity="0.42" stroke-width="0.9"/><circle cx="240" cy="270" r="134" fill="none" stroke="#000" stroke-opacity="0.22" stroke-width="0.9"/><circle cx="240" cy="270" r="138" fill="none" stroke="#000" stroke-opacity="0.32" stroke-width="0.9"/><circle cx="240" cy="270" r="142" fill="none" stroke="#000" stroke-opacity="0.42" stroke-width="2.2"/><circle cx="240" cy="270" r="146" fill="none" stroke="#000" stroke-opacity="0.22" stroke-width="0.9"/><circle cx="240" cy="270" r="150" fill="none" stroke="#000" stroke-opacity="0.32" stroke-width="0.9"/><circle cx="240" cy="270" r="154" fill="none" stroke="#000" stroke-opacity="0.42" stroke-width="0.9"/><circle cx="240" cy="270" r="158" fill="none" stroke="#000" stroke-opacity="0.22" stroke-width="2.2"/><circle cx="240" cy="270" r="162" fill="none" stroke="#000" stroke-opacity="0.32" stroke-width="0.9"/><circle cx="240" cy="270" r="166" fill="none" stroke="#000" stroke-opacity="0.42" stroke-width="0.9"/><circle cx="240" cy="270" r="170" fill="none" stroke="#000" stroke-opacity="0.22" stroke-width="0.9"/><circle cx="240" cy="270" r="174" fill="none" stroke="#000" stroke-opacity="0.32" stroke-width="2.2"/></g>
+      <circle cx="240" cy="270" r="54" fill="#9a9a9a"/><circle cx="240" cy="270" r="48" fill="none" stroke="#fff" stroke-width="1.2"/><circle cx="240" cy="270" r="5" fill="#111"/>
+      <circle cx="240" cy="270" r="176" fill="none" stroke="#000" stroke-width="3"/>
+      <g fill="#fff"><circle cx="205.4" cy="196.8" r="1.2"/><circle cx="158.0" cy="276.7" r="0.7"/><circle cx="70.1" cy="205.6" r="0.7"/><circle cx="185.4" cy="198.8" r="0.7"/><circle cx="267.5" cy="219.5" r="0.9"/><circle cx="317.2" cy="164.0" r="0.9"/><circle cx="225.3" cy="307.8" r="0.9"/><circle cx="154.3" cy="270.4" r="1.2"/><circle cx="359.8" cy="63.7" r="0.9"/><circle cx="250.8" cy="293.8" r="1.2"/><circle cx="218.1" cy="216.6" r="0.7"/><circle cx="76.5" cy="161.3" r="0.9"/><circle cx="91.0" cy="181.8" r="0.7"/><circle cx="437.7" cy="62.5" r="1.2"/><circle cx="271.3" cy="293.9" r="0.9"/><circle cx="171.6" cy="141.6" r="0.9"/><circle cx="274.2" cy="172.3" r="0.7"/><circle cx="430.3" cy="177.5" r="1.2"/><circle cx="53.8" cy="252.0" r="0.9"/><circle cx="303.0" cy="328.0" r="0.9"/><circle cx="147.8" cy="151.9" r="1.2"/><circle cx="174.5" cy="312.8" r="0.9"/><circle cx="97.9" cy="74.0" r="0.7"/><circle cx="119.4" cy="123.4" r="1.2"/><circle cx="132.0" cy="153.4" r="0.9"/><circle cx="60.5" cy="170.3" r="1.2"/><circle cx="144.9" cy="79.7" r="0.9"/><circle cx="395.8" cy="120.7" r="0.9"/><circle cx="448.2" cy="238.0" r="0.9"/><circle cx="435.9" cy="83.8" r="0.7"/><circle cx="90.8" cy="231.0" r="0.7"/><circle cx="233.6" cy="210.8" r="0.9"/><circle cx="146.7" cy="82.2" r="1.2"/><circle cx="184.0" cy="204.2" r="0.7"/><circle cx="321.5" cy="189.5" r="1.2"/><circle cx="306.3" cy="254.5" r="0.9"/><circle cx="411.0" cy="266.2" r="1.2"/><circle cx="367.5" cy="153.8" r="0.9"/><circle cx="194.7" cy="179.6" r="0.9"/><circle cx="52.6" cy="59.5" r="0.7"/><circle cx="214.6" cy="71.9" r="1.2"/><circle cx="48.5" cy="40.1" r="0.7"/><circle cx="255.7" cy="315.2" r="1.2"/><circle cx="36.9" cy="293.6" r="1.2"/><circle cx="187.0" cy="224.0" r="0.9"/><circle cx="283.8" cy="177.5" r="0.7"/><circle cx="389.3" cy="328.0" r="0.9"/><circle cx="231.6" cy="130.4" r="0.7"/><circle cx="69.7" cy="139.4" r="0.9"/><circle cx="230.9" cy="240.7" r="1.2"/><circle cx="35.9" cy="315.8" r="1.2"/><circle cx="180.8" cy="240.1" r="0.7"/><circle cx="350.5" cy="126.4" r="1.2"/><circle cx="395.5" cy="241.9" r="0.9"/><circle cx="247.9" cy="303.4" r="0.9"/><circle cx="356.4" cy="194.5" r="1.2"/><circle cx="167.1" cy="104.7" r="0.7"/><circle cx="371.0" cy="277.3" r="1.2"/><circle cx="369.8" cy="98.0" r="0.9"/><circle cx="178.2" cy="48.4" r="0.7"/><circle cx="364.2" cy="176.9" r="0.7"/><circle cx="322.4" cy="317.4" r="0.9"/><circle cx="372.1" cy="249.7" r="0.9"/><circle cx="434.7" cy="145.7" r="0.7"/><circle cx="69.7" cy="176.3" r="0.9"/><circle cx="113.5" cy="221.0" r="1.2"/><circle cx="385.7" cy="179.0" r="1.2"/><circle cx="173.2" cy="226.5" r="1.2"/><circle cx="77.3" cy="152.7" r="1.2"/><circle cx="347.1" cy="178.6" r="0.7"/><path d="M171.6 86.2 Q172.1 88.2 174.1 88.7 Q172.1 89.2 171.6 91.2 Q171.1 89.2 169.1 88.7 Q171.1 88.2 171.6 86.2Z"/><path d="M74.1 157.8 Q74.89999999999999 161.0 78.1 161.8 Q74.89999999999999 162.60000000000002 74.1 165.8 Q73.3 162.60000000000002 70.1 161.8 Q73.3 161.0 74.1 157.8Z"/><path d="M272.1 229.8 Q272.70000000000005 232.20000000000002 275.1 232.8 Q272.70000000000005 233.4 272.1 235.8 Q271.5 233.4 269.1 232.8 Q271.5 232.20000000000002 272.1 229.8Z"/><path d="M60.5 139.9 Q61.0 141.9 63.0 142.4 Q61.0 142.9 60.5 144.9 Q60.0 142.9 58.0 142.4 Q60.0 141.9 60.5 139.9Z"/><path d="M139.4 162.2 Q139.9 164.2 141.9 164.7 Q139.9 165.2 139.4 167.2 Q138.9 165.2 136.9 164.7 Q138.9 164.2 139.4 162.2Z"/><path d="M366.8 80.5 Q367.40000000000003 82.9 369.8 83.5 Q367.40000000000003 84.1 366.8 86.5 Q366.2 84.1 363.8 83.5 Q366.2 82.9 366.8 80.5Z"/><path d="M290.7 168.3 Q291.2 170.3 293.2 170.8 Q291.2 171.3 290.7 173.3 Q290.2 171.3 288.2 170.8 Q290.2 170.3 290.7 168.3Z"/><path d="M269.9 132.4 Q270.5 134.8 272.9 135.4 Q270.5 136.0 269.9 138.4 Q269.29999999999995 136.0 266.9 135.4 Q269.29999999999995 134.8 269.9 132.4Z"/><path d="M64.1 219.1 Q64.89999999999999 222.29999999999998 68.1 223.1 Q64.89999999999999 223.9 64.1 227.1 Q63.3 223.9 60.099999999999994 223.1 Q63.3 222.29999999999998 64.1 219.1Z"/></g>
+      <ellipse cx="240" cy="638" rx="210" ry="40" fill="url(#vy-pool)"/>
+      <rect x="26" y="552" width="428" height="120" fill="url(#vy-floorG)"/>
+      <g mask="url(#vy-artfade)">
+        <image data-slot="art" x="32" y="80" width="416" height="592" preserveAspectRatio="xMidYMax meet" filter="url(#vy-choke)"/>
+        <image data-slot="art" x="32" y="80" width="416" height="592" preserveAspectRatio="xMidYMax meet" filter="url(#vy-tone)"/>
+      </g>
+      <rect x="26" y="40" width="428" height="632" fill="url(#vy-screen)" opacity="0.5"/>
+    </g>
+  </g>
+  <g data-layer="ink" fill="#1a1917" filter="url(#vy-riso)">
+    <rect x="26" y="40" width="428" height="632" rx="22" fill="none" stroke="#1a1917" stroke-width="1.6"/>
+    <text data-slot="categoryLabel" x="46" y="658" font-family="'JetBrains Mono', ui-monospace, monospace" font-size="8.5" font-weight="600" letter-spacing="2.6" fill="#ebe7de">.</text>
+    <text data-slot="dateDots" x="240" y="658" text-anchor="middle" font-family="'JetBrains Mono', ui-monospace, monospace" font-size="8.5" font-weight="600" letter-spacing="2.6" fill="#ebe7de">.</text>
+    <text data-slot="city" x="434" y="658" text-anchor="end" font-family="'JetBrains Mono', ui-monospace, monospace" font-size="8.5" font-weight="600" letter-spacing="2.6" fill="#ebe7de" data-case="upper" data-fit="120" data-min="6.5">.</text>
+    <g fill="#1a1917"><circle cx="18.0" cy="700" r="1.5"/><circle cx="25.0" cy="700" r="1.5"/><circle cx="32.0" cy="700" r="1.5"/><circle cx="39.0" cy="700" r="1.5"/><circle cx="46.0" cy="700" r="1.5"/><circle cx="53.0" cy="700" r="1.5"/><circle cx="60.0" cy="700" r="1.5"/><circle cx="67.0" cy="700" r="1.5"/><circle cx="74.0" cy="700" r="1.5"/><circle cx="81.0" cy="700" r="1.5"/><circle cx="88.0" cy="700" r="1.5"/><circle cx="95.0" cy="700" r="1.5"/><circle cx="102.0" cy="700" r="1.5"/><circle cx="109.0" cy="700" r="1.5"/><circle cx="116.0" cy="700" r="1.5"/><circle cx="123.0" cy="700" r="1.5"/><circle cx="130.0" cy="700" r="1.5"/><circle cx="137.0" cy="700" r="1.5"/><circle cx="144.0" cy="700" r="1.5"/><circle cx="151.0" cy="700" r="1.5"/><circle cx="158.0" cy="700" r="1.5"/><circle cx="165.0" cy="700" r="1.5"/><circle cx="172.0" cy="700" r="1.5"/><circle cx="179.0" cy="700" r="1.5"/><circle cx="186.0" cy="700" r="1.5"/><circle cx="193.0" cy="700" r="1.5"/><circle cx="200.0" cy="700" r="1.5"/><circle cx="207.0" cy="700" r="1.5"/><circle cx="214.0" cy="700" r="1.5"/><circle cx="221.0" cy="700" r="1.5"/><circle cx="228.0" cy="700" r="1.5"/><circle cx="235.0" cy="700" r="1.5"/><circle cx="242.0" cy="700" r="1.5"/><circle cx="249.0" cy="700" r="1.5"/><circle cx="256.0" cy="700" r="1.5"/><circle cx="263.0" cy="700" r="1.5"/><circle cx="270.0" cy="700" r="1.5"/><circle cx="277.0" cy="700" r="1.5"/><circle cx="284.0" cy="700" r="1.5"/><circle cx="291.0" cy="700" r="1.5"/><circle cx="298.0" cy="700" r="1.5"/><circle cx="305.0" cy="700" r="1.5"/><circle cx="312.0" cy="700" r="1.5"/><circle cx="319.0" cy="700" r="1.5"/><circle cx="326.0" cy="700" r="1.5"/><circle cx="333.0" cy="700" r="1.5"/><circle cx="340.0" cy="700" r="1.5"/><circle cx="347.0" cy="700" r="1.5"/><circle cx="354.0" cy="700" r="1.5"/><circle cx="361.0" cy="700" r="1.5"/><circle cx="368.0" cy="700" r="1.5"/><circle cx="375.0" cy="700" r="1.5"/><circle cx="382.0" cy="700" r="1.5"/><circle cx="389.0" cy="700" r="1.5"/><circle cx="396.0" cy="700" r="1.5"/><circle cx="403.0" cy="700" r="1.5"/><circle cx="410.0" cy="700" r="1.5"/><circle cx="417.0" cy="700" r="1.5"/><circle cx="424.0" cy="700" r="1.5"/><circle cx="431.0" cy="700" r="1.5"/><circle cx="438.0" cy="700" r="1.5"/><circle cx="445.0" cy="700" r="1.5"/><circle cx="452.0" cy="700" r="1.5"/><circle cx="459.0" cy="700" r="1.5"/></g>
+    <path d="M146 712 H30 V942 H450 V712 H334" fill="none" stroke="#1a1917" stroke-width="1.1"/>
+    <path d="M146 716 H34 V938 H446 V716 H334" fill="none" stroke="#1a1917" stroke-width="0.5"/>
+    <path d="M146 710 V718 M334 710 V718" stroke="#1a1917" stroke-width="0.8"/>
+    <text data-slot="kicker" x="240" y="718.6" text-anchor="middle" font-family="'JetBrains Mono', ui-monospace, monospace" font-size="7.5" font-weight="700" letter-spacing="2.4" data-case="upper" data-fit="168" data-min="6.5" data-default="One night only">.</text>
+    <text data-slot="title" x="240" y="802" text-anchor="middle" font-family="'Bodoni Moda', 'Didot', 'Bodoni 72', serif" font-weight="600" font-size="37" letter-spacing="1" data-case="upper" data-wrap="384" data-lines="3" data-leading="0.94" data-anchor="bottom" data-min="13" style="font-variant-numeric: lining-nums; font-variation-settings: &quot;opsz&quot; 14">.</text>
+    <path d="M48 814 H432" stroke="#1a1917" stroke-width="0.6"/>
+    <text x="48" y="830" font-family="'Bodoni Moda', 'Didot', 'Bodoni 72', serif" font-size="8.6" font-weight="500" data-wrap="270" data-lines="3" data-leading="1.36" data-min="6.6" data-justify="" style="font-variant-numeric: lining-nums"><tspan data-slot="tagline" data-suffix=" " data-default="One night, kept."></tspan><tspan data-slot="subtitle" data-suffix=". "></tspan><tspan data-slot="place" data-prefix="At " data-suffix="."></tspan></text>
+    <text x="48" y="875" font-family="'JetBrains Mono', ui-monospace, monospace" font-size="7" font-weight="500" letter-spacing="0.6" data-wrap="270" data-lines="2" data-leading="1.45" data-anchor="bottom" data-min="6.5" ><tspan data-slot="peopleAll" data-case="upper" data-prefix="WITH "></tspan></text>
+    <g data-slot="barcode" data-w="150" data-h="20" transform="translate(48 888)"></g>
+    <text x="48" y="921" font-family="'JetBrains Mono', ui-monospace, monospace" font-size="7" font-weight="500" letter-spacing="1.2" style="font-variant-numeric: lining-nums"><tspan data-slot="year" data-prefix="© ">.</tspan> TICKETSTUB · <tspan data-slot="serial">.</tspan></text>
+    <circle cx="388" cy="858" r="30" fill="#1a1917"/><circle cx="388" cy="858" r="27.90" fill="none" stroke="#ebe7de" stroke-width="0.45" stroke-opacity="0.55"/><circle cx="388" cy="858" r="25.80" fill="none" stroke="#ebe7de" stroke-width="0.45" stroke-opacity="0.55"/><circle cx="388" cy="858" r="23.70" fill="none" stroke="#ebe7de" stroke-width="0.45" stroke-opacity="0.55"/><circle cx="388" cy="858" r="21.60" fill="none" stroke="#ebe7de" stroke-width="0.45" stroke-opacity="0.55"/><circle cx="388" cy="858" r="18.00" fill="#ebe7de"/><circle cx="388" cy="858" r="16.00" fill="none" stroke="#1a1917" stroke-width="0.5"/><text x="388" y="860" text-anchor="middle" font-family="'Bodoni Moda', 'Didot', 'Bodoni 72', serif" font-style="italic" font-weight="600" font-size="13.8" style="font-variant-numeric: lining-nums">33⅓</text><text x="388" y="868.8" text-anchor="middle" font-family="'JetBrains Mono', ui-monospace, monospace" font-size="6.5" font-weight="700" letter-spacing="0.6">RPM</text>
+    <text x="388" y="908" text-anchor="middle" font-family="'JetBrains Mono', ui-monospace, monospace" font-size="6.5" font-weight="600" letter-spacing="1.6" data-fit="110"><tspan data-slot="edition" data-default="KEEPSAKE">.</tspan></text>
+    <circle cx="426" cy="924" r="3.6" fill="none" stroke="#1a1917" stroke-width="0.5"/><circle cx="426" cy="924" r="1.62" fill="#1a1917"/><path d="M420.24 924 H431.76 M426 918.24 V929.76" stroke="#1a1917" stroke-width="0.5"/>
+  </g>
+  <g data-layer="paper" pointer-events="none">
+    <rect width="480" height="960" fill="#000" filter="url(#vy-cotton)" opacity="0.16"/>
+    <rect width="480" height="960" fill="#000" filter="url(#ts-grain)" opacity="0.06"/>
+    <g class="vy-light" data-screen-only=""><rect class="vy-sheen" x="-192.0" y="-288.0" width="384.0" height="576.0" fill="url(#vy-sheenG)"/></g>
+  </g>
+  <path data-layer="dieline" d="M16 0 L464 0 Q480 0 480 16 L480 685 A15 15 0 0 0 480 715 L480 944 Q480 960 464 960 L16 960 Q0 960 0 944 L0 715 A15 15 0 0 0 0 685 L0 16 Q0 0 16 0Z M234 22 a6 6 0 1 0 12 0 a6 6 0 1 0 -12 0Z" clip-rule="evenodd" fill-rule="evenodd" fill="none" stroke="#ec008c" stroke-width="0.5"/>
+</svg>

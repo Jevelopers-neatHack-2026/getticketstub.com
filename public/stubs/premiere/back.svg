@@ -1,0 +1,109 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 960" data-foil="gold" >
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#05060d"/>
+      <stop offset="0.30" stop-color="#121320"/>
+      <stop offset="0.47" stop-color="#2e2419"/>
+      <stop offset="0.56" stop-color="#7d5a2c"/>
+      <stop offset="0.63" stop-color="#2b2015"/>
+      <stop offset="0.74" stop-color="#0c0b0a"/>
+    </linearGradient>
+    <linearGradient id="skyBack" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#070810"/>
+      <stop offset="0.45" stop-color="#0e0d12"/>
+      <stop offset="0.80" stop-color="#0c0b0a"/>
+      <stop offset="1" stop-color="#1a130c"/>
+    </linearGradient>
+    <radialGradient id="glowBack" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#e8a34e" stop-opacity="0.38"/>
+      <stop offset="0.5" stop-color="#b9772f" stop-opacity="0.14"/>
+      <stop offset="1" stop-color="#b9772f" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="nightBack" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#1d2645" stop-opacity="0.75"/>
+      <stop offset="1" stop-color="#1d2645" stop-opacity="0"/>
+    </radialGradient>
+    <clipPath id="reviewCell"><rect x="36" y="394" width="408" height="134"/></clipPath>
+    <clipPath id="tagCell"><rect x="36" y="682" width="408" height="204"/></clipPath>
+  </defs>
+  <g data-layer="paper">
+    <rect width="480" height="960" fill="url(#skyBack)"/>
+    <ellipse cx="240.0" cy="970" rx="360" ry="190" fill="url(#glowBack)"/>
+    <ellipse cx="240.0" cy="-20" rx="420" ry="260" fill="url(#nightBack)"/>
+    <g><circle cx="11.1" cy="362.5" r="0.65" fill="#fff6e0" opacity="0.51"/><circle cx="112.5" cy="15.5" r="0.9" fill="#fff6e0" opacity="0.34"/><circle cx="14.7" cy="70.5" r="1.15" fill="#fff6e0" opacity="0.55"/><circle cx="48.6" cy="932.0" r="0.75" fill="#fff6e0" opacity="0.12"/><circle cx="20.3" cy="689.5" r="0.55" fill="#fff6e0" opacity="0.48"/><circle cx="454.7" cy="461.4" r="0.55" fill="#fff6e0" opacity="0.38"/><circle cx="290.0" cy="895.4" r="0.65" fill="#fff6e0" opacity="0.15"/><circle cx="7.7" cy="39.4" r="0.9" fill="#fff6e0" opacity="0.80"/><circle cx="209.7" cy="924.9" r="0.9" fill="#fff6e0" opacity="0.24"/><circle cx="266.6" cy="925.4" r="1.15" fill="#fff6e0" opacity="0.28"/><circle cx="269.6" cy="29.9" r="1.15" fill="#fff6e0" opacity="0.34"/><circle cx="20.5" cy="49.3" r="0.45" fill="#fff6e0" opacity="0.81"/><circle cx="19.9" cy="467.7" r="0.75" fill="#fff6e0" opacity="0.39"/><circle cx="457.1" cy="354.8" r="0.55" fill="#fff6e0" opacity="0.53"/><circle cx="362.6" cy="29.8" r="0.75" fill="#fff6e0" opacity="0.82"/><circle cx="21.2" cy="626.1" r="0.75" fill="#fff6e0" opacity="0.30"/><circle cx="460.4" cy="500.2" r="0.45" fill="#fff6e0" opacity="0.54"/><circle cx="340.8" cy="925.7" r="0.65" fill="#fff6e0" opacity="0.29"/><circle cx="25.9" cy="767.6" r="0.55" fill="#fff6e0" opacity="0.17"/><circle cx="329.1" cy="903.4" r="1.15" fill="#fff6e0" opacity="0.31"/><circle cx="262.8" cy="909.3" r="0.65" fill="#fff6e0" opacity="0.29"/><circle cx="9.9" cy="246.1" r="0.45" fill="#fff6e0" opacity="0.58"/><circle cx="401.7" cy="923.2" r="0.9" fill="#fff6e0" opacity="0.15"/><circle cx="451.9" cy="931.7" r="1.15" fill="#fff6e0" opacity="0.32"/><circle cx="319.1" cy="25.7" r="0.55" fill="#fff6e0" opacity="0.32"/><circle cx="166.7" cy="935.5" r="0.45" fill="#fff6e0" opacity="0.27"/><circle cx="472.9" cy="321.2" r="0.9" fill="#fff6e0" opacity="0.50"/><circle cx="163.4" cy="936.3" r="1.15" fill="#fff6e0" opacity="0.19"/><circle cx="385.0" cy="934.3" r="1.15" fill="#fff6e0" opacity="0.17"/><circle cx="453.8" cy="776.9" r="0.55" fill="#fff6e0" opacity="0.16"/><circle cx="22.0" cy="522.1" r="0.75" fill="#fff6e0" opacity="0.21"/><circle cx="16.1" cy="473.5" r="0.65" fill="#fff6e0" opacity="0.55"/><circle cx="9.8" cy="483.1" r="0.75" fill="#fff6e0" opacity="0.57"/><circle cx="17.4" cy="754.4" r="0.9" fill="#fff6e0" opacity="0.34"/><circle cx="27.0" cy="280.5" r="0.65" fill="#fff6e0" opacity="0.57"/><circle cx="171.3" cy="930.1" r="0.75" fill="#fff6e0" opacity="0.10"/><circle cx="10.8" cy="416.1" r="0.75" fill="#fff6e0" opacity="0.28"/><circle cx="452.7" cy="880.4" r="0.65" fill="#fff6e0" opacity="0.20"/><circle cx="253.9" cy="932.2" r="0.45" fill="#fff6e0" opacity="0.17"/><circle cx="455.1" cy="75.3" r="0.55" fill="#fff6e0" opacity="0.70"/><circle cx="471.0" cy="931.7" r="0.65" fill="#fff6e0" opacity="0.34"/><circle cx="30.1" cy="906.2" r="0.65" fill="#fff6e0" opacity="0.27"/><circle cx="336.5" cy="929.9" r="1.15" fill="#fff6e0" opacity="0.13"/><circle cx="341.7" cy="930.8" r="0.45" fill="#fff6e0" opacity="0.14"/><circle cx="468.3" cy="650.2" r="0.9" fill="#fff6e0" opacity="0.17"/><circle cx="26.3" cy="452.8" r="0.75" fill="#fff6e0" opacity="0.51"/><circle cx="471.4" cy="536.7" r="0.55" fill="#fff6e0" opacity="0.22"/><circle cx="463.6" cy="474.8" r="0.55" fill="#fff6e0" opacity="0.57"/><circle cx="19.9" cy="572.3" r="0.75" fill="#fff6e0" opacity="0.49"/><circle cx="430.6" cy="21.7" r="1.15" fill="#fff6e0" opacity="0.59"/><circle cx="400.2" cy="923.3" r="0.45" fill="#fff6e0" opacity="0.13"/><circle cx="466.9" cy="391.8" r="0.65" fill="#fff6e0" opacity="0.62"/><circle cx="473.3" cy="112.5" r="0.65" fill="#fff6e0" opacity="0.37"/><circle cx="458.4" cy="579.3" r="0.55" fill="#fff6e0" opacity="0.43"/><circle cx="468.9" cy="19.5" r="0.75" fill="#fff6e0" opacity="0.42"/><circle cx="15.7" cy="327.0" r="0.55" fill="#fff6e0" opacity="0.33"/><circle cx="466.0" cy="770.9" r="1.15" fill="#fff6e0" opacity="0.39"/><circle cx="12.0" cy="303.5" r="0.9" fill="#fff6e0" opacity="0.42"/><circle cx="466.1" cy="642.4" r="0.45" fill="#fff6e0" opacity="0.32"/><circle cx="98.0" cy="21.0" r="0.75" fill="#fff6e0" opacity="0.74"/><circle cx="167.4" cy="930.2" r="0.75" fill="#fff6e0" opacity="0.17"/><circle cx="455.1" cy="396.2" r="0.65" fill="#fff6e0" opacity="0.40"/><circle cx="8.6" cy="608.5" r="1.15" fill="#fff6e0" opacity="0.35"/><circle cx="20.7" cy="725.1" r="0.9" fill="#fff6e0" opacity="0.43"/><circle cx="297.3" cy="41.7" r="0.75" fill="#fff6e0" opacity="0.78"/></g>
+    <rect width="480" height="960" fill="#fff" filter="url(#ts-grain-light)" opacity="0.08"/>
+  </g>
+  <g data-layer="foil" fill="#c9a24f">
+    <g clip-path="url(#reviewCell)">
+    <circle cx="486" cy="461" r="22" fill="none" stroke="#c9a24f" stroke-width="0.9"/>
+    <circle cx="486" cy="461" r="28" fill="none" stroke="#c9a24f" stroke-width="0.5"/>
+    <circle cx="486" cy="461" r="34" fill="none" stroke="#c9a24f" stroke-width="0.5"/>
+    <circle cx="486" cy="461" r="40" fill="none" stroke="#c9a24f" stroke-width="0.9"/>
+    <circle cx="486" cy="461" r="46" fill="none" stroke="#c9a24f" stroke-width="0.5"/>
+    <circle cx="486" cy="461" r="52" fill="none" stroke="#c9a24f" stroke-width="0.5"/>
+    <circle cx="486" cy="461" r="58" fill="none" stroke="#c9a24f" stroke-width="0.9"/>
+    <circle cx="486" cy="461" r="64" fill="none" stroke="#c9a24f" stroke-width="0.5"/>
+    <circle cx="486" cy="461" r="70" fill="none" stroke="#c9a24f" stroke-width="0.5"/>
+    <circle cx="486" cy="461" r="76" fill="none" stroke="#c9a24f" stroke-width="0.9"/>
+    <circle cx="486" cy="461" r="82" fill="none" stroke="#c9a24f" stroke-width="0.5"/>
+    <path d="M352 461 H444" stroke="#c9a24f" stroke-width="0.6" fill="none"/>
+    <circle cx="404" cy="461" r="4.5" fill="#c9a24f"/>
+    <circle cx="404" cy="461" r="9" fill="none" stroke="#c9a24f" stroke-width="0.8"/>
+    </g>
+    <circle cx="360" cy="575" r="6.5" fill="none" stroke="#c9a24f" stroke-width="0.8"/>
+    <circle cx="381" cy="575" r="6.5" fill="none" stroke="#c9a24f" stroke-width="0.8"/>
+    <path d="M381 568.5 A6.5 6.5 0 0 1 381 581.5 Z" fill="#c9a24f"/>
+    <circle cx="402" cy="575" r="6.5" fill="none" stroke="#c9a24f" stroke-width="0.8"/>
+    <circle cx="402" cy="575" r="6.5" fill="#c9a24f"/>
+    <circle cx="423" cy="575" r="6.5" fill="none" stroke="#c9a24f" stroke-width="0.8"/>
+    <path d="M423 568.5 A6.5 6.5 0 0 0 423 581.5 Z" fill="#c9a24f"/>
+    <g clip-path="url(#tagCell)">
+    <circle cx="36" cy="886" r="70" fill="none" stroke="#c9a24f" stroke-width="1.0"/>
+    <circle cx="36" cy="886" r="54" fill="none" stroke="#c9a24f" stroke-width="0.6"/>
+    <circle cx="36" cy="886" r="40" fill="none" stroke="#c9a24f" stroke-width="0.6"/>
+    <circle cx="36" cy="886" r="26" fill="none" stroke="#c9a24f" stroke-width="0.6" stroke-dasharray="2 3"/>
+    <circle cx="85" cy="837" r="4" fill="#c9a24f"/>
+    <circle cx="85" cy="837" r="9" fill="none" stroke="#c9a24f" stroke-width="0.8"/>
+    </g>
+    <ellipse cx="384" cy="802" rx="50" ry="13" fill="none" stroke="#c9a24f" stroke-width="0.7" transform="rotate(-14 384 802)"/>
+    <circle cx="384" cy="802" r="36" fill="none" stroke="#c9a24f" stroke-width="1.1"/>
+    <path d="M384 766 A36 36 0 0 1 384 838 A20.9 36 0 0 0 384 766 Z" fill="#c9a24f"/>
+    <rect x="36" y="60" width="408" height="826" fill="none" stroke="#c9a24f" stroke-width="1.3"/>
+    <text x="38" y="45" font-family="'Chakra Petch', 'Barlow Condensed', sans-serif" font-size="11" font-weight="700" letter-spacing="1.2">TICKETSTUB ORIGINAL TICKET</text>
+    <text data-slot="edition" x="442" y="45" text-anchor="end" font-family="'Chakra Petch', 'Barlow Condensed', sans-serif" font-size="11" font-weight="700" letter-spacing="1">.</text>
+    <text data-slot="title" x="240.0" y="148" text-anchor="middle" font-family="'Cormorant Garamond', 'Bodoni Moda', serif" font-size="38" font-weight="600" letter-spacing="2.6" data-case="upper" data-wrap="340" data-lines="3" data-leading="1.08" data-anchor="bottom" data-min="13" style="font-variant-numeric: lining-nums">.</text>
+    <path d="M36 196 H444 M36 342 H444 M36 394 H444 M36 528 H444 M36 600 H444 M36 682 H444" stroke="#c9a24f" stroke-width="1" fill="none"/>
+    <circle cx="150" cy="368" r="13" fill="none" stroke="#c9a24f" stroke-width="1.1"/><circle cx="150" cy="368" r="8.5" fill="none" stroke="#c9a24f" stroke-width="0.6"/><path d="M137 368 H163" stroke="#c9a24f" stroke-width="0.6"/><path d="M151 360.5 A7.5 7.5 0 0 1 151 375.5 A4.4 7.5 0 0 0 151 360.5 Z" fill="#c9a24f"/><circle cx="188" cy="368" r="13" fill="none" stroke="#c9a24f" stroke-width="1.1"/><circle cx="188" cy="368" r="8.5" fill="none" stroke="#c9a24f" stroke-width="0.6"/><path d="M175 368 H201" stroke="#c9a24f" stroke-width="0.6"/><path d="M189 360.5 A7.5 7.5 0 0 1 189 375.5 A4.4 7.5 0 0 0 189 360.5 Z" fill="#c9a24f"/><circle cx="226" cy="368" r="13" fill="none" stroke="#c9a24f" stroke-width="1.1"/><circle cx="226" cy="368" r="8.5" fill="none" stroke="#c9a24f" stroke-width="0.6"/><path d="M213 368 H239" stroke="#c9a24f" stroke-width="0.6"/><path d="M227 360.5 A7.5 7.5 0 0 1 227 375.5 A4.4 7.5 0 0 0 227 360.5 Z" fill="#c9a24f"/><circle cx="264" cy="368" r="13" fill="none" stroke="#c9a24f" stroke-width="1.1"/><circle cx="264" cy="368" r="8.5" fill="none" stroke="#c9a24f" stroke-width="0.6"/><path d="M251 368 H277" stroke="#c9a24f" stroke-width="0.6"/><path d="M265 360.5 A7.5 7.5 0 0 1 265 375.5 A4.4 7.5 0 0 0 265 360.5 Z" fill="#c9a24f"/><circle cx="302" cy="368" r="13" fill="none" stroke="#c9a24f" stroke-width="1.1"/><circle cx="302" cy="368" r="8.5" fill="none" stroke="#c9a24f" stroke-width="0.6"/><path d="M289 368 H315" stroke="#c9a24f" stroke-width="0.6"/><path d="M303 360.5 A7.5 7.5 0 0 1 303 375.5 A4.4 7.5 0 0 0 303 360.5 Z" fill="#c9a24f"/>
+    <path d="M52 448 H340 M52 476 H340 M52 504 H340" stroke="#c9a24f" stroke-width="0.8" stroke-dasharray="2.5 3" fill="none"/>
+    <path d="M240 528 V600" stroke="#c9a24f" stroke-width="0.8" stroke-dasharray="2.5 3" fill="none"/>
+    <path d="M172 600 V682 M308 600 V682" stroke="#c9a24f" stroke-width="0.8" stroke-dasharray="2.5 3" fill="none"/>
+    <g data-slot="barcode" data-w="204" data-h="40" transform="translate(110 768)"></g>
+    <text x="38" y="916" font-family="'Chakra Petch', 'Barlow Condensed', sans-serif" font-size="12" font-weight="700" letter-spacing="0.6">KEEP THE NIGHT™</text>
+    <rect x="334" y="904" width="10" height="14" fill="none" stroke="#c9a24f" stroke-width="0.8"/><text x="339" y="915" text-anchor="middle" font-family="'Chakra Petch', 'Barlow Condensed', sans-serif" font-size="9.5" font-weight="700">T</text><rect x="345" y="904" width="10" height="14" fill="none" stroke="#c9a24f" stroke-width="0.8"/><text x="350" y="915" text-anchor="middle" font-family="'Chakra Petch', 'Barlow Condensed', sans-serif" font-size="9.5" font-weight="700">I</text><rect x="356" y="904" width="10" height="14" fill="none" stroke="#c9a24f" stroke-width="0.8"/><text x="361" y="915" text-anchor="middle" font-family="'Chakra Petch', 'Barlow Condensed', sans-serif" font-size="9.5" font-weight="700">C</text><rect x="367" y="904" width="10" height="14" fill="none" stroke="#c9a24f" stroke-width="0.8"/><text x="372" y="915" text-anchor="middle" font-family="'Chakra Petch', 'Barlow Condensed', sans-serif" font-size="9.5" font-weight="700">K</text><rect x="378" y="904" width="10" height="14" fill="none" stroke="#c9a24f" stroke-width="0.8"/><text x="383" y="915" text-anchor="middle" font-family="'Chakra Petch', 'Barlow Condensed', sans-serif" font-size="9.5" font-weight="700">E</text><rect x="389" y="904" width="10" height="14" fill="none" stroke="#c9a24f" stroke-width="0.8"/><text x="394" y="915" text-anchor="middle" font-family="'Chakra Petch', 'Barlow Condensed', sans-serif" font-size="9.5" font-weight="700">T</text><rect x="400" y="904" width="10" height="14" fill="none" stroke="#c9a24f" stroke-width="0.8"/><text x="405" y="915" text-anchor="middle" font-family="'Chakra Petch', 'Barlow Condensed', sans-serif" font-size="9.5" font-weight="700">S</text><rect x="411" y="904" width="10" height="14" fill="none" stroke="#c9a24f" stroke-width="0.8"/><text x="416" y="915" text-anchor="middle" font-family="'Chakra Petch', 'Barlow Condensed', sans-serif" font-size="9.5" font-weight="700">T</text><rect x="422" y="904" width="10" height="14" fill="none" stroke="#c9a24f" stroke-width="0.8"/><text x="427" y="915" text-anchor="middle" font-family="'Chakra Petch', 'Barlow Condensed', sans-serif" font-size="9.5" font-weight="700">U</text><rect x="433" y="904" width="10" height="14" fill="none" stroke="#c9a24f" stroke-width="0.8"/><text x="438" y="915" text-anchor="middle" font-family="'Chakra Petch', 'Barlow Condensed', sans-serif" font-size="9.5" font-weight="700">B</text>
+  </g>
+  <g data-layer="ink">
+    <text x="52" y="88" font-family="'Chakra Petch', 'Barlow Condensed', sans-serif" font-size="12" font-weight="500" fill="#b8914a">Title</text>
+    <text data-slot="year" x="428" y="88" text-anchor="end" font-family="'Chakra Petch', 'Barlow Condensed', sans-serif" font-size="12.5" font-weight="400" fill="#ece2cc" data-prefix="(" data-suffix=")">.</text>
+    <text data-slot="subtitle" x="240.0" y="177" text-anchor="middle" font-family="'Cormorant Garamond', 'Bodoni Moda', serif" font-style="italic" font-size="17" font-weight="500" fill="#ece2cc" data-wrap="370" data-lines="1" data-min="10.5">.</text>
+    <text x="52" y="222" font-family="'Chakra Petch', 'Barlow Condensed', sans-serif" font-size="12" font-weight="500" fill="#b8914a">Event</text><text data-slot="kicker" x="128" y="222" font-family="'Chakra Petch', 'Barlow Condensed', sans-serif" font-size="12.5" font-weight="400" fill="#ece2cc" data-default="—" data-fit="300" data-min="9">.</text>
+    <text x="52" y="242" font-family="'Chakra Petch', 'Barlow Condensed', sans-serif" font-size="12" font-weight="500" fill="#b8914a">Venue</text><text data-slot="venue" x="128" y="242" font-family="'Chakra Petch', 'Barlow Condensed', sans-serif" font-size="12.5" font-weight="400" fill="#ece2cc" data-default="—" data-fit="300" data-min="9">.</text>
+    <text x="52" y="262" font-family="'Chakra Petch', 'Barlow Condensed', sans-serif" font-size="12" font-weight="500" fill="#b8914a">City</text><text data-slot="city" x="128" y="262" font-family="'Chakra Petch', 'Barlow Condensed', sans-serif" font-size="12.5" font-weight="400" fill="#ece2cc" data-default="—" data-fit="300" data-min="9">.</text>
+    <text x="52" y="282" font-family="'Chakra Petch', 'Barlow Condensed', sans-serif" font-size="12" font-weight="500" fill="#b8914a">With</text><text data-slot="peopleAll" x="128" y="282" font-family="'Chakra Petch', 'Barlow Condensed', sans-serif" font-size="12.5" font-weight="400" fill="#ece2cc" data-default="—" data-wrap="300" data-lines="3" data-leading="1.6" data-min="12.5">.</text>
+    <text x="52" y="372" font-family="'Chakra Petch', 'Barlow Condensed', sans-serif" font-size="12" font-weight="500" fill="#b8914a">Rating</text>
+    <text x="428" y="372" text-anchor="end" font-family="'Chakra Petch', 'Barlow Condensed', sans-serif" font-size="12.5" font-weight="400" fill="#ece2cc">(   / 5)</text>
+    <text x="52" y="420" font-family="'Chakra Petch', 'Barlow Condensed', sans-serif" font-size="12" font-weight="500" fill="#b8914a">Review</text>
+    <text x="52" y="552" font-family="'Chakra Petch', 'Barlow Condensed', sans-serif" font-size="12" font-weight="500" fill="#b8914a">Date</text><text x="256" y="552" font-family="'Chakra Petch', 'Barlow Condensed', sans-serif" font-size="12" font-weight="500" fill="#b8914a">Time</text>
+    <text data-slot="dateDots" x="52" y="584" font-family="'Chakra Petch', 'Barlow Condensed', sans-serif" font-weight="600" fill="#ece2cc" font-size="19" letter-spacing="1" data-default="—">.</text>
+    <text data-slot="time" x="256" y="584" font-family="'Chakra Petch', 'Barlow Condensed', sans-serif" font-weight="600" fill="#ece2cc" font-size="19" letter-spacing="1" data-default="—">.</text>
+    <text x="104" y="626" text-anchor="middle" font-family="'Chakra Petch', 'Barlow Condensed', sans-serif" font-size="12" font-weight="500" fill="#b8914a">Section</text>
+    <text x="240" y="626" text-anchor="middle" font-family="'Chakra Petch', 'Barlow Condensed', sans-serif" font-size="12" font-weight="500" fill="#b8914a">Row</text>
+    <text x="376" y="626" text-anchor="middle" font-family="'Chakra Petch', 'Barlow Condensed', sans-serif" font-size="12" font-weight="500" fill="#b8914a">Seat</text>
+    <text data-slot="section" data-default="—" x="104" y="664" text-anchor="middle" font-family="'Chakra Petch', 'Barlow Condensed', sans-serif" font-weight="600" fill="#ece2cc" font-size="24" data-fit="118">—</text>
+    <text data-slot="row" data-default="—" x="240" y="664" text-anchor="middle" font-family="'Chakra Petch', 'Barlow Condensed', sans-serif" font-weight="600" fill="#ece2cc" font-size="24" data-fit="118">—</text>
+    <text data-slot="seat" data-default="—" x="376" y="664" text-anchor="middle" font-family="'Chakra Petch', 'Barlow Condensed', sans-serif" font-weight="600" fill="#ece2cc" font-size="24" data-fit="118">—</text>
+    <text data-slot="tagline" x="240.0" y="720" text-anchor="middle" font-family="'Cormorant Garamond', 'Bodoni Moda', serif" font-style="italic" font-size="18" font-weight="500" fill="#ece2cc" data-wrap="320" data-lines="2" data-leading="1.28" data-min="12.5" data-prefix="“" data-suffix="”">.</text>
+    <text data-slot="serial" x="212" y="826" text-anchor="middle" font-family="'Chakra Petch', 'Barlow Condensed', sans-serif" font-size="9.5" letter-spacing="3" fill="#b8914a">.</text>
+    <text x="240.0" y="868" text-anchor="middle" font-family="'Chakra Petch', 'Barlow Condensed', sans-serif" font-size="8" letter-spacing="1" fill="#ece2cc" opacity="0.55">COMMEMORATIVE KEEPSAKE · NOT VALID FOR ENTRY</text>
+  </g>
+  <path data-layer="dieline" d="M14 0 L22.14 0 A8 8 0 0 0 38.14 0 L54.43 0 A8 8 0 0 0 70.43 0 L86.71 0 A8 8 0 0 0 102.71 0 L119 0 A8 8 0 0 0 135 0 L151.29 0 A8 8 0 0 0 167.29 0 L183.57 0 A8 8 0 0 0 199.57 0 L215.86 0 A8 8 0 0 0 231.86 0 L248.14 0 A8 8 0 0 0 264.14 0 L280.43 0 A8 8 0 0 0 296.43 0 L312.71 0 A8 8 0 0 0 328.71 0 L345 0 A8 8 0 0 0 361 0 L377.29 0 A8 8 0 0 0 393.29 0 L409.57 0 A8 8 0 0 0 425.57 0 L441.86 0 A8 8 0 0 0 457.86 0 L466 0 A14 14 0 0 0 480 14 L480 946 A14 14 0 0 0 466 960 L457.86 960 A8 8 0 0 0 441.86 960 L425.57 960 A8 8 0 0 0 409.57 960 L393.29 960 A8 8 0 0 0 377.29 960 L361 960 A8 8 0 0 0 345 960 L328.71 960 A8 8 0 0 0 312.71 960 L296.43 960 A8 8 0 0 0 280.43 960 L264.14 960 A8 8 0 0 0 248.14 960 L231.86 960 A8 8 0 0 0 215.86 960 L199.57 960 A8 8 0 0 0 183.57 960 L167.29 960 A8 8 0 0 0 151.29 960 L135 960 A8 8 0 0 0 119 960 L102.71 960 A8 8 0 0 0 86.71 960 L70.43 960 A8 8 0 0 0 54.43 960 L38.14 960 A8 8 0 0 0 22.14 960 L14 960 A14 14 0 0 0 0 946 L0 14 A14 14 0 0 0 14 0Z" fill="none" stroke="#ec008c" stroke-width="0.5"/>
+</svg>
