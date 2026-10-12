@@ -95,7 +95,9 @@ export class CaptureQualification {
       expectedFirstCaptures: this.expected.length * 2, attemptedPairs: this.pairs.size, recordedFirstCaptures: captures.length,
       comparedFirstCaptures: captures.filter((capture) => ["passed", "failed"].includes(capture.status)).length,
       capturesComplete, isolationComplete, complete,
-      passed: complete && browserSessions.passed === true && this.violations.length === 0 && pairs.every((pair) => pair.status === "passed"),
+      // Diagnostic completeness and individual pair results remain available, but only the full
+      // matrix may satisfy the consumer's final qualification assertion.
+      passed: !this.diagnosticSubset && complete && browserSessions.passed === true && this.violations.length === 0 && pairs.every((pair) => pair.status === "passed"),
       violations: this.violations, pairs });
   }
 }

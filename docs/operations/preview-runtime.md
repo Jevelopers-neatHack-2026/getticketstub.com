@@ -94,10 +94,15 @@ fix.
 | --- | --- | --- | --- | --- |
 | Page fact extraction | `anthropic` | `ANTHROPIC_API_KEY` | `claude-sonnet-5-5` | Facts come from the page's schema.org data and Open-Meteo only |
 | Agent chat | `anthropic` | `ANTHROPIC_API_KEY` | `claude-sonnet-5-5` | Rule-based replies |
-| Artwork | `openai` | `OPENAI_API_KEY` | `gpt-image-1` | Procedural art, labelled "Sample art" |
+| Artwork | `openai` | `OPENAI_API_KEY` | Explicit account-approved `TICKETSTUB_ART_MODEL`; direct migration alias `GPT_IMAGE_MODEL` | Clear provider error; no procedural success |
 
-The direct models are fixed in
-[`src/server/ai/providers.ts`](../../src/server/ai/providers.ts).
+Artwork has no implicit model. Select a supported model approved for the actual API account and set
+`TICKETSTUB_ART_MODEL`; if the direct-only compatibility alias is also set, both values must match. See the
+[single deployed-settings inventory](deployed-settings.md) for supported migration inputs and dated retirements.
+Configured live artwork reports missing/invalid model, credential, provider, cancellation and storage failures as
+errors. Procedural "Sample art" remains the explicit demo path. Provider validation runs in
+[`src/server/ai/providers.ts`](../../src/server/ai/providers.ts). The canonical creative host uses its separate
+credential/profile, current delegated authority and real Finance path; it is not enabled by this studio setting.
 
 ### Weather (Open-Meteo)
 

@@ -17,9 +17,15 @@ jobs:
           cache: npm
       - name: Select pinned npm
         run: npm install --global npm@11.16.0
+      - name: Verify fresh browser identity before application checks (no navigation)
+        run: node scripts/check-download-browser-identity.mjs --evidence-dir /tmp/ticketstub-product-evidence
       - run: npm ci
       - run: npm run lint
       - run: npm test
+      - name: Qualify canonical creative host with actual pinned Finance PostgreSQL (offline provider transport)
+        run: |
+          docker pull postgres@sha256:ca0bd484cb98bf4b24eb1010e73fb3fcbd6714d240fbc1a10eea5b7dbecb641d
+          env -i PATH="$PATH" HOME="$HOME" TMPDIR="$RUNNER_TEMP" npm run verify:creative-host
       - run: npm run typecheck
       - run: npm run build
       - name: Verify analytics consent and page-view ordering in Chrome (offline, synthetic ID)

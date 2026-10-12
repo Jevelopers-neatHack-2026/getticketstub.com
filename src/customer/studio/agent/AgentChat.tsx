@@ -7,16 +7,18 @@
 
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import type { Fact, Provenance, Stub } from "../types";
-import { failureCopy, planAgent, remixArtNoted } from "../research/client";
+import { failureCopy, planAgent } from "../research/client";
 import { MarkLegend, PaperButton, SourceMark, Tag, Tags } from "@/customer/desk/Desk";
 import { haptic, play } from "@/customer/studio/feedback";
 import { activeCorrection, applyCorrection } from "../facts/corrections";
-import { artOutcome, clock, errorCode, flow, since } from "@/customer/flows/events";
+import { clock, errorCode, flow, since } from "@/customer/flows/events";
 import { announce } from "@/customer/a11y/announce";
 import { MESSAGE_CODES } from "@/customer/feedback-messages/messages";
 import { AGENT_SCHEMA, describeAction, summarize } from "./protocol";
 import type { Action, ActionResult, PendingQuestion, ResultStatus } from "./protocol";
 import { applyToStub, proceduralArt, withArt } from "./apply";
+import type { GenerationController } from "../generation/operations";
+import { remixProducer } from "../generation/producers";
 import styles from "./AgentChat.module.css";
 
 type Msg =
@@ -69,6 +71,8 @@ function readPhoto(file: File, max = 1200): Promise<string> {
 export function AgentChat(props: {
   stub: Stub;
   onChange: (s: Stub) => void;
+  /** The editor's art-generation controller: an action asks it for art and learns what became of it. */
+  generation: GenerationController;
   /** Flip the editor to the back of the stub (the show_back action). */
   onShowBack?: () => void;
   /** A line typed into a margin note: sent as the first message. */
@@ -149,21 +153,20 @@ export function AgentChat(props: {
         commit(withArt(stubRef.current, proceduralArt(action.vibe)));
         return done("applied");
       }
-      // what was typed is the vibe; only "custom" is reported
-      flow("remix_request", { via: "agent", vibe: "custom" });
-      const asked = clock();
+      // what was typed is the vibe; only "custom" is reported. The controller commits the art (or holds it for review) against the current draft.
       try {
-        const { art, limitNote } = await remixArtNoted(stubRef.current, action.vibe, action.simulate ? { simulate: action.simulate } : {});
-        if (limitNote) {
-          // the cap is a failure for the agent: nothing was generated, and the procedural fallback is offered instead
-          flow("remix_result", { via: "agent", result: "limited", ...artOutcome(art), duration_ms: since(asked) });
-          return done("failed", "art_limit");
-        }
-        flow("remix_result", { via: "agent", result: "success", ...artOutcome(art), duration_ms: since(asked) });
-        commit(withArt(stubRef.current, art));
-        return done("applied");
+        const { started, op } = await props.generation.start({
+          via: "agent",
+          vibe: action.vibe,
+          fallback: "offer",
+          run: remixProducer("agent", action.vibe, "custom", action.simulate),
+        });
+        if (!started) return done("rejected", "busy");
+        if (op.phase === "applied") return done("applied");
+        // the cap is a failure for the agent: nothing was generated, and the procedural fallback is offered instead
+        if (op.phase === "ready") return done("rejected", "needs_review");
+        return done("failed", op.code ?? "unknown");
       } catch (e) {
-        flow("remix_result", { via: "agent", result: "error", duration_ms: since(asked), error_code: errorCode(e) });
         return done("failed", errorCode(e));
       }
     }

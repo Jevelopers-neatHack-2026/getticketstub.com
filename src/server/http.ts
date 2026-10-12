@@ -55,6 +55,7 @@ const API_ROUTE_LABELS = [
   ["share/revoke", "share_revoke"],
   ["wall/public", "wall_public"],
   ["wall/sync", "wall_sync"],
+  ["fulfillment/prodigi/callbacks/:token", "prodigi_callbacks"],
   ["claim/:token", "claim_token"],
   ["files/:name", "files_name"],
   ["gift/:token", "gift_token"],

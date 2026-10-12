@@ -79,6 +79,7 @@ Guard behavior is route-specific. `checkOrigin`, checks that reject only a prese
 | `/api/agent` | POST | action protocol and live legacy path: require `agent.use`; non-live legacy path returns 204 before capability enforcement | non-live action protocol returns JSON from the deterministic rules planner, which may propose typed actions; legacy `{ event, message }` returns 204 |
 | `/api/files/[name]` | GET | public (content-hashed name) | |
 | `/api/dev/email-preview` | GET | dev only; 404 in production | |
+| `/api/fulfillment/prodigi/callbacks/[token]` | POST | Prodigi (capability token in the path) | off unless `TICKETSTUB_PRODIGI_CALLBACKS=sandbox`: 404. A wrong token is a 404. Callbacks are untrusted hints; only an authenticated read changes state. See `docs/operations/prodigi-callbacks-runbook.md` |
 
 ## Route-state matrix
 

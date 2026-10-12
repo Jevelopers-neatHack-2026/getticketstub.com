@@ -52,7 +52,7 @@ function unquote(raw) {
 
 // A deliberately small dotenv reader: KEY=VALUE lines, optional `export`,
 // whole-line comments, single or double quotes, no interpolation. Only the
-// documented Neatlogs names are returned; every other line is ignored.
+// seven recognized Neatlogs names are returned; every other line is ignored.
 export function readNeatlogsEnvFile(path) {
   let stats;
   try {
@@ -126,9 +126,11 @@ function credential(name, value) {
 
 /**
  * Builds Neatlogs configuration from an explicit environment object and an
- * optional explicitly named env file. Process environment values win over the
- * file. Nothing is read implicitly, and credentials are only reachable
- * through the returned accessors; inspection and JSON output are redacted.
+ * optional explicitly named env file. Renamed credentials use canonical env,
+ * canonical file, legacy env, then legacy file; blank values fall through.
+ * Other settings use nonblank env before file. Nothing is read implicitly,
+ * and credentials are only reachable through accessors; inspection and JSON
+ * output are redacted.
  */
 export function loadNeatlogsConfig({ env = {}, envFile = null } = {}) {
   const file = envFile === null ? null : readNeatlogsEnvFile(envFile);

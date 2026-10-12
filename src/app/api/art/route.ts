@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { generateImage, providerFailure } from "@/server/ai/providers";
+import { generateImage, imageProviderConfigured, providerFailure } from "@/server/ai/providers";
 import { buildArtPrompt } from "@/customer/studio/research/artPrompt";
 import type { ArtLayer, Edition, EventData, EventType, Fact } from "@/customer/studio/types";
 import { ensureDevice, getRequestContext, requireCapability } from "@/server/context";
@@ -97,12 +97,22 @@ export const POST = observeRoute("art", async (req: Request) => {
     { key: `ip:${hashToken(clientIp(req))}`, max: PER_IP },
     ...(rc.actor.kind === "account" ? [{ key: `acc:${rc.actor.id}`, max: PER_ACCOUNT }] : []),
   ];
-  // Only a live server with an image provider key spends anyone's allowance.
-  const imageProvider =
-    process.env.TICKETSTUB_RUNTIME_MODE === "live" &&
-    !!(process.env.TICKETSTUB_ART_PROVIDER === "openrouter" ? process.env.TICKETSTUB_ART_OPENROUTER_API_KEY : process.env.OPENAI_API_KEY)?.trim();
-  // Storage off: no counters to spend, so fail open to procedural art and never call a provider.
+  // A configured live path needs durable quota counters. Missing storage is an
+  // explicit failure; the default demo can still draw procedural art.
   const saving = storageAvailable();
+  if (!saving && process.env.TICKETSTUB_RUNTIME_MODE === "live") {
+    annotate({ code: "storage_unavailable", dependency: "storage" });
+    return reply({ error: { code: "storage_unavailable", message: "Image generation needs available storage." } }, 503);
+  }
+  let imageProvider: boolean;
+  try { imageProvider = imageProviderConfigured(); }
+  catch (error) {
+    const failure = providerFailure(error);
+    const code = failure?.body.code ?? "provider_unavailable";
+    annotate({ code, dependency: "provider" });
+    await recordEvent(req, "art_failed", { code }, { ctx: rc });
+    return reply({ error: { code, message: failure?.body.error ?? "Image generation is not configured." } }, failure?.status ?? 503);
+  }
   const quota = saving ? await getStorage().useArtQuota(quotas, Date.now(), imageProvider) : { ok: true as const };
   annotate({ quota: !saving ? "storage_off" : quota.ok ? "ok" : "limited" });
   if (!quota.ok) {
@@ -136,9 +146,14 @@ export const POST = observeRoute("art", async (req: Request) => {
       const failure = providerFailure(error);
       if (failure) await recordEvent(req, "art_failed", { code: failure.body.code }, { ctx: rc });
       annotate({ code: failure?.body.code ?? "internal" });
-      if (failure && (process.env.TICKETSTUB_ART_PROVIDER === "openrouter" || failure.body.code === "invalid_provider_configuration")) {
+      if (failure) {
         annotate({ dependency: "provider" });
         return reply({ error: { code: failure.body.code, message: failure.body.error } }, failure.status);
+      }
+      if (process.env.TICKETSTUB_RUNTIME_MODE === "live") {
+        annotate({ dependency: "provider" });
+        await recordEvent(req, "art_failed", { code: "provider_unavailable" }, { ctx: rc });
+        return reply({ error: { code: "provider_unavailable", message: "The selected AI service could not complete this request." } }, 502);
       }
     }
   }

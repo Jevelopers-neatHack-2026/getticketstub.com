@@ -1,0 +1,109 @@
+{
+  "name": "creative-engine",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Typed creative API runtime, contract proposals, and offline conformance fixtures",
+  "type": "module",
+  "engines": {
+    "node": ">=22.23.3"
+  },
+  "types": "src/contracts/index.d.mts",
+  "exports": {
+    "./api/v1": {
+      "types": "./src/api/v1.d.mts",
+      "import": "./src/api/v1.mjs"
+    },
+    "./contracts": {
+      "types": "./src/contracts/index.d.mts",
+      "import": "./src/contracts/index.mjs"
+    },
+    "./contracts/creative/v1": {
+      "types": "./src/contracts/creative/v1.d.mts",
+      "import": "./src/contracts/creative/v1.mjs"
+    },
+    "./contracts/decision-port/v1": {
+      "types": "./src/contracts/decision-port/v1.d.mts",
+      "import": "./src/contracts/decision-port/v1.mjs"
+    },
+    "./contracts/metering": {
+      "types": "./src/contracts/metering.d.mts",
+      "import": "./src/contracts/metering.mjs"
+    },
+    "./contracts/approval-handoff": {
+      "types": "./src/contracts/approval-handoff.d.mts",
+      "import": "./src/contracts/approval-handoff.mjs"
+    },
+    "./contracts/composition-authority": {
+      "types": "./src/contracts/composition-authority.d.mts",
+      "import": "./src/contracts/composition-authority.mjs"
+    },
+    "./preflight": {
+      "types": "./src/preflight/index.d.mts",
+      "import": "./src/preflight/index.mjs"
+    },
+    "./planning": {
+      "types": "./src/planning/index.d.mts",
+      "import": "./src/planning/index.mjs"
+    },
+    "./versions": {
+      "types": "./src/versions/index.d.mts",
+      "import": "./src/versions/index.mjs"
+    },
+    "./controls": {
+      "types": "./src/controls/index.d.mts",
+      "import": "./src/controls/index.mjs"
+    },
+    "./inspection": {
+      "types": "./src/inspection/index.d.mts",
+      "import": "./src/inspection/index.mjs"
+    },
+    "./models": {
+      "types": "./src/models/index.d.mts",
+      "import": "./src/models/index.mjs"
+    },
+    "./telemetry": {
+      "types": "./src/telemetry/index.d.mts",
+      "import": "./src/telemetry/index.mjs"
+    }
+  },
+  "scripts": {
+    "bootstrap": "npm ci --ignore-scripts --offline && npm ci --prefix src/models/codec-runtime --ignore-scripts",
+    "build": "node scripts/runtime-check.mjs && node --check evals/creative/validator.mjs && node --check scripts/acceptance-gate.mjs && node --check scripts/access-preflight-check.mjs && node --check scripts/creative-metering-check.mjs && node --check scripts/inspection-check.mjs && node --check scripts/concepts-check.mjs && node --check scripts/concepts-package-check.mjs && node --check src/contracts/validation.mjs && node --check src/contracts/scope.mjs && node --check src/contracts/creative/v1.mjs && node --check src/contracts/decision-port/v1.mjs && node --check src/contracts/metering.mjs && node --check src/contracts/approval-handoff.mjs && node --check src/contracts/composition-authority.mjs && node --check src/contracts/index.mjs && node --check src/runtime/creative-runtime.mjs && node --check src/generation/concepts.mjs && node --check src/api/v1.mjs && node --check src/planning/index.mjs && node --check src/planning/store.mjs && node --check src/preflight/access.mjs && node --check src/preflight/openai-images.mjs && node --check src/preflight/index.mjs && node --check src/storage/content-addressed.mjs && node --check src/versions/store.mjs && node --check src/versions/api-ports.mjs && node --check src/versions/index.mjs && node --check src/inspection/deterministic.mjs && node --check src/inspection/questions.mjs && node --check src/inspection/policy.mjs && node --check src/inspection/repair-controller.mjs && node --check src/inspection/index.mjs && node --check src/models/openai-images.mjs && node --check src/models/index.mjs && node --check src/models/codec-runtime/index.mjs && node --check src/telemetry/privacy.mjs && node --check src/telemetry/usage.mjs && node --check src/telemetry/evidence.mjs && node --check src/telemetry/retry.mjs && node --check src/telemetry/sqlite-outbox.mjs && node --check src/telemetry/index.mjs && node --check fixtures/versions/inspection-crash-worker.mjs && node --check fixtures/versions/composition-cancel-crash-worker.mjs && node --check fixtures/versions/composition-publication-crash-worker.mjs && node --check fixtures/versions/base10-populated-v10-producer.mjs && node --check fixtures/versions/check.mjs && node --check src/controls/runtime.mjs && node --check src/controls/schema.mjs && node --check src/controls/contract.mjs && node --check src/controls/actions.mjs && node --check src/controls/integration.mjs && node --check src/controls/public-result.mjs && node --check src/controls/inspection-consumer.mjs && node --check src/controls/index.mjs && node --check scripts/openrouter-image-adapter-check.mjs && node --check src/models/image-adapter-core.mjs && node --check src/models/image-routes.mjs && node --check src/models/openrouter-images.mjs",
+    "check:contracts": "node --test tests/contracts/creative-contract.test.mjs tests/contracts/fixture-manifest.test.mjs tests/contracts/dependency-boundary.test.mjs tests/contracts/acceptance-gate.test.mjs tests/composition/contracts.test.mjs",
+    "check:decision-contract": "node --test tests/contracts/decision-port.test.mjs tests/contracts/fixture-manifest.test.mjs tests/contracts/dependency-boundary.test.mjs tests/contracts/acceptance-gate.test.mjs",
+    "check:eval-policy": "node --test tests/evaluation/*.test.mjs",
+    "check:metering-contract": "node --test tests/contracts/metering/*.test.mjs",
+    "check:handoff-contract": "node --test tests/contracts/approval/*.test.mjs",
+    "check:api": "node scripts/runtime-check.mjs && node scripts/api-check.mjs --out build/api-check-evidence.json",
+    "check:access-preflight": "node --test tests/preflight/*.test.mjs",
+    "check:brief": "node --test tests/planning/brief.test.mjs tests/api/brief-api.test.mjs",
+    "check:models": "node --test tests/models/*.test.mjs",
+    "check:concepts": "node scripts/concepts-check.mjs --mode mock --out build/concepts-mock-evidence.json",
+    "check:inspection": "node scripts/inspection-check.mjs --mode mock --out build/inspection-evidence.json",
+    "check:versions": "node fixtures/versions/check.mjs mock",
+    "check:creative-metering": "node scripts/creative-metering-check.mjs",
+    "test": "node --test tests/contracts/*.test.mjs tests/api/*.test.mjs tests/composition/*.test.mjs tests/versions/composition-authority.test.mjs"
+  },
+  "files": [
+    "src/api",
+    "src/contracts",
+    "src/controls",
+    "src/generation",
+    "src/inspection",
+    "src/models/index.mjs",
+    "src/models/index.d.mts",
+    "src/models/image-adapter-core.mjs",
+    "src/models/image-routes.mjs",
+    "src/models/openai-images.mjs",
+    "src/models/openrouter-images.mjs",
+    "src/models/codec-runtime/index.mjs",
+    "src/models/codec-runtime/package.json",
+    "src/models/codec-runtime/package-lock.json",
+    "src/planning",
+    "src/preflight",
+    "src/runtime",
+    "src/storage",
+    "src/telemetry",
+    "src/versions"
+  ]
+}
