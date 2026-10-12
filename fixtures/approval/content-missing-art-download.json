@@ -1,0 +1,38 @@
+{
+  "fixture": "content-missing-art-download",
+  "description": "A valid artifact.download approval, but the consumer supplies no artHash (the one commitment this purpose requires), only the other three.",
+  "verifyAt": "2026-10-10T13:00:00.000Z",
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6InRpY2tldHN0dWIuYXBwcm92YWwifQ.eyJhcHByb3ZhbCI6eyJzY2hlbWEiOiJ0aWNrZXRzdHViLmFwcHJvdmFsLzEiLCJpZCI6ImFwcl9GSVhUVVJFXzAwMDIiLCJpc3N1ZXIiOiJ0aWNrZXRzdHViIiwidGVuYW50Ijp7ImlkIjoiYWNjX0ZJWFRVUkVfb3duZXIxIn0sInByb2plY3QiOnsia2luZCI6InN0dWIiLCJpZCI6InN0dWJfZnhfMSJ9LCJwdXJwb3NlIjoiYXJ0aWZhY3QuZG93bmxvYWQiLCJhY3RvciI6eyJraW5kIjoiYWNjb3VudCIsImlkIjoiYWNjX0ZJWFRVUkVfb3duZXIxIn0sImJpbmRpbmciOnsiaGFzaEFsZyI6InNoYTI1NiIsInZlcnNpb25JZCI6InZfZnhfMiIsImFydFNvdXJjZSI6ImJ5dGVzIiwiYXJ0SGFzaCI6IjdmNmQ1OTZjZTQ4NmM1OWVkMWNhZWVkZjE3OTRmYTBhMDYzMGQxZjc0MTJmNDc2OWVhMDUwNzMzNjcwNTc3OTEiLCJkZXNpZ25IYXNoIjoiMDNmMzBkNDM5OTg1NmUwYTQ1MTIyOTYyZTE2ZGM5N2I1YzU5OGY5NGRlMDdkODVmOTZiNzBiNWMxM2YyNWU3MSIsImZhY3RzSGFzaCI6IjJiY2MxZWNiYzgwYzFiMDE1MTdjZDdjNGFlMjBmY2FmNGU1YWUwY2EzNGVmYzY0YmI3Mjc5ZGY0YzNiNDRjZDIiLCJjb21wb3NpdGlvbiI6eyJlZGl0aW9uIjoibGV0dGVycHJlc3MiLCJtYXRlcmlhbCI6InByaW50IiwiZmluaXNoIjoibWF0dGUiLCJzaXplIjoiY2xhc3NpYyJ9LCJjb21wb3NpdGlvbkhhc2giOiJlNmM5NGRjZjNmNWUwZjhjOGZmN2RmZTk5MWJkZWVhYjE5MGZlMGMzNDg5MGMxYzBlMDEwODQwYzg5OTI2YzczIn0sIm1lbWJlcnNoaXBSZXZpc2lvbiI6Mywibm90QXV0aG9yaXplcyI6WyJwdXJjaGFzZSIsInBheW1lbnQiLCJvcmRlciIsImFzc2V0X3JpZ2h0cyJdLCJlbnZpcm9ubWVudCI6ImRldmVsb3BtZW50IiwibW9kZSI6ImZpeHR1cmUiLCJpc3N1ZWRBdCI6IjIwMjYtMTAtMTBUMTI6MDA6MDAuMDAwWiIsImV4cGlyZXNBdCI6IjIwMjYtMTAtMTdUMTI6MDA6MDAuMDAwWiJ9fQ.--g5ptCzcE7HFaP6vbLJ_816eIPDcBoJWBHUNB7sWyM",
+  "held": {
+    "artBase64": "RklYVFVSRS1BUlQtQllURVMtdjE6IG5vdCBhIHJlYWwgaW1hZ2UsIHN0YW5kcyBpbiBmb3IgdGhlIHN0b3JlZCBQTkc="
+  },
+  "expect": {
+    "tenant": "acc_FIXTURE_owner1",
+    "project": {
+      "kind": "stub",
+      "id": "stub_fx_1"
+    },
+    "purpose": "artifact.download"
+  },
+  "state": {
+    "known": true,
+    "revoked": false,
+    "membershipRevision": 3,
+    "current": {
+      "versionId": "v_fx_2",
+      "designHash": "03f30d4399856e0a45122962e16dc97b5c598f94de07d85f96b70b5c13f25e71",
+      "artHash": "7f6d596ce486c59ed1caeedf1794fa0a0630d1f7412f4769ea05073367057791",
+      "factsHash": "2bcc1ecbc80c1b01517cd7c4ae20fcaf4e5ae0ca34efc64bb7279df4c3b44cd2",
+      "compositionHash": "e6c94dcf3f5e0f8c8ff7dfe991bdeeab190fe0c34890c1c0e010840c89926c73"
+    }
+  },
+  "consumer": {
+    "omit": [
+      "artHash"
+    ]
+  },
+  "outcome": {
+    "ok": false,
+    "reason": "content_missing"
+  }
+}

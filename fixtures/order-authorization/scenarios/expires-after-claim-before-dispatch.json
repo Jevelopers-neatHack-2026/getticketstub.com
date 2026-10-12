@@ -1,0 +1,36 @@
+{
+  "scenario": "expires-after-claim-before-dispatch",
+  "description": "Claimed, queued, and the fifteen minutes pass before transport. Revalidate says expired. (Reference model only: a live server cannot be moved forward in time.)",
+  "drivers": [
+    "reference"
+  ],
+  "steps": [
+    {
+      "op": "issue",
+      "auth": "A"
+    },
+    {
+      "op": "claim",
+      "auth": "A",
+      "key": "K1",
+      "expect": {
+        "ok": true,
+        "replayed": false,
+        "as": "c1"
+      }
+    },
+    {
+      "op": "advance",
+      "minutes": 16
+    },
+    {
+      "op": "revalidate",
+      "auth": "A",
+      "key": "K1",
+      "expect": {
+        "ok": false,
+        "reason": "expired"
+      }
+    }
+  ]
+}

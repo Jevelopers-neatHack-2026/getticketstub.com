@@ -1,0 +1,26 @@
+{
+  "scenario": "expires-before-claim",
+  "description": "Never claimed and the fifteen minutes pass: claim says expired. (Reference model only.)",
+  "drivers": [
+    "reference"
+  ],
+  "steps": [
+    {
+      "op": "issue",
+      "auth": "A"
+    },
+    {
+      "op": "advance",
+      "minutes": 16
+    },
+    {
+      "op": "claim",
+      "auth": "A",
+      "key": "K1",
+      "expect": {
+        "ok": false,
+        "reason": "expired"
+      }
+    }
+  ]
+}

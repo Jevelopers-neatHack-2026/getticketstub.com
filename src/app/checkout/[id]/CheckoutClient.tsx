@@ -131,8 +131,7 @@ export default function CheckoutClient({ id }: { id: string }) {
       quoteId: q.quoteId,
       method: "card",
       email: email || undefined,
-    });
-    upsertStub({ ...stub, material, finish, torn: true });
+    }, () => upsertStub({ ...stub, material, finish, torn: true }));
     haptic([18, 40, 28]);
   }
 

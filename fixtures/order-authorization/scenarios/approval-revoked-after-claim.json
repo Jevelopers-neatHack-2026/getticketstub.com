@@ -1,0 +1,46 @@
+{
+  "scenario": "approval-revoked-after-claim",
+  "description": "Claimed, then the owner revokes the artwork approval the authorization references. Revalidate says stale_approval.",
+  "drivers": [
+    "reference",
+    "live"
+  ],
+  "steps": [
+    {
+      "op": "issue",
+      "auth": "A"
+    },
+    {
+      "op": "claim",
+      "auth": "A",
+      "key": "K1",
+      "expect": {
+        "ok": true,
+        "replayed": false,
+        "as": "c1"
+      }
+    },
+    {
+      "op": "revokeApproval",
+      "auth": "A"
+    },
+    {
+      "op": "revalidate",
+      "auth": "A",
+      "key": "K1",
+      "expect": {
+        "ok": false,
+        "reason": "stale_approval"
+      }
+    },
+    {
+      "op": "lookup",
+      "key": "K1",
+      "expect": {
+        "found": true,
+        "is": "c1",
+        "authority": "stale_approval"
+      }
+    }
+  ]
+}

@@ -1,0 +1,52 @@
+{
+  "scenario": "replay-under-distinct-key",
+  "description": "Same authorization, a second submission identity: rejected already_claimed. The committed claim is untouched.",
+  "drivers": [
+    "reference",
+    "live"
+  ],
+  "steps": [
+    {
+      "op": "issue",
+      "auth": "A"
+    },
+    {
+      "op": "claim",
+      "auth": "A",
+      "key": "K1",
+      "expect": {
+        "ok": true,
+        "replayed": false,
+        "as": "c1"
+      }
+    },
+    {
+      "op": "claim",
+      "auth": "A",
+      "key": "K2",
+      "expect": {
+        "ok": false,
+        "reason": "already_claimed"
+      }
+    },
+    {
+      "op": "lookup",
+      "key": "K2",
+      "auth": "A",
+      "expect": {
+        "found": false,
+        "authorizationClaimed": true
+      }
+    },
+    {
+      "op": "claim",
+      "auth": "A",
+      "key": "K1",
+      "expect": {
+        "ok": true,
+        "replayed": true,
+        "is": "c1"
+      }
+    }
+  ]
+}

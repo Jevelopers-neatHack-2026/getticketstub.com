@@ -1,0 +1,32 @@
+{
+  "scenario": "claimed-order-cannot-be-renewed",
+  "description": "Once an order's action is claimed, issuing another authorization for the same orderRef is refused (authorization_conflict): one order, one dispatch.",
+  "drivers": [
+    "reference",
+    "live"
+  ],
+  "steps": [
+    {
+      "op": "issue",
+      "auth": "A"
+    },
+    {
+      "op": "claim",
+      "auth": "A",
+      "key": "K1",
+      "expect": {
+        "ok": true,
+        "replayed": false,
+        "as": "c1"
+      }
+    },
+    {
+      "op": "issue",
+      "auth": "A2",
+      "orderOf": "A",
+      "expect": {
+        "refused": "authorization_conflict"
+      }
+    }
+  ]
+}

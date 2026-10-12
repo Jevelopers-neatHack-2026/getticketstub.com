@@ -4,11 +4,12 @@ import { dirname, resolve } from "node:path";
 import { randomBytes } from "node:crypto";
 import { safeEqual } from "./crypto";
 import { DatabaseSync } from "node:sqlite";
-import type { Order } from "@/customer/pages/commerce";
+import type { Order, OrderPayment } from "@/customer/pages/commerce";
 import type { Stub } from "@/customer/studio/types";
+import { artUnavailable, retainArt } from "@/customer/studio/versions/retention";
 import { EVENT_RETENTION_MS, EVENT_SCHEMA, type StoredEvent, type TicketstubEvent } from "./events";
 import { migrate } from "./migrations";
-import type { Account, AccountState, ArtQuota, ArtQuotaResult, ClaimResult, ClaimView, GiftView, LoginLinkRecord, NewClaim, Storage, WallState } from "./storage";
+import type { Account, AccountState, ApprovalRow, ArtQuota, ArtQuotaResult, ClaimResult, ClaimView, GiftView, LoginLinkRecord, NewApproval, NewClaim, NewOrderAuth, OrderAuthRow, OrderAuthSnapshot, OrderClaimOutcome, OrderClaimRow, Storage, WallState } from "./storage";
 
 type Row = Record<string, unknown>;
 
@@ -119,6 +120,13 @@ export class SqliteStorage implements Storage {
       this.run("UPDATE claims SET claimed_by = NULL, claimed_stub_id = NULL, claimed_at = NULL WHERE claimed_by = ?", accountId);
       // Cascades: sessions, wall stubs (and tombstones), organizer events and their claims.
       this.run("DELETE FROM accounts WHERE id = ?", accountId);
+      // The append-only triggers let these go only now that the account is gone.
+      this.run("DELETE FROM order_authorization_claims WHERE tenant = ?", accountId);
+      this.run("DELETE FROM order_authorization_revocations WHERE tenant = ?", accountId);
+      this.run("DELETE FROM order_authorizations WHERE tenant = ?", accountId);
+      this.run("DELETE FROM approval_revocations WHERE tenant = ?", accountId);
+      this.run("DELETE FROM approval_summaries WHERE tenant = ?", accountId);
+      this.run("DELETE FROM approvals WHERE tenant = ?", accountId);
       return [...mine].filter((name) => {
         const like = `%${name}%`;
         return !this.get("SELECT 1 AS x FROM wall_stubs WHERE data LIKE ? LIMIT 1", like) &&
@@ -224,8 +232,10 @@ export class SqliteStorage implements Storage {
     return this.tx(() => {
       const tombstoning = new Set(deleted);
       const existing = new Map<string, { updatedAt: number; deleted: boolean }>();
-      for (const r of this.all("SELECT stub_id, updated_at, deleted FROM wall_stubs WHERE account_id = ?", accountId)) {
+      const stored = new Map<string, string>();
+      for (const r of this.all("SELECT stub_id, updated_at, deleted, data FROM wall_stubs WHERE account_id = ?", accountId)) {
         existing.set(r.stub_id as string, { updatedAt: Number(r.updated_at), deleted: Number(r.deleted) === 1 });
+        if (Number(r.deleted) !== 1) stored.set(r.stub_id as string, r.data as string);
       }
       const upsert = this.db.prepare(
         "INSERT INTO wall_stubs (account_id, stub_id, updated_at, deleted, data) VALUES (?, ?, ?, 0, ?) " +
@@ -236,7 +246,19 @@ export class SqliteStorage implements Storage {
         const at = stub.updatedAt ?? 0;
         const cur = existing.get(stub.id);
         if (cur && at <= cur.updatedAt) continue; // server copy (or tombstone) is as new or newer
-        upsert.run(accountId, stub.id, at, JSON.stringify(stub));
+        // a device that had to let go of an older picture must not take it from the account's copy
+        const prev = stored.get(stub.id);
+        let keep = stub;
+        if (prev && stub.versions.some((v) => artUnavailable(v.art))) {
+          try {
+            keep = retainArt(stub, JSON.parse(prev) as Stub);
+          } catch {
+            keep = stub; // an unreadable stored copy has nothing to give back
+          }
+        }
+        const json = JSON.stringify(keep);
+        upsert.run(accountId, stub.id, at, json);
+        stored.set(stub.id, json); // a later entry for the same stub in this request sees what was just written
         existing.set(stub.id, { updatedAt: at, deleted: false });
       }
       const tomb = this.db.prepare(
@@ -304,6 +326,25 @@ export class SqliteStorage implements Storage {
       accountId, email,
     );
     return rows.map((r) => JSON.parse(r.data as string) as Order);
+  }
+
+  async getOrder(id: string): Promise<{ order: Order; accountId: string | null; email: string | null } | null> {
+    const r = this.get("SELECT account_id, email, data FROM orders WHERE id = ?", id);
+    if (!r) return null;
+    return { order: JSON.parse(r.data as string) as Order, accountId: (r.account_id as string | null) ?? null, email: (r.email as string | null) ?? null };
+  }
+
+  async updateOrderPayment(id: string, apply: (order: Order) => OrderPayment | null): Promise<{ before: Order; after: Order } | null> {
+    return this.tx(() => {
+      const r = this.get("SELECT data FROM orders WHERE id = ?", id);
+      if (!r) return null;
+      const before = JSON.parse(r.data as string) as Order;
+      const payment = apply(before);
+      if (!payment) return { before, after: before };
+      const after: Order = { ...before, payment };
+      this.run("UPDATE orders SET data = ? WHERE id = ?", JSON.stringify(after), id);
+      return { before, after };
+    });
   }
 
   async upsertShare(ownerKey: string, stub: Stub, newToken: string, now: number): Promise<string> {
@@ -378,6 +419,206 @@ export class SqliteStorage implements Storage {
 
   async revokeGift(ownerKey: string, tokenHash: string): Promise<boolean> {
     return Number(this.run("DELETE FROM gifts WHERE token_hash = ? AND owner_key = ?", tokenHash, ownerKey).changes) > 0;
+  }
+
+  private approvalRow(r: Row): ApprovalRow {
+    return {
+      id: r.id as string,
+      tenant: r.tenant as string,
+      project: r.project as string,
+      purpose: r.purpose as string,
+      record: r.record as string,
+      issuedAt: Number(r.issued_at),
+      expiresAt: Number(r.expires_at),
+      revokedAt: r.revoked_at === null || r.revoked_at === undefined ? null : Number(r.revoked_at),
+      summary: typeof r.summary === "string" ? r.summary : null,
+    };
+  }
+
+  private static readonly APPROVAL_SELECT =
+    "SELECT a.*, (SELECT revoked_at FROM approval_revocations r WHERE r.approval_id = a.id) AS revoked_at, " +
+    "(SELECT summary FROM approval_summaries s WHERE s.approval_id = a.id) AS summary FROM approvals a";
+
+  async getWallStub(accountId: string, stubId: string): Promise<Stub | null> {
+    const r = this.get("SELECT data FROM wall_stubs WHERE account_id = ? AND stub_id = ? AND deleted = 0", accountId, stubId);
+    return r ? (JSON.parse(r.data as string) as Stub) : null;
+  }
+
+  async issueApproval(tenant: string, stubId: string, now: number, make: (stub: Stub) => NewApproval): Promise<{ row: ApprovalRow; created: boolean } | null> {
+    return this.tx(() => {
+      const w = this.get("SELECT data FROM wall_stubs WHERE account_id = ? AND stub_id = ? AND deleted = 0", tenant, stubId);
+      if (!w) return null;
+      const made = make(JSON.parse(w.data as string) as Stub);
+      const same = this.get(
+        `${SqliteStorage.APPROVAL_SELECT} WHERE a.tenant = ? AND a.project = ? AND a.purpose = ? AND a.idem_key = ? AND a.expires_at > ? ` +
+          "AND NOT EXISTS (SELECT 1 FROM approval_revocations r WHERE r.approval_id = a.id) ORDER BY a.seq DESC LIMIT 1",
+        tenant, stubId, made.purpose, made.idemKey, now,
+      );
+      if (same) return { row: this.approvalRow(same), created: false };
+      this.run(
+        "INSERT INTO approvals (id, tenant, project, purpose, idem_key, record, issued_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        made.id, tenant, stubId, made.purpose, made.idemKey, made.record, made.issuedAt, made.expiresAt,
+      );
+      this.run("INSERT INTO approval_summaries (approval_id, tenant, summary) VALUES (?, ?, ?)", made.id, tenant, made.summary);
+      return { row: { id: made.id, tenant, project: stubId, purpose: made.purpose, record: made.record, issuedAt: made.issuedAt, expiresAt: made.expiresAt, revokedAt: null, summary: made.summary }, created: true };
+    });
+  }
+
+  async getApproval(id: string): Promise<ApprovalRow | null> {
+    const r = this.get(`${SqliteStorage.APPROVAL_SELECT} WHERE a.id = ?`, id);
+    return r ? this.approvalRow(r) : null;
+  }
+
+  async listApprovals(tenant: string, stubId: string): Promise<ApprovalRow[]> {
+    return this.all(`${SqliteStorage.APPROVAL_SELECT} WHERE a.tenant = ? AND a.project = ? ORDER BY a.seq DESC LIMIT 200`, tenant, stubId).map((r) => this.approvalRow(r));
+  }
+
+  async revokeApproval(tenant: string, stubId: string, approvalId: string, now: number): Promise<"revoked" | "already" | "missing"> {
+    return this.tx(() => {
+      const a = this.get("SELECT id FROM approvals WHERE id = ? AND tenant = ? AND project = ?", approvalId, tenant, stubId);
+      if (!a) return "missing" as const;
+      if (this.get("SELECT 1 AS x FROM approval_revocations WHERE approval_id = ?", approvalId)) return "already" as const;
+      this.run("INSERT INTO approval_revocations (approval_id, tenant, revoked_at) VALUES (?, ?, ?)", approvalId, tenant, now);
+      return "revoked" as const;
+    });
+  }
+
+  private orderAuthRow(r: Row): OrderAuthRow {
+    return {
+      id: r.id as string,
+      tenant: r.tenant as string,
+      project: r.project as string,
+      actionId: r.action_id as string,
+      idemKey: r.idem_key as string,
+      reqHash: r.req_hash as string,
+      record: r.record as string,
+      issuedAt: Number(r.issued_at),
+      expiresAt: Number(r.expires_at),
+      revokedAt: r.revoked_at === null || r.revoked_at === undefined ? null : Number(r.revoked_at),
+      superseded: Number(r.superseded) === 1,
+    };
+  }
+
+  private orderClaimRow(r: Row): OrderClaimRow {
+    return {
+      authorizationId: r.authorization_id as string,
+      actionId: r.action_id as string,
+      tenant: r.tenant as string,
+      consumer: r.consumer as string,
+      idemKey: r.idem_key as string,
+      claimRef: r.claim_ref as string,
+      claimedAt: Number(r.claimed_at),
+    };
+  }
+
+  private static readonly ORDER_AUTH_SELECT =
+    "SELECT a.*, (SELECT revoked_at FROM order_authorization_revocations r WHERE r.authorization_id = a.id) AS revoked_at, " +
+    "EXISTS (SELECT 1 FROM order_authorizations n WHERE n.action_id = a.action_id AND n.seq > a.seq) AS superseded FROM order_authorizations a";
+
+  /** The snapshot, read inside whatever transaction the caller holds. */
+  private snapshotOrderAuth(id: string, consumer?: string, idemKey?: string): OrderAuthSnapshot {
+    const a = this.get(`${SqliteStorage.ORDER_AUTH_SELECT} WHERE a.id = ?`, id);
+    const auth = a ? this.orderAuthRow(a) : null;
+    let approval: ApprovalRow | null = null;
+    let stub: Stub | null = null;
+    let account: AccountState | null = null;
+    if (auth) {
+      const ref = (JSON.parse(auth.record) as { approval?: { id?: string } }).approval?.id;
+      const ap = typeof ref === "string" ? this.get(`${SqliteStorage.APPROVAL_SELECT} WHERE a.id = ? AND a.tenant = ?`, ref, auth.tenant) : undefined;
+      approval = ap ? this.approvalRow(ap) : null;
+      const w = this.get("SELECT data FROM wall_stubs WHERE account_id = ? AND stub_id = ? AND deleted = 0", auth.tenant, auth.project);
+      stub = w ? (JSON.parse(w.data as string) as Stub) : null;
+      const acc = this.get("SELECT id, email, membership_revision, is_staff FROM accounts WHERE id = ?", auth.tenant);
+      account = acc ? { id: acc.id as string, email: acc.email as string, membershipRevision: Number(acc.membership_revision), isStaff: Number(acc.is_staff) === 1 } : null;
+    }
+    const c = auth ? this.get("SELECT * FROM order_authorization_claims WHERE authorization_id = ?", auth.id) : undefined;
+    const k = consumer !== undefined && idemKey !== undefined ? this.get("SELECT * FROM order_authorization_claims WHERE consumer = ? AND idem_key = ?", consumer, idemKey) : undefined;
+    return { auth, approval, stub, account, claim: c ? this.orderClaimRow(c) : null, claimByKey: k ? this.orderClaimRow(k) : null };
+  }
+
+  async issueOrderAuthorization(
+    tenant: string,
+    stubId: string,
+    approvalId: string,
+    idemKey: string,
+    reqHash: string,
+    now: number,
+    make: (stub: Stub, approval: ApprovalRow | null, actionClaimed: (actionId: string) => boolean) => NewOrderAuth,
+  ): Promise<{ row: OrderAuthRow; created: boolean } | "conflict" | null> {
+    void now;
+    return this.tx(() => {
+      const w = this.get("SELECT data FROM wall_stubs WHERE account_id = ? AND stub_id = ? AND deleted = 0", tenant, stubId);
+      if (!w) return null;
+      const same = this.get(`${SqliteStorage.ORDER_AUTH_SELECT} WHERE a.tenant = ? AND a.idem_key = ?`, tenant, idemKey);
+      if (same) return same.project === stubId && same.req_hash === reqHash ? { row: this.orderAuthRow(same), created: false } : ("conflict" as const);
+      const ap = this.get(`${SqliteStorage.APPROVAL_SELECT} WHERE a.id = ? AND a.tenant = ? AND a.project = ?`, approvalId, tenant, stubId);
+      const made = make(JSON.parse(w.data as string) as Stub, ap ? this.approvalRow(ap) : null, (actionId) => !!this.get("SELECT 1 AS x FROM order_authorization_claims WHERE action_id = ?", actionId));
+      this.run(
+        "INSERT INTO order_authorizations (id, tenant, project, action_id, idem_key, req_hash, record, issued_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        made.id, tenant, stubId, made.actionId, made.idemKey, made.reqHash, made.record, made.issuedAt, made.expiresAt,
+      );
+      return { row: this.orderAuthRow(this.get(`${SqliteStorage.ORDER_AUTH_SELECT} WHERE a.id = ?`, made.id) as Row), created: true };
+    });
+  }
+
+  async getOrderAuthorization(id: string): Promise<OrderAuthRow | null> {
+    const r = this.get(`${SqliteStorage.ORDER_AUTH_SELECT} WHERE a.id = ?`, id);
+    return r ? this.orderAuthRow(r) : null;
+  }
+
+  async listOrderAuthorizations(tenant: string, stubId: string): Promise<OrderAuthRow[]> {
+    return this.all(`${SqliteStorage.ORDER_AUTH_SELECT} WHERE a.tenant = ? AND a.project = ? ORDER BY a.seq DESC LIMIT 100`, tenant, stubId).map((r) => this.orderAuthRow(r));
+  }
+
+  async getOrderAuthSnapshot(id: string, consumer?: string, idemKey?: string): Promise<OrderAuthSnapshot> {
+    return this.tx(() => this.snapshotOrderAuth(id, consumer, idemKey));
+  }
+
+  async revokeOrderAuthorization(tenant: string, stubId: string, id: string, now: number): Promise<"revoked" | "already" | "missing"> {
+    return this.tx(() => {
+      const a = this.get("SELECT id FROM order_authorizations WHERE id = ? AND tenant = ? AND project = ?", id, tenant, stubId);
+      if (!a) return "missing" as const;
+      if (this.get("SELECT 1 AS x FROM order_authorization_revocations WHERE authorization_id = ?", id)) return "already" as const;
+      this.run("INSERT INTO order_authorization_revocations (authorization_id, tenant, revoked_at) VALUES (?, ?, ?)", id, tenant, now);
+      return "revoked" as const;
+    });
+  }
+
+  async claimOrderAuthorization(
+    id: string,
+    consumer: string,
+    idemKey: string,
+    claimRef: string,
+    now: number,
+    decide: (snap: OrderAuthSnapshot) => { ok: true } | { ok: false; reason: string; fields?: string[] },
+  ): Promise<OrderClaimOutcome> {
+    try {
+      return this.tx((): OrderClaimOutcome => {
+        const snap = this.snapshotOrderAuth(id, consumer, idemKey);
+        const verdict = decide(snap);
+        if (!verdict.ok) return verdict;
+        // The verdict allows a claim already committed only under this same key: that is the replay.
+        if (snap.claim) return { ok: true, claim: snap.claim, replayed: true };
+        const auth = snap.auth as OrderAuthRow;
+        this.run(
+          "INSERT INTO order_authorization_claims (authorization_id, action_id, tenant, consumer, idem_key, claim_ref, claimed_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+          auth.id, auth.actionId, auth.tenant, consumer, idemKey, claimRef, now,
+        );
+        return { ok: true, claim: { authorizationId: auth.id, actionId: auth.actionId, tenant: auth.tenant, consumer, idemKey, claimRef, claimedAt: now }, replayed: false };
+      });
+    } catch (e) {
+      // Another process won the same authorization, action or key between our read and our insert; the write lock makes this rare, the constraints make it safe.
+      if (e instanceof Error && /UNIQUE constraint failed/i.test(e.message)) return { ok: false, reason: "already_claimed" };
+      throw e;
+    }
+  }
+
+  async findOrderClaim(consumer: string, idemKey: string): Promise<{ claim: OrderClaimRow; project: string } | null> {
+    const r = this.get(
+      "SELECT c.*, a.project AS project FROM order_authorization_claims c JOIN order_authorizations a ON a.id = c.authorization_id WHERE c.consumer = ? AND c.idem_key = ?",
+      consumer, idemKey,
+    );
+    return r ? { claim: this.orderClaimRow(r), project: r.project as string } : null;
   }
 
   async appendEvent(e: TicketstubEvent, tenantRef?: string): Promise<void> {

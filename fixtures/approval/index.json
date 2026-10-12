@@ -1,0 +1,43 @@
+{
+  "schema": "ticketstub.approval/1",
+  "purposes": [
+    "print.compose",
+    "artifact.download"
+  ],
+  "key": "fixture-key.json",
+  "content": "content.json",
+  "verifier": "verify.mjs",
+  "fixtures": [
+    "valid-print-compose.json",
+    "valid-artifact-download.json",
+    "unknown-malformed.json",
+    "unknown-no-record.json",
+    "forged.json",
+    "forged-edited-binding.json",
+    "expired.json",
+    "revoked.json",
+    "revoked-bytes-retained.json",
+    "stale-facts.json",
+    "stale-composition.json",
+    "stale-membership.json",
+    "wrong-scope-tenant.json",
+    "wrong-scope-project.json",
+    "wrong-purpose.json",
+    "not-a-purchase-authorization.json",
+    "content-mismatch.json",
+    "unsupported-version.json",
+    "content-empty.json",
+    "content-missing-design.json",
+    "content-missing-art.json",
+    "content-missing-facts.json",
+    "content-missing-composition.json",
+    "content-missing-art-download.json",
+    "content-art-only-download.json",
+    "content-malformed-hash.json",
+    "content-uppercase-hash.json",
+    "clock-nan.json",
+    "clock-infinity.json",
+    "clock-negative.json",
+    "clock-string.json"
+  ]
+}

@@ -1,6 +1,6 @@
 # Material, size and finish capabilities
 
-Capability map version `2026-10-11.1`, supplier pages reviewed `2026-10-10` (GitHub issue GT-07A, getticketstub.com #23).
+Capability map version `2026-10-12.1`, supplier pages reviewed `2026-10-10` (the sandbox validation product below: `2026-10-12`) (GitHub issue GT-07A, getticketstub.com #23).
 The map is `src/customer/pages/capabilities.ts`. This page is its reviewed matrix. If the two disagree, one of them is stale: the check does not compare this page with the code, so update both together.
 
 No authenticated supplier lookup, quote or order was made. Nothing below is a supplier quote. Retail prices in the studio ($9 / $29 / $49 / $89, foil +$6, shipping $6) are local sandbox fixtures.
@@ -70,6 +70,32 @@ Geometry fixture (Prodigi's own example, not a launch SKU): 18 × 24 in glazing 
 - Metallic foil prints (ART-FOIL gold and silver, 4 × 6 to 40 × 80 in): https://www.prodigi.com/products/prints-and-posters/specialist-prints/metallic-foil-prints/
 - Framed metallic foil prints: https://www.prodigi.com/products/wall-art/framed-prints/classic-framed-metallic-foil-prints/
 
+## Sandbox validation product (not customer-facing)
+
+`SANDBOX_VALIDATION_PRODUCTS` in the map names the one supplier product used to validate the Prodigi sandbox. The owner-delegated decision is integration-evals [`planning/decisions/0003-owner-delegated-decisions-2026-10-12.md`](https://github.com/Jevelopers-neatHack-2026/integration-evals/blob/main/planning/decisions/0003-owner-delegated-decisions-2026-10-12.md), rows R1-R3. Version `2026-10-12.1` adds it.
+
+| Field | Value |
+| --- | --- |
+| Supplier, SKU | Prodigi `GLOBAL-PHO-4X6` |
+| Product | 4 × 6 in (102 × 152 mm) lustre C-type (silver-halide) photo print |
+| Print area, orientation | `default`, landscape 6 × 4 in |
+| Artwork | 1800 × 1200 px at 300 dpi, full bleed, sRGB, JPG, sizing `fillPrintArea` |
+| Destination, shipping | `US`, `Standard` (`standard` in quotes) |
+| Provenance | `published-docs`. No authenticated product-details read, quote or order has been made. |
+
+It is used **only** for the first owner-approved sandbox product-details read, quote and test order. It is **not** a customer-facing mapping:
+
+- No tier, size or finish points at it. It is not in `VARIANTS`, no variant carries its SKU, and every physical variant stays `preview` or `unavailable`.
+- No price, finish or size claim in the studio changes. The `print` tier is still sold as matte, foil or holo, in Classic stub (2 × 5.5 in) or Stamp (2 × 3 in).
+- **Open product decision:** the customer-facing `print`-tier mapping. Lustre is not matte, the SKU has no foil or holo option, and a customer would get a 6 × 4 sheet with the stub composed on it (a 5.5 × 2 in stub is 1650 × 600 px, which fits), not a trimmed stub. Finish naming, which variants map, and trim still need a decision. Until then the tier stays `preview`.
+
+Checked on Prodigi's public pages on 2026-10-12, with WebFetch and no API call:
+
+- The [C-types page](https://www.prodigi.com/products/prints-and-posters/photo-prints/c-types/) lists `GLOBAL-PHO-4X6` at 102x152mm, shipped from UK, EU, US, MX, AU, NZ and LV. It gives the optimal DPI as 300 and the file format as jpg or pdf.
+- The same page lists lustre, high gloss and metallic for the C-type family, not per SKU. Only the product-details read (`GET /v4.0/products/GLOBAL-PHO-4X6`) confirms the finish attribute and US `shipsTo`.
+- Neither the C-types page nor the [API reference](https://www.prodigi.com/print-api/docs/reference/) states sRGB. The C-types page offers an ICC profile download. sRGB is the decision's artwork policy, not a published Prodigi requirement.
+- The API reference lists `Standard` (orders) and `standard` (quotes) as shipping methods, `fillPrintArea` as a sizing option, and `default` as the default print area.
+
 ## Ordering gate, quotes and old carts
 
 - `orderGate(variant, mode)`: `unavailable` never passes. A `preview` passes in demo mode as a sandbox fixture and is refused in live mode. Live mode is `TICKETSTUB_RUNTIME_MODE=live`. The browser can only read a `NEXT_PUBLIC_TICKETSTUB_RUNTIME_MODE` mirror, which the deployment has to set alongside it. The server order route should call `orderGate` too, since the browser is not a boundary.
@@ -89,4 +115,4 @@ Until then: no physical variant is `orderable`, destinations are not modeled (th
 
 ## Check
 
-`node scripts/check-capabilities.mjs` (Node 22.15+, no network, no credentials) covers: every tier × size × finish present, Card + Foil, Print + Holo and Framed + Holo explicit, no fabricated dimension, the 18 × 24 / 14 × 20 fixture, quote ids that name the version, a stale cart item flagged, historical receipts untouched, and live mode blocking preview variants.
+`node scripts/check-capabilities.mjs` (Node 22.15+, no network, no credentials) covers: every tier × size × finish present, the sandbox validation product's spec and that it maps to no customer variant, Card + Foil, Print + Holo and Framed + Holo explicit, no fabricated dimension, the 18 × 24 / 14 × 20 fixture, quote ids that name the version, a stale cart item flagged, historical receipts untouched, and live mode blocking preview variants.

@@ -256,6 +256,20 @@
   color: var(--desk-ink-soft);
 }
 
+/* The same sheet a long press opens, for anyone who cannot hold. */
+.allStyles {
+  min-height: 44px;
+  padding: 0 12px;
+  border: 0;
+  background: none;
+  font: var(--type-ui);
+  font-weight: 600;
+  color: var(--desk-ink);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  -webkit-tap-highlight-color: transparent;
+}
+
 .toolsWrap {
   padding: 0 12px;
 }

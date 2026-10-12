@@ -21,8 +21,14 @@ function monthDay(iso: string): string {
   return Number.isNaN(d.getTime()) ? iso : new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", timeZone: "UTC" }).format(d);
 }
 
+/** True only for a real calendar date written YYYY-MM-DD (leap years honoured). Checked on the fields, with no timezone involved. */
 export function isIsoDate(v: string): boolean {
-  return ISO_DATE.test(v);
+  if (!ISO_DATE.test(v)) return false;
+  const [y, m, d] = v.split("-").map(Number);
+  if (m < 1 || m > 12 || d < 1) return false;
+  const leap = (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0;
+  const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return d <= days[m - 1];
 }
 
 export function entries(stub: History, factId?: string): Correction[] {
@@ -167,11 +173,13 @@ function labelFor(factId: string, value: string): string {
 
 /**
  * Record the person's answer for a fact. A different value is a correction; the same value is a confirmation. Either way the
- * research result is kept in the entry. Returns the stub unchanged for an empty value.
+ * research result is kept in the entry. Returns the stub unchanged for an empty value or an impossible ISO date.
  */
 export function applyCorrection(stub: Stub, input: CorrectionInput): Stub {
   const value = input.value.trim();
   if (!value) return stub;
+  // A date answer shaped like YYYY-MM-DD but not on the calendar (2026-02-31) is refused: no fact, event or history change.
+  if (input.factId === "date" && ISO_DATE.test(value) && !isIsoDate(value)) return stub;
   const now = input.now ?? new Date();
   const existing = stub.event.facts.find((f) => f.id === input.factId);
   const base: Fact =

@@ -45,14 +45,20 @@ export async function launchBrowser() {
   );
   let log = "";
   child.stderr.on("data", (d) => (log += d));
+  // A cold headless start on a busy CI runner can take well over 10 s, so allow 30 s. On timeout the child is killed
+  // rather than left running behind the failed check.
   let wsUrl = null;
-  for (let i = 0; i < 100 && !wsUrl; i++) {
+  const deadline = Date.now() + 30_000;
+  while (!wsUrl && Date.now() < deadline) {
     const m = /DevTools listening on (ws:\/\/\S+)/.exec(log);
     if (m) wsUrl = m[1];
     else if (child.exitCode !== null) throw new Error(`Chrome exited early: ${log.slice(0, 300)}`);
     else await sleep(100);
   }
-  if (!wsUrl) throw new Error("Chrome did not report a DevTools address");
+  if (!wsUrl) {
+    child.kill("SIGKILL");
+    throw new Error(`Chrome did not report a DevTools address within 30 s: ${log.slice(0, 300)}`);
+  }
   const conn = await connect(wsUrl);
   return {
     conn,

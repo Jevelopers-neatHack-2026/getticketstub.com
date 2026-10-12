@@ -1,0 +1,37 @@
+{
+  "scenario": "art-changed-after-claim",
+  "description": "Claimed, then the owner edits a printed fact. The approval goes stale, and so does the authorization at dispatch time.",
+  "drivers": [
+    "reference",
+    "live"
+  ],
+  "steps": [
+    {
+      "op": "issue",
+      "auth": "A"
+    },
+    {
+      "op": "claim",
+      "auth": "A",
+      "key": "K1",
+      "expect": {
+        "ok": true,
+        "replayed": false,
+        "as": "c1"
+      }
+    },
+    {
+      "op": "changeDesign",
+      "auth": "A"
+    },
+    {
+      "op": "revalidate",
+      "auth": "A",
+      "key": "K1",
+      "expect": {
+        "ok": false,
+        "reason": "stale_approval"
+      }
+    }
+  ]
+}

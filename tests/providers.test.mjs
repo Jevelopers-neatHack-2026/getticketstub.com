@@ -43,6 +43,8 @@ const agent = await import("../src/app/api/agent/route.ts");
 const art = await import("../src/app/api/art/route.ts");
 const research = await import("../src/app/api/research/route.ts");
 const client = await import("../src/customer/studio/research/client.ts");
+const intake = await import("../src/server/intake-url.ts");
+intake.setTransport((url, init) => globalThis.fetch(url.href, { ...init, redirect: "manual" })); // offline: no sockets, no DNS
 const originalFetch = globalThis.fetch;
 const originalEnv = { ...process.env };
 afterEach(() => { globalThis.fetch = originalFetch; process.env = { ...originalEnv }; });

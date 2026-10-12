@@ -171,6 +171,7 @@ export async function requireStaff(headers: Headers): Promise<RequestContext> {
 
 function contextSecret(): string | null {
   const s = process.env.CONTEXT_SECRET?.trim();
+  if (s?.includes("FIXTURE-ONLY")) return null; // the published fixture keys (fixtures/context, fixtures/approval) are never a server secret
   return s && s.length >= SECRET_MIN ? s : null;
 }
 
@@ -182,6 +183,19 @@ function signingKey(): string {
   if (isLiveRuntime()) throw new HttpError(503, "context_unavailable", "Context tokens aren't set up on this server yet.");
   return (g.__ticketstubContextKey ??= newToken(32));
 }
+
+/** The HMAC key for every token this server signs (context and approval). Throws 503 in live mode without CONTEXT_SECRET. */
+export function tokenSigningKey(): string {
+  return signingKey();
+}
+
+/** "live" only when CONTEXT_SECRET is set and the runtime is live; otherwise "sandbox". */
+export function signingMode(): "sandbox" | "live" {
+  return contextSecret() && isLiveRuntime() ? "live" : "sandbox";
+}
+
+/** The deployment environment, as the context reports it. */
+export const contextEnvironment = environment;
 
 /** A signed, versioned, five-minute copy of a context for a downstream consumer. Throws 503 in live mode without CONTEXT_SECRET. */
 export function issueContextToken(ctx: RequestContext): string {

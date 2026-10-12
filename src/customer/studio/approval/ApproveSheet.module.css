@@ -1,0 +1,182 @@
+/* Review before approving: cream paper only, colour from the desk tokens. Phone first; two columns from 960px. */
+
+.review {
+  display: grid;
+  gap: 18px;
+}
+.lede {
+  margin: 0;
+  font: var(--type-body);
+  color: var(--desk-ink);
+}
+.hash {
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.stubs {
+  display: grid;
+  gap: 18px;
+  justify-items: center;
+  padding: 18px 12px;
+  border-radius: 6px;
+  background: var(--desk-paper-sunk);
+  box-shadow: inset 0 0 0 1px var(--desk-rule);
+}
+.side {
+  --stub-max: 100%;
+  display: grid;
+  gap: 10px;
+  justify-items: center;
+  width: 100%;
+  margin: 0;
+  pointer-events: none;
+}
+.side > figcaption {
+  text-align: center;
+}
+
+.cols {
+  display: grid;
+  gap: 18px;
+}
+.stack {
+  display: grid;
+  gap: 18px;
+  align-content: start;
+}
+.block {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+}
+.head {
+  margin: 0;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--desk-rule);
+  font: 600 1rem/1.3 var(--font-ui), var(--ts-font-ui);
+}
+
+.facts {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+}
+.facts li {
+  display: grid;
+  grid-template-columns: minmax(0, 7.5rem) minmax(0, 1fr);
+  gap: 12px;
+  padding: 7px 0;
+  border-top: 1px dashed var(--desk-rule);
+  font: var(--type-ui);
+}
+.facts li:first-child {
+  border-top: 0;
+}
+.k {
+  font: var(--type-label);
+  color: var(--desk-ink-soft);
+  padding-top: 0.2em;
+}
+.val {
+  overflow-wrap: anywhere;
+}
+
+.comp {
+  margin: 0;
+  display: grid;
+}
+.comp > div {
+  display: grid;
+  grid-template-columns: minmax(0, 7.5rem) minmax(0, 1fr);
+  gap: 12px;
+  padding: 7px 0;
+  border-top: 1px dashed var(--desk-rule);
+  font: var(--type-ui);
+}
+.comp > div:first-child {
+  border-top: 0;
+}
+.comp dt {
+  font: var(--type-label);
+  color: var(--desk-ink-soft);
+  padding-top: 0.2em;
+}
+.comp dd {
+  margin: 0;
+}
+
+.changes {
+  margin: 0;
+  padding-left: 1.1em;
+  display: grid;
+  gap: 4px;
+  font: var(--type-ui);
+}
+.plain {
+  margin: 0;
+  font: var(--type-ui);
+}
+.note {
+  margin: 0;
+  font: var(--type-label);
+  color: var(--desk-ink-soft);
+}
+
+.notOrder {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: var(--desk-paper-sunk);
+  box-shadow: inset 0 0 0 1px var(--desk-rule);
+  font: var(--type-ui);
+}
+.said {
+  margin: 0;
+  min-height: 0;
+  font: var(--type-label);
+  color: var(--desk-error);
+}
+.said:empty {
+  display: none;
+}
+
+/* the ask stays in reach while the sheet scrolls */
+.actions {
+  position: sticky;
+  bottom: calc(-24px - env(safe-area-inset-bottom, 0px));
+  display: grid;
+  gap: 10px;
+  margin: 0 -4px;
+  padding: 12px 4px calc(2px + env(safe-area-inset-bottom, 0px));
+  background: var(--desk-paper-raised);
+  border-top: 1px solid var(--desk-rule);
+}
+
+@media (min-width: 960px) {
+  .stubs {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+    padding: 22px 20px;
+  }
+  .cols {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 28px;
+  }
+  .actions {
+    grid-template-columns: 1fr auto;
+    grid-template-areas: "go cancel";
+    align-items: center;
+    bottom: -24px;
+  }
+  .actions > :first-child {
+    grid-area: go;
+    justify-self: end;
+    order: 2;
+  }
+  .actions > :last-child {
+    grid-area: cancel;
+    justify-self: start;
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "scenario": "first-claim-wins-and-replays",
+  "description": "The first claim commits. The same key again returns the same claim, not a second one. Lookup by key finds it.",
+  "drivers": [
+    "reference",
+    "live"
+  ],
+  "steps": [
+    {
+      "op": "issue",
+      "auth": "A"
+    },
+    {
+      "op": "claim",
+      "auth": "A",
+      "key": "K1",
+      "expect": {
+        "ok": true,
+        "replayed": false,
+        "as": "c1"
+      }
+    },
+    {
+      "op": "claim",
+      "auth": "A",
+      "key": "K1",
+      "expect": {
+        "ok": true,
+        "replayed": true,
+        "is": "c1"
+      }
+    },
+    {
+      "op": "lookup",
+      "key": "K1",
+      "expect": {
+        "found": true,
+        "is": "c1",
+        "authority": "ok"
+      }
+    }
+  ]
+}

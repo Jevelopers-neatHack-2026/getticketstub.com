@@ -249,6 +249,9 @@ These settings require a restart or deployment to reach the running process.
 After integration, check `/api/health` for `storage: "ok"` and
 `persistence: "configured"`, then verify a synthetic saved stub and its artwork
 survive a restart and redeployment. A configured health value proves only that
-paths were set, not that data survived. Back up the database and artwork as a
+paths were set, not that data survived. `/api/health` also returns `commit`, the
+running build's SHA (a host variable such as `SOURCE_COMMIT` or `GIT_COMMIT` if
+set, else `git rev-parse HEAD` at build time, else `null`); compare it with the
+commit you meant to deploy, since a host dashboard may show the latest `main`. Back up the database and artwork as a
 consistent set and prove restore before enabling customer use. Never place
 SQLite in `public/assets`, which is publicly served.

@@ -7,7 +7,7 @@ import { haptic, play } from "@/customer/studio/feedback";
 import { VariantNote } from "@/customer/studio/editor/MaterialPicker";
 import { EDITIONS, MATERIALS, formatMoney, withGuestName, type Edition, type Finish, type Material, type Stub } from "@/customer/studio/types";
 import { api, type OrganizerEventReply } from "@/customer/account/api";
-import { placeOrder, resendOrder, type Placed } from "@/customer/account/orders";
+import { goToCheckout, placeOrder, resendOrder, type Placed } from "@/customer/account/orders";
 import { FeedbackNote, ProgressNote, useProgress } from "@/customer/feedback-messages/progress";
 import { openSignIn } from "@/customer/account/signin";
 import { useAccount } from "@/customer/account/useAccount";
@@ -283,7 +283,7 @@ export default function OrganizerClient() {
 
   /** The order is real only once the server (or, with saving off, this device) has it; a refusal leaves it on this device and says so. */
   function settleOrder(p: Placed | undefined) {
-    if (!p) return;
+    if (!p || goToCheckout(p)) return;
     setHeldOrder(p);
     setOrdered(p.order.id);
   }

@@ -26,6 +26,7 @@ export const ROUTES: readonly Route[] = [
   route("/cart", "Cart"),
   route("/cart/unclaimed/:id", "Unclaimed seat"),
   route("/checkout/:id", "Checkout"),
+  route("/payment/return", "Payment return"),
   route("/claim/g/:token", "Gift claim"),
   route("/claim/:set", "Claim"),
   route("/friends/:id", "Friends"),

@@ -53,7 +53,7 @@ const FINISHES = ["matte", "foil", "holo"];
 const SIZES = { digital: ["file"], card: ["classic", "stamp"], print: ["classic", "stamp"], framed: ["framed"] };
 const get = (m, s, f) => cap.variantFor(m, s, f);
 
-check("the version is pinned", () => assert.equal(cap.CAPABILITY_VERSION, "2026-10-11.1"));
+check("the version is pinned", () => assert.equal(cap.CAPABILITY_VERSION, "2026-10-12.1"));
 
 check("every tier x size x finish is present, once", () => {
   let count = 0;
@@ -88,6 +88,44 @@ check("nothing physical has a confirmed SKU: every physical variant is a preview
     assert.notEqual(v.status, "orderable", v.id);
     assert.notEqual(v.provenance, "confirmed", v.id);
   }
+});
+
+check("the sandbox validation product is GLOBAL-PHO-4X6, 6 × 4 in at 300 dpi, US Standard, and not customer-facing", () => {
+  assert.equal(cap.SANDBOX_VALIDATION_PRODUCTS.length, 1);
+  const p = cap.SANDBOX_VALIDATION_PRODUCTS[0];
+  assert.equal(p.purpose, "sandbox-validation");
+  assert.equal(p.customerFacing, false);
+  assert.equal(p.supplier, "Prodigi");
+  assert.equal(p.sku, "GLOBAL-PHO-4X6");
+  assert.equal(p.printArea, "default");
+  assert.equal(p.orientation, "landscape");
+  assert.deepEqual(p.size, { w: 6, h: 4, unit: "in" });
+  assert.deepEqual(p.artwork, { w: 1800, h: 1200, unit: "px", dpi: 300, colorSpace: "sRGB", format: "jpg", sizing: "fillPrintArea" });
+  assert.equal(p.artwork.w, p.size.w * p.artwork.dpi);
+  assert.equal(p.artwork.h, p.size.h * p.artwork.dpi);
+  assert.equal(p.finish, "lustre");
+  assert.equal(p.destinationCountry, "US");
+  assert.deepEqual(p.shippingMethod, { order: "Standard", quote: "standard" });
+  assert.notEqual(p.provenance, "confirmed", "no authenticated product-details read has been made");
+  assert.match(p.decision, /0003-owner-delegated-decisions-2026-10-12/);
+  assert.match(p.reviewed, /^\d{4}-\d{2}-\d{2}$/);
+  for (const url of p.sources) assert.match(url, /^https:\/\/(www|support)\.prodigi\.com\//);
+  assert.ok(p.sources.includes(cap.SOURCES.cTypes));
+  assert.ok(p.open.some((line) => /customer-facing print-tier mapping/.test(line) && /open product decision/.test(line)));
+  // A Classic stub (5.5 × 2 in at 300 dpi) fits on the sheet; it is composed on it, not trimmed to it.
+  assert.ok(5.5 * 300 <= p.artwork.w && 2 * 300 <= p.artwork.h);
+});
+
+check("the sandbox validation SKU maps to no customer variant and changes no customer claim", () => {
+  for (const p of cap.SANDBOX_VALIDATION_PRODUCTS) {
+    assert.ok(!cap.VARIANTS.some((v) => v.sku === p.sku), `${p.sku} must not be a customer variant's SKU`);
+    assert.ok(!cap.VARIANTS.some((v) => v.id === p.id), `${p.id} must not be a variant`);
+  }
+  for (const v of cap.VARIANTS.filter((x) => x.material === "print")) {
+    assert.notEqual(v.status, "orderable", v.id);
+    assert.ok(!/lustre/i.test(v.finishNote), `${v.id} must not claim lustre`);
+  }
+  assert.ok(!Object.values(cap.SIZE_COPY).some((c) => /6 × 4|4 × 6 in photo/.test(c.measure)), "no size copy names the validation sheet");
 });
 
 check("digital is orderable in the sandbox; digital Holo is a screen-effect preview", () => {

@@ -1,0 +1,53 @@
+{
+  "scenario": "claim-committed-response-lost",
+  "description": "The claim commits and the consumer never sees the response. A retry with the same key returns the committed claim; a different key is already_claimed.",
+  "drivers": [
+    "reference",
+    "live"
+  ],
+  "steps": [
+    {
+      "op": "issue",
+      "auth": "A"
+    },
+    {
+      "op": "claim",
+      "auth": "A",
+      "key": "K1",
+      "expect": {
+        "ok": true,
+        "replayed": false,
+        "as": "c1"
+      },
+      "dropResponse": true
+    },
+    {
+      "op": "lookup",
+      "key": "K1",
+      "expect": {
+        "found": true,
+        "is": "c1",
+        "authority": "ok"
+      }
+    },
+    {
+      "op": "claim",
+      "auth": "A",
+      "key": "K1",
+      "expect": {
+        "ok": true,
+        "replayed": true,
+        "is": "c1"
+      }
+    },
+    {
+      "op": "claim",
+      "auth": "A",
+      "key": "K2",
+      "expect": {
+        "ok": false,
+        "reason": "already_claimed"
+      }
+    }
+  ]
+}

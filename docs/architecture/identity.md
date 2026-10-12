@@ -64,7 +64,7 @@ One table, in code (`CAPABILITY_MATRIX`), repeated in `fixtures/context/README.m
 | --- | --- |
 | Everyone (anonymous, guest, account) | `stub.draft` `art.generate` `agent.use` `share.create` `share.view` `wall.public.view` `claim.view` `file.read` `order.create` |
 | Account, any role | the row above and `account.read` `account.email.change` `account.delete` `session.revoke` `wall.sync` `wall.publish` `order.read` `event.create` `claim.redeem` |
-| `owner` of a stub | `stub.read` `stub.write` `share.revoke` `gift.create` |
+| `owner` of a stub | `stub.read` `stub.write` `share.revoke` `gift.create`, and `stub.approve` and `order.authorize` for a signed-in account only (a guest device that owns a stub is refused) |
 | `captain` of an event | `event.read` `event.publish` `claims.read` |
 | `member`, `viewer` | `stub.read` on a stub, `event.read` on an event (never issued yet) |
 | `staff` (account on `ADMIN_EMAILS`) | `admin.view`, and no project access |
@@ -87,6 +87,10 @@ One table, in code (`CAPABILITY_MATRIX`), repeated in `fixtures/context/README.m
 | `GET /api/gift/<token>` | none: the token is the capability | message and stub | same | same | same |
 | `DELETE /api/gift/<token>` | `share.revoke` on the gift's stub | the device's own gift, else 404 | 200 | 404 | 404 |
 | `POST /api/share/revoke` | `share.revoke` on `stub:<id>` | the device's own shares, else 404 | 200 | 404 | 404 |
+| `POST /api/approvals`, `POST /api/approvals/revoke`, `GET /api/approvals?project=stub:<id>` | `stub.approve` on `stub:<id>` | 404 for a project it can't see, 401 for a guest that owns the stub | 200 | 404 | 404 |
+| `POST /api/approvals/verify` | none: the signed token is the capability (rate limited, no cookie, no Origin) | verdict | verdict | verdict | verdict |
+| `POST /api/order-authorizations`, `POST /api/order-authorizations/revoke`, `GET /api/order-authorizations?project=stub:<id>` | `order.authorize` on `stub:<id>` | 404 for a project it can't see, 401 for a guest that owns the stub | 200 | 404 | 404 |
+| `POST /api/order-authorizations/{verify,claim,revalidate,claims/lookup}` | none of the above: a signed consumer request (`ORDER_AUTH_CONSUMER_KEY`) carrying the signed token | verdict | verdict | verdict | verdict |
 | `POST`/`GET /api/orders` | `order.create` / `order.read` | create with an email / 401 | own orders | not addressable | own |
 | `POST /api/organizer/events` | `event.create` | 401 | caller becomes captain | n/a | same |
 | `GET /api/claim/<token>` | `claim.view` | projected preview | same | same | same |

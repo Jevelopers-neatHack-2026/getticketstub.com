@@ -47,6 +47,8 @@ const { HttpError } = await import("../src/server/http.ts");
 const agent = await import("../src/app/api/agent/route.ts");
 const art = await import("../src/app/api/art/route.ts");
 const research = await import("../src/app/api/research/route.ts");
+const { setTransport } = await import("../src/server/intake-url.ts");
+setTransport((url, init) => globalThis.fetch(url.href, { ...init, redirect: "manual" })); // offline: page fetches go through the per-test fetch stub
 
 const originalFetch = globalThis.fetch;
 const originalEnv = { ...process.env };

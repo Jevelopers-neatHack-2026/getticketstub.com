@@ -92,6 +92,8 @@ export interface ArtLayer {
   seed: number; // deterministic procedural art / foil plate
   vibe?: string; // remix vibe chip used
   provenance: Provenance; // "live" only when a real image model produced it
+  /** The picture was released to fit browser storage and is not on this copy. Shown as unavailable, never as different art. */
+  unavailable?: boolean;
 }
 
 /** The stub's settings when a version was made: lets two versions be compared in words (GT-06A). Absent on older versions. */

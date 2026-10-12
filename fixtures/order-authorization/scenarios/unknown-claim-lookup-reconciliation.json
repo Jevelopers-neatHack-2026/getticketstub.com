@@ -1,0 +1,48 @@
+{
+  "scenario": "unknown-claim-lookup-reconciliation",
+  "description": "A restart with no memory of the outcome. Lookup says not found for a key that never committed (definitive); after the claim it says found.",
+  "drivers": [
+    "reference",
+    "live"
+  ],
+  "steps": [
+    {
+      "op": "issue",
+      "auth": "A"
+    },
+    {
+      "op": "lookup",
+      "key": "K9",
+      "expect": {
+        "found": false
+      }
+    },
+    {
+      "op": "lookup",
+      "key": "K9",
+      "auth": "A",
+      "expect": {
+        "found": false
+      }
+    },
+    {
+      "op": "claim",
+      "auth": "A",
+      "key": "K9",
+      "expect": {
+        "ok": true,
+        "replayed": false,
+        "as": "c1"
+      }
+    },
+    {
+      "op": "lookup",
+      "key": "K9",
+      "expect": {
+        "found": true,
+        "is": "c1",
+        "authority": "ok"
+      }
+    }
+  ]
+}

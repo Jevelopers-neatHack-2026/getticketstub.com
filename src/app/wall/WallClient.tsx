@@ -24,6 +24,7 @@ import { EditIcon, OpenIcon, PrintIcon, ShareIcon } from "./liftIcons";
 import { DeskPage, Pin, chrome as c } from "./chrome";
 import { Canvas, type CanvasApi } from "./Canvas";
 import { dealMissing, freshAngle, type PlacedStub } from "./placement";
+import { DownloadStub } from "@/customer/studio/download/DownloadStub";
 import s from "./wall.module.css";
 
 type Filter = "all" | "concert" | "game" | "show" | "generic";
@@ -746,6 +747,7 @@ function Lamp({ stub, lift, onPutBack, onDelete }: { stub: Stub; lift: Lift; onP
                 <span className={s.toolPrice}>{formatMoney(printPrice(stub))}</span>
               </Tool>
             </Tools>
+            <DownloadStub stub={stub} context="lamp" hint={false} />
             <div className={s.trayFoot}>
               <p className={s.small}>Tap anywhere else, or press Escape, to pin it back.</p>
               <p className={s.small} data-announce>

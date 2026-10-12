@@ -1,0 +1,63 @@
+{
+  "description": "The synthetic stub, size and art bytes every fixture binds, so a consumer can recompute the four hashes itself (see contentHashes in verify.mjs).",
+  "size": "classic",
+  "artBase64": "RklYVFVSRS1BUlQtQllURVMtdjE6IG5vdCBhIHJlYWwgaW1hZ2UsIHN0YW5kcyBpbiBmb3IgdGhlIHN0b3JlZCBQTkc=",
+  "stub": {
+    "event": {
+      "type": "concert",
+      "title": "The Pale Hours",
+      "subtitle": "Night 2 of 3",
+      "venue": "Fixture Hall",
+      "city": "Nowhere",
+      "dateISO": "2026-11-02",
+      "seat": "Row C 14",
+      "facts": [
+        {
+          "id": "f1",
+          "label": "Opening song",
+          "value": "Lantern",
+          "source": "fixture",
+          "provenance": "simulated",
+          "kept": true
+        },
+        {
+          "id": "f2",
+          "label": "Weather",
+          "value": "Rain",
+          "source": "fixture",
+          "provenance": "simulated",
+          "kept": false
+        }
+      ]
+    },
+    "versions": [
+      {
+        "id": "v_fx_2",
+        "edition": "letterpress",
+        "art": {
+          "kind": "image",
+          "src": "/api/files/7f6d596ce486c59ed1caeedf1794fa0a0630d1f7412f4769ea05073367057791.png",
+          "seed": 7,
+          "provenance": "simulated"
+        },
+        "createdAt": "2026-10-10T11:00:00.000Z"
+      }
+    ],
+    "currentVersionId": "v_fx_2",
+    "personal": {
+      "titleFont": 1,
+      "titleColor": "#1b1b1b",
+      "foilTitle": false,
+      "hiddenFields": [],
+      "friends": []
+    },
+    "material": "print",
+    "finish": "matte"
+  },
+  "bound": {
+    "artHash": "7f6d596ce486c59ed1caeedf1794fa0a0630d1f7412f4769ea05073367057791",
+    "designHash": "03f30d4399856e0a45122962e16dc97b5c598f94de07d85f96b70b5c13f25e71",
+    "factsHash": "2bcc1ecbc80c1b01517cd7c4ae20fcaf4e5ae0ca34efc64bb7279df4c3b44cd2",
+    "compositionHash": "e6c94dcf3f5e0f8c8ff7dfe991bdeeab190fe0c34890c1c0e010840c89926c73"
+  }
+}

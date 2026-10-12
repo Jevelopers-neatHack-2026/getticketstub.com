@@ -96,8 +96,15 @@ export const EVENTS = {
   photo_add: ev("memories", { via: oneOf("memories", "agent", "memory_page", "organizer_claim"), result: oneOf("success", "error"), photo_count: COUNT }),
   note_edit: ev("memories", { has_note: bool }),
   agent_open: ev("agent", { via: oneOf("button", "note", "seed") }),
-  agent_message: ev("agent", { intent: oneOf("weather", "photo", "question", "remix"), result: oneOf("live", "rules", "pending", "error"), error_code: ERROR_CODE }),
+  agent_message: ev("agent", { intent: oneOf("weather", "photo", "question", "remix", "action"), result: oneOf("live", "rules", "pending", "error"), error_code: ERROR_CODE }),
   agent_suggestion: ev("agent", { suggestion: oneOf("moodier", "weather", "photo") }),
+  /** One proposed action the owner applied: its kind, how it ended and how long it took. Never the value or the message. */
+  agent_action: ev("agent", {
+    action: oneOf("set_fact", "set_style", "set_material", "set_finish", "set_text", "remix_art", "show_back"),
+    result: oneOf("applied", "failed", "rejected"),
+    error_code: ERROR_CODE,
+    duration_ms: MS,
+  }),
   tear_start: ev("tear", {}),
   tear_cancel: ev("tear", {}),
   tear_complete: ev("tear", { method: oneOf("drag", "keyboard", "auto"), storage: STORAGE }),
@@ -135,6 +142,14 @@ export const EVENTS = {
   gift_unwrap: ev("share", {}),
   /** A download click starts an export; it is not proof a file was saved. */
   story_export: ev("share", { action: oneOf("download"), result: oneOf("generated", "failed") }),
+  /** The stub itself as a PNG (front or back). `result` is the image being made; `method` is how it was handed over, never proof it was kept. */
+  stub_download: ev("share", {
+    side: oneOf("front", "back"),
+    context: oneOf("editor", "lamp", "memory"),
+    method: oneOf("download", "share", "tab", "cancelled", "none"),
+    result: oneOf("generated", "failed"),
+    error_code: ERROR_CODE,
+  }),
   memory_photo_remove: ev("share", { photo_count: COUNT, storage: STORAGE }),
   stop_sharing_stub: ev("share", { result: oneOf("saved", "error"), error_code: ERROR_CODE }),
 

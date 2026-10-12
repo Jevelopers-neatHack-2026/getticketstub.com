@@ -1,0 +1,34 @@
+{
+  "scenario": "concurrent-claim-same-key",
+  "description": "Eight submissions of the same command (one key) race. One commits; the rest replay the same claim. Never a second consume.",
+  "drivers": [
+    "reference",
+    "live"
+  ],
+  "steps": [
+    {
+      "op": "issue",
+      "auth": "A"
+    },
+    {
+      "op": "parallel",
+      "auth": "A",
+      "keys": [
+        "K1",
+        "K1",
+        "K1",
+        "K1",
+        "K1",
+        "K1",
+        "K1",
+        "K1"
+      ],
+      "expect": {
+        "ok": 8,
+        "created": 1,
+        "reasons": {},
+        "sameClaim": true
+      }
+    }
+  ]
+}

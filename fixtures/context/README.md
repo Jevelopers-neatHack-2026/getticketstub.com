@@ -36,7 +36,7 @@ signature HMAC-SHA256(key, base64url(header) + "." + base64url(payload))
 | --- | --- |
 | Everyone (anonymous, guest, account) | `stub.draft` `art.generate` `agent.use` `share.create` `share.view` `wall.public.view` `claim.view` `file.read` `order.create` |
 | Account, any role | the row above and `account.read` `account.email.change` `account.delete` `session.revoke` `wall.sync` `wall.publish` `order.read` `event.create` `claim.redeem` |
-| `owner` of a stub | `stub.read` `stub.write` `share.revoke` `gift.create` |
+| `owner` of a stub | `stub.read` `stub.write` `share.revoke` `gift.create`, and `stub.approve` and `order.authorize` for a signed-in account only (a guest device that owns a stub is refused) |
 | `captain` of an event | `event.read` `event.publish` `claims.read` |
 | `member`, `viewer` | `stub.read` on a stub, `event.read` on an event (modelled, never issued yet) |
 | `staff` (account on `ADMIN_EMAILS`) | `admin.view`, and no project access |

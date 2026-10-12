@@ -1,0 +1,38 @@
+{
+  "scenario": "renewal-supersedes-older",
+  "description": "The owner renews the same order (same orderRef, new idempotency key). The older authorization reads stale; only the newest can be claimed.",
+  "drivers": [
+    "reference",
+    "live"
+  ],
+  "steps": [
+    {
+      "op": "issue",
+      "auth": "A"
+    },
+    {
+      "op": "issue",
+      "auth": "A2",
+      "orderOf": "A"
+    },
+    {
+      "op": "claim",
+      "auth": "A",
+      "key": "K1",
+      "expect": {
+        "ok": false,
+        "reason": "stale"
+      }
+    },
+    {
+      "op": "claim",
+      "auth": "A2",
+      "key": "K2",
+      "expect": {
+        "ok": true,
+        "replayed": false,
+        "as": "c1"
+      }
+    }
+  ]
+}

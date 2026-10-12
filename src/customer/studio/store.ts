@@ -3,8 +3,9 @@
 // Old share links carry the stub itself (see encodeStub),
 // so memory pages work without a backend. Storage can throw (private mode): every access is guarded.
 import type { Correction, Stub } from "./types";
+import { releasable, releaseOldest, retainArt } from "./versions/retention";
 import { applyCorrection, entries, undoCorrection, type CorrectionInput } from "./facts/corrections";
-import { storageFailure } from "@/customer/flows/events";
+import { storageFailure, storageReason } from "@/customer/flows/events";
 
 const KEY = "ticketstub.wall.v1";
 const DELETED_KEY = "ticketstub.wall.deleted.v1";
@@ -52,26 +53,42 @@ export function loadWall(): Stub[] {
   }
 }
 
-/** Drop inline image data from non-current versions: live art is a 200-400 KB data URL each. */
-function slim(stub: Stub): Stub {
-  return {
-    ...stub,
-    versions: stub.versions.map((v) =>
-      v.id !== stub.currentVersionId && v.art.src?.startsWith("data:") ? { ...v, art: { ...v.art, kind: "procedural", src: undefined } } : v,
-    ),
-  };
+/**
+ * Write the wall without telling the sync (the sync's own result goes through here). True when it was stored.
+ * Every version keeps its picture. Only when the browser says it is full are the oldest unselected pictures released
+ * (marked unavailable, never swapped for other art) until it fits: a bounded search, log2(n) extra writes at most.
+ * The selected version's picture is never released; if even that doesn't fit, nothing is written and the wall stays as it was.
+ */
+export function writeWall(stubs: Stub[]): boolean {
+  return writeWallDetailed(stubs).ok;
 }
 
-/** Write the wall without telling the sync (the sync's own result goes through here). True when it was stored. */
-export function writeWall(stubs: Stub[]): boolean {
-  try {
-    localStorage.setItem(KEY, JSON.stringify(stubs.map(slim)));
-    return true;
-  } catch (e) {
-    /* storage unavailable or full: the session still works in memory */
-    storageFailure("wall", "write", e);
-    return false;
+/** As writeWall, plus how many older pictures had to be released to fit (0 when everything was kept). */
+export function writeWallDetailed(stubs: Stub[]): { ok: boolean; released: number } {
+  const total = releasable(stubs).length;
+  const attempt = (n: number): unknown => {
+    try {
+      localStorage.setItem(KEY, JSON.stringify(releaseOldest(stubs, n)));
+      return undefined;
+    } catch (e) {
+      return e ?? new Error("storage write failed");
+    }
+  };
+  const first = attempt(0);
+  if (first === undefined) return { ok: true, released: 0 };
+  /* storage unavailable or full: the session still works in memory */
+  storageFailure("wall", "write", first);
+  if (storageReason(first) !== "quota" || total === 0) return { ok: false, released: 0 };
+  if (attempt(total) !== undefined) return { ok: false, released: 0 }; // even the selected pictures alone don't fit
+  // Fewest releases that fit: the smallest n in (0, total] that succeeds. Failed writes leave the old value in place.
+  let lo = 1;
+  let hi = total;
+  while (lo < hi) {
+    const mid = Math.floor((lo + hi) / 2);
+    if (attempt(mid) === undefined) hi = mid;
+    else lo = mid + 1;
   }
+  return attempt(lo) === undefined ? { ok: true, released: lo } : { ok: false, released: 0 };
 }
 
 /** True when the wall was stored. Callers that used to ignore the result still can. */
@@ -87,10 +104,12 @@ export function getStub(id: string): Stub | undefined {
 
 /** Save one stub to the front of the wall. True when it is stored on this device; false means it lives in memory only. */
 export function upsertStub(stub: Stub): boolean {
-  const wall = loadWall().filter((s) => s.id !== stub.id);
+  const stored = loadWall();
+  const wall = stored.filter((s) => s.id !== stub.id);
   const gone = loadDeleted();
   if (gone.includes(stub.id)) saveDeleted(gone.filter((id) => id !== stub.id));
-  return saveWall([{ ...stub, updatedAt: Date.now() }, ...wall]);
+  // a copy that had to let go of a picture takes it back from what is stored, if that still has it
+  return saveWall([{ ...retainArt(stub, stored.find((s) => s.id === stub.id)), updatedAt: Date.now() }, ...wall]);
 }
 
 /** A stub's correction history, oldest first. Entries are only ever appended (an undo is a new entry). */

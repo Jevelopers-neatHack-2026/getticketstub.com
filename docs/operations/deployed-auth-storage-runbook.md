@@ -2,7 +2,7 @@
 
 What CI and a local build already prove is in the `mail-off` and `backup-drill` suites of `npm run verify:product` (see the README). The steps below need the host's settings, the live site or the private disk, so only the deploy owner can do them. Do them on Preview first, then Publish. Record only pass/fail, counts and hashes, never row contents, tokens or addresses.
 
-Before you start: `https://getticketstub.com/api/health` should answer `{"ok":true,...,"storage":"ok","persistence":"configured"}`. On 2026-10-12 it did, with `"mode":"live"`.
+Before you start: `https://getticketstub.com/api/health` should answer `{"ok":true,...,"storage":"ok","persistence":"configured"}`. On 2026-10-12 it did, with `"mode":"live"`. Its `commit` field is the running build's SHA; confirm it matches the commit you deployed.
 
 ## 1. No sandbox sign-in links (tracker item c)
 

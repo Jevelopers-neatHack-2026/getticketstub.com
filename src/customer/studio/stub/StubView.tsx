@@ -23,6 +23,8 @@ export type StubElement = "title" | "subtitle" | "facts" | "art";
 export interface StubViewProps {
   stub: Stub;
   flipped?: boolean;
+  /** Export mode (src/customer/studio/download): one face, flat on the page, as printed. No tilt, flip, light, shadow or animation. */
+  still?: "front" | "back";
   tilt?: boolean;
   size?: "sm" | "md" | "lg";
   selected?: string | null;
@@ -73,6 +75,20 @@ function initials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
   if (!parts.length) return "?";
   return (parts[0][0] + (parts.length > 1 ? parts[parts.length - 1][0] : "")).toUpperCase();
+}
+
+/** The paper's noise as an inline SVG, for export mode only: the screen tiles it as a CSS data-URL background, which the PNG rasteriser cannot carry (its "#" cuts the URL). Same filter, same alpha. */
+function GrainNoise() {
+  const id = `g${useId().replace(/[^a-zA-Z0-9]/g, "")}`;
+  return (
+    <svg width="100%" height="100%" aria-hidden="true" style={{ position: "absolute", inset: 0 }}>
+      <filter id={id} x="0" y="0" width="100%" height="100%">
+        <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="3" stitchTiles="stitch" />
+        <feColorMatrix values="0 0 0 0 0.55 0 0 0 0 0.5 0 0 0 0 0.42 0 0 0 0.55 0" />
+      </filter>
+      <rect width="100%" height="100%" filter={`url(#${id})`} />
+    </svg>
+  );
 }
 
 /* ------------------------------------------------------------------ */
@@ -577,7 +593,7 @@ const FRONTS: Record<Edition, (p: { c: Ctx }) => ReactNode> = {
   classic: ClassicFront,
 };
 
-export function StubView({ stub, flipped = false, tilt = false, size = "md", selected = null, onSelect, onChipTap, className }: StubViewProps) {
+export function StubView({ stub, flipped = false, still, tilt = false, size = "md", selected = null, onSelect, onChipTap, className }: StubViewProps) {
   const tiltRef = useRef<HTMLDivElement | null>(null);
   const { requestGyro } = useTilt(tiltRef, tilt);
   const version = currentVersion(stub);
@@ -631,7 +647,7 @@ export function StubView({ stub, flipped = false, tilt = false, size = "md", sel
   } as CSSProperties;
 
   // The name is short (what it is); the description carries the rest (when, where, which facts, how it is finished).
-  const label = `${e.title}, ${template?.name ?? meta.label} ${template ? "style" : "edition"} stub${flipped ? ", back" : ""}`;
+  const label = `${e.title}, ${template?.name ?? meta.label} ${template ? "style" : "edition"} stub${flipped || still === "back" ? ", back" : ""}`;
   const description = [
     e.subtitle,
     e.venue,
@@ -641,7 +657,7 @@ export function StubView({ stub, flipped = false, tilt = false, size = "md", sel
     c.kept.length ? `Facts on the stub: ${c.kept.map((f) => f.label).join(", ")}` : undefined,
     c.unsure.length ? `${c.unsure.length} unsure ${c.unsure.length === 1 ? "fact" : "facts"} to check` : undefined,
     `${stub.finish} finish`,
-    flipped ? "Showing the back" : "Showing the front",
+    flipped || still === "back" ? "Showing the back" : "Showing the front",
   ]
     .filter(Boolean)
     .join(". ");
@@ -649,7 +665,7 @@ export function StubView({ stub, flipped = false, tilt = false, size = "md", sel
 
   return (
     <figure
-      className={cx(s.stub, template ? s.svgStub : s[edition], s[orientation], flipped && s.flipped, className)}
+      className={cx(s.stub, template ? s.svgStub : s[edition], s[orientation], flipped && !still && s.flipped, still && s.still, still === "back" && s.stillBack, className)}
       style={vars}
       aria-label={label}
       aria-describedby={descId}
@@ -679,13 +695,17 @@ export function StubView({ stub, flipped = false, tilt = false, size = "md", sel
               <div className={cx(s.face, s.front)} aria-hidden={flipped || undefined}>
                 <div className={s.paper} />
                 <Front c={c} />
-                <div className={s.grain} aria-hidden="true" />
+                <div className={s.grain} aria-hidden="true">
+                  {still && <GrainNoise />}
+                </div>
                 <Foil finish={stub.finish} seed={stub.id} />
               </div>
               <div className={cx(s.face, s.back)} aria-hidden={!flipped || undefined}>
                 <div className={s.paper} />
                 <Back c={c} />
-                <div className={s.grain} aria-hidden="true" />
+                <div className={s.grain} aria-hidden="true">
+                  {still && <GrainNoise />}
+                </div>
                 <Foil finish="matte" seed={stub.id + ":back"} />
               </div>
             </>

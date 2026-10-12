@@ -1,0 +1,63 @@
+{
+  "scenario": "revoke-after-claim-before-dispatch",
+  "description": "Claimed, then revoked before transport. Revalidate at dispatch says revoked; a replay of the claim says revoked too; lookup still reports the claim fact with revoked authority.",
+  "drivers": [
+    "reference",
+    "live"
+  ],
+  "steps": [
+    {
+      "op": "issue",
+      "auth": "A"
+    },
+    {
+      "op": "claim",
+      "auth": "A",
+      "key": "K1",
+      "expect": {
+        "ok": true,
+        "replayed": false,
+        "as": "c1"
+      }
+    },
+    {
+      "op": "revalidate",
+      "auth": "A",
+      "key": "K1",
+      "expect": {
+        "ok": true
+      }
+    },
+    {
+      "op": "revoke",
+      "auth": "A"
+    },
+    {
+      "op": "revalidate",
+      "auth": "A",
+      "key": "K1",
+      "expect": {
+        "ok": false,
+        "reason": "revoked"
+      }
+    },
+    {
+      "op": "claim",
+      "auth": "A",
+      "key": "K1",
+      "expect": {
+        "ok": false,
+        "reason": "revoked"
+      }
+    },
+    {
+      "op": "lookup",
+      "key": "K1",
+      "expect": {
+        "found": true,
+        "is": "c1",
+        "authority": "revoked"
+      }
+    }
+  ]
+}

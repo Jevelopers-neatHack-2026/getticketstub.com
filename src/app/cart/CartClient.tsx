@@ -118,12 +118,13 @@ export default function CartClient() {
       quoteId: items.length === 1 ? items[0].quoteId : undefined,
       method: "card",
       email: receipt.email || undefined,
+    }, () => {
+      for (const i of items) {
+        const st = stubs[i.stubId];
+        if (st) upsertStub({ ...st, material: i.material, finish: i.finish, torn: true });
+      }
+      saveCart([]);
     });
-    for (const i of items) {
-      const st = stubs[i.stubId];
-      if (st) upsertStub({ ...st, material: i.material, finish: i.finish, torn: true });
-    }
-    saveCart([]);
     haptic([18, 40, 28]);
   }
 

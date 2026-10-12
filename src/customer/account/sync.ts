@@ -4,6 +4,7 @@
 // A failed request changes nothing locally, so no stub is ever lost: the next trigger tries again.
 import { WALL_CHANGED, loadDeleted, loadWall, saveDeleted, writeWall } from "@/customer/studio/store";
 import type { Stub } from "@/customer/studio/types";
+import { retainArt } from "@/customer/studio/versions/retention";
 import { api } from "./api";
 import { isSavingOff } from "./saving";
 import { errorCode, flow } from "@/customer/flows/events";
@@ -24,7 +25,8 @@ export function foldWall(current: Stub[], remote: Stub[], deleted: string[], sen
     const mine = byId.get(s.id);
     if (!mine) out.push(s);
     // photos stay on the device: the server keeps none, so its copy never wipes ours
-    else out.push(at(mine) > at(s) ? mine : { ...s, photos: mine.photos.length ? mine.photos : s.photos });
+    // a version whose picture one side let go of takes it from the other, when that still has it
+    else out.push(at(mine) > at(s) ? retainArt(mine, s) : retainArt({ ...s, photos: mine.photos.length ? mine.photos : s.photos }, mine));
   }
   for (const s of current) {
     if (seen.has(s.id)) continue;

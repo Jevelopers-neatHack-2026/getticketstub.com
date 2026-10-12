@@ -52,6 +52,8 @@ export function useDialogFocus(ref: RefObject<HTMLElement | null>, active: boole
       const first = list[0];
       const last = list[list.length - 1];
       const at = document.activeElement;
+      // A dialog opened from inside this one holds Tab itself.
+      if (at && !root.contains(at) && at.closest('[aria-modal="true"]')) return;
       if (!root.contains(at)) {
         e.preventDefault();
         (e.shiftKey ? last : first).focus();

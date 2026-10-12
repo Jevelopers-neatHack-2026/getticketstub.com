@@ -4,7 +4,7 @@ The customer-facing studio. Give it an event link, watch the agent research the 
 
 The studio is always cream paper. There is no dark stage: printing, the finish picker, the tear and a lifted stub all stay on the desk.
 
-Design docs, wireframes and the coverage matrix are not on `main`; they are in `docs/studio/` on the [`docs/studio-design`](https://github.com/Jevelopers-neatHack-2026/getticketstub.com/tree/docs/studio-design/docs/studio) branch. Brand assets come from the `brand-kit` repo (`src/brand/tokens.css`, `public/brand/`).
+Design docs, wireframes and the coverage matrix are in [`docs/studio/`](../../../docs/studio/README.md). Brand assets come from the `brand-kit` repo (`src/brand/tokens.css`, `public/brand/`).
 
 ## Run it
 

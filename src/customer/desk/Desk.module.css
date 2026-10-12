@@ -657,7 +657,8 @@
     left: auto;
     right: 24px;
     bottom: 24px;
-    top: 24px;
+    /* below the fixed cart button in the top-right corner (--corner-reserve is 0 without the nav) */
+    top: max(24px, calc(var(--corner-reserve, 0px) * 0.75));
     width: 420px;
     max-height: none;
     border-radius: 4px;
@@ -669,6 +670,9 @@
   }
   .sheetGrip {
     display: none;
+  }
+  .sheetWide {
+    width: min(860px, calc(100vw - var(--nav-w, 0px) - 48px));
   }
 }
 

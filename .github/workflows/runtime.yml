@@ -26,9 +26,9 @@ jobs:
         run: node scripts/check-analytics-order.mjs
       - name: Verify analytics customer journeys in Chrome (offline, synthetic ID, phone and desktop)
         run: node scripts/check-analytics-journeys.mjs
-      - name: Verify authentication and storage fixtures
+      - name: Verify authentication, storage fixtures and the agent journey (Chrome, offline)
         run: |
-          for suite in foundation access degraded mail-off backup-drill; do
+          for suite in foundation access approval order-auth degraded mail-off backup-drill download agent; do
             npm run verify:product -- --suite "$suite" --mode fixture --evidence-dir /tmp/ticketstub-product-evidence
           done
       - name: Verify production server on platform port

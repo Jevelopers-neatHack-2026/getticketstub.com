@@ -1,0 +1,16 @@
+{
+  "warning": "FIXTURE ONLY. NEVER PRODUCTION. Public on purpose: it signs test authorizations that carry mode fixture, and test consumer requests. Never set either key on a server; the server refuses any secret containing FIXTURE-ONLY.",
+  "kid": "fixture",
+  "alg": "HS256",
+  "key": "FIXTURE-ONLY-NEVER-PRODUCTION--ticketstub-order-authorization-key-v1",
+  "consumerKey": "FIXTURE-ONLY-NEVER-PRODUCTION--ticketstub-order-auth-consumer-key-v1",
+  "consumerRequestExample": {
+    "method": "POST",
+    "path": "/api/order-authorizations/claims/lookup",
+    "body": "{\"tenant\":\"acc_FIXTURE_owner1\",\"project\":\"stub:stub_fx_1\",\"idempotencyKey\":\"claim_FIXTURE_key_K1\"}",
+    "timestamp": 1791633600000,
+    "signature": "e0677d4cb49cf171b17bbf6e6ceca29e453452daa4d579a14cc3bfb53896ea1d",
+    "headers": "x-ticketstub-consumer-timestamp, x-ticketstub-consumer-signature",
+    "signs": "HMAC-SHA256 hex over `${timestamp}\\n${METHOD}\\n${path}\\n${sha256 hex of the exact body text}`"
+  }
+}

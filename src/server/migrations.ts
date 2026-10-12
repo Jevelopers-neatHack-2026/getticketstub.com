@@ -142,6 +142,115 @@ const MIGRATIONS: string[] = [
     SELECT RAISE(ABORT, 'events are kept for 90 days');
   END;
   `,
+  `
+  -- Artwork approvals (ticketstub.approval/1). Append-only: an approval is never updated, and a revocation is a
+  -- new row in its own table. Rows leave only with their account (account deletion), never before: see src/server/approval.ts.
+  -- record is the signed record as canonical JSON (hashes, ids and times only); the token is re-derived from it.
+  CREATE TABLE approvals (
+    seq INTEGER PRIMARY KEY AUTOINCREMENT,
+    id TEXT NOT NULL UNIQUE,
+    tenant TEXT NOT NULL,
+    project TEXT NOT NULL,
+    purpose TEXT NOT NULL,
+    idem_key TEXT NOT NULL,
+    record TEXT NOT NULL,
+    issued_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL
+  );
+  CREATE INDEX approvals_project ON approvals (tenant, project, seq);
+  CREATE TABLE approval_revocations (
+    seq INTEGER PRIMARY KEY AUTOINCREMENT,
+    approval_id TEXT NOT NULL UNIQUE REFERENCES approvals (id),
+    tenant TEXT NOT NULL,
+    revoked_at INTEGER NOT NULL
+  );
+  CREATE TRIGGER approvals_no_update BEFORE UPDATE ON approvals BEGIN
+    SELECT RAISE(ABORT, 'approvals are append-only');
+  END;
+  CREATE TRIGGER approval_revocations_no_update BEFORE UPDATE ON approval_revocations BEGIN
+    SELECT RAISE(ABORT, 'revocations are append-only');
+  END;
+  CREATE TRIGGER approvals_keep BEFORE DELETE ON approvals
+  WHEN EXISTS (SELECT 1 FROM accounts WHERE id = OLD.tenant) BEGIN
+    SELECT RAISE(ABORT, 'approvals are kept while their account exists');
+  END;
+  CREATE TRIGGER approval_revocations_keep BEFORE DELETE ON approval_revocations
+  WHEN EXISTS (SELECT 1 FROM accounts WHERE id = OLD.tenant) BEGIN
+    SELECT RAISE(ABORT, 'revocations are kept while their account exists');
+  END;
+  `,
+  `
+  -- What was printed when an approval was issued, in words, so the owner's review sheet can say what changed since
+  -- (GT-06B.1). Owner-only: it is never in the signed record or the token and the verifier never reads it. Append-only,
+  -- and it leaves only with its account, like the approval it describes.
+  CREATE TABLE approval_summaries (
+    approval_id TEXT PRIMARY KEY REFERENCES approvals (id),
+    tenant TEXT NOT NULL,
+    summary TEXT NOT NULL
+  );
+  CREATE TRIGGER approval_summaries_no_update BEFORE UPDATE ON approval_summaries BEGIN
+    SELECT RAISE(ABORT, 'approval summaries are append-only');
+  END;
+  `,
+  `
+  -- Order authorizations (ticketstub.order-authorization/1). Append-only, like approvals: an authorization is never updated, a revocation
+  -- and a claim are new rows in their own tables, and rows leave only with their account. A claim is the single use of an authorization:
+  -- UNIQUE on the authorization, on the logical action and on (consumer, idem_key) is what makes "first claim wins" hold across processes.
+  -- record is the signed record as canonical JSON (hashes, references and times only); the token is re-derived from it.
+  CREATE TABLE order_authorizations (
+    seq INTEGER PRIMARY KEY AUTOINCREMENT,
+    id TEXT NOT NULL UNIQUE,
+    tenant TEXT NOT NULL,
+    project TEXT NOT NULL,
+    action_id TEXT NOT NULL,
+    idem_key TEXT NOT NULL,
+    req_hash TEXT NOT NULL,
+    record TEXT NOT NULL,
+    issued_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL,
+    UNIQUE (tenant, idem_key)
+  );
+  CREATE INDEX order_authorizations_project ON order_authorizations (tenant, project, seq);
+  CREATE INDEX order_authorizations_action ON order_authorizations (action_id, seq);
+  CREATE TABLE order_authorization_revocations (
+    seq INTEGER PRIMARY KEY AUTOINCREMENT,
+    authorization_id TEXT NOT NULL UNIQUE REFERENCES order_authorizations (id),
+    tenant TEXT NOT NULL,
+    revoked_at INTEGER NOT NULL
+  );
+  CREATE TABLE order_authorization_claims (
+    seq INTEGER PRIMARY KEY AUTOINCREMENT,
+    authorization_id TEXT NOT NULL UNIQUE REFERENCES order_authorizations (id),
+    action_id TEXT NOT NULL UNIQUE,
+    tenant TEXT NOT NULL,
+    consumer TEXT NOT NULL,
+    idem_key TEXT NOT NULL,
+    claim_ref TEXT NOT NULL UNIQUE,
+    claimed_at INTEGER NOT NULL,
+    UNIQUE (consumer, idem_key)
+  );
+  CREATE TRIGGER order_authorizations_no_update BEFORE UPDATE ON order_authorizations BEGIN
+    SELECT RAISE(ABORT, 'order authorizations are append-only');
+  END;
+  CREATE TRIGGER order_authorization_revocations_no_update BEFORE UPDATE ON order_authorization_revocations BEGIN
+    SELECT RAISE(ABORT, 'order authorization revocations are append-only');
+  END;
+  CREATE TRIGGER order_authorization_claims_no_update BEFORE UPDATE ON order_authorization_claims BEGIN
+    SELECT RAISE(ABORT, 'order authorization claims are append-only');
+  END;
+  CREATE TRIGGER order_authorizations_keep BEFORE DELETE ON order_authorizations
+  WHEN EXISTS (SELECT 1 FROM accounts WHERE id = OLD.tenant) BEGIN
+    SELECT RAISE(ABORT, 'order authorizations are kept while their account exists');
+  END;
+  CREATE TRIGGER order_authorization_revocations_keep BEFORE DELETE ON order_authorization_revocations
+  WHEN EXISTS (SELECT 1 FROM accounts WHERE id = OLD.tenant) BEGIN
+    SELECT RAISE(ABORT, 'order authorization revocations are kept while their account exists');
+  END;
+  CREATE TRIGGER order_authorization_claims_keep BEFORE DELETE ON order_authorization_claims
+  WHEN EXISTS (SELECT 1 FROM accounts WHERE id = OLD.tenant) BEGIN
+    SELECT RAISE(ABORT, 'order authorization claims are kept while their account exists');
+  END;
+  `,
 ];
 
 export function migrate(db: DatabaseSync): void {

@@ -1,0 +1,34 @@
+{
+  "scenario": "claim-after-revoke",
+  "description": "Revoked before any claim: the claim is refused and nothing is recorded, so lookup finds nothing.",
+  "drivers": [
+    "reference",
+    "live"
+  ],
+  "steps": [
+    {
+      "op": "issue",
+      "auth": "A"
+    },
+    {
+      "op": "revoke",
+      "auth": "A"
+    },
+    {
+      "op": "claim",
+      "auth": "A",
+      "key": "K1",
+      "expect": {
+        "ok": false,
+        "reason": "revoked"
+      }
+    },
+    {
+      "op": "lookup",
+      "key": "K1",
+      "expect": {
+        "found": false
+      }
+    }
+  ]
+}

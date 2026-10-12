@@ -29,6 +29,8 @@ interface ArtRequest {
   edition?: Edition;
   /** Optional: true for the very first version of a stub (no remix yet). */
   first?: boolean;
+  /** Demo and fixture runtimes only: answer as a failed art provider, so the agent's recovery path can be shown and tested. */
+  simulate?: "failure";
 }
 
 const EVENT_TYPES = new Set<EventType>(["concert", "game", "show", "generic"]);
@@ -112,6 +114,13 @@ export const POST = observeRoute("art", async (req: Request) => {
       { error: { code: "art_limit", message: "You've made a lot of art today. Procedural art still works, and new art comes back tomorrow." }, retryAt: quota.retryAt, art },
       429,
     );
+  }
+
+  // After the quota check, so a forced failure is metered like a real request and can't be looped unmetered.
+  if (body.simulate === "failure" && process.env.TICKETSTUB_RUNTIME_MODE !== "live") {
+    annotate({ code: "provider_unavailable", dependency: "provider" });
+    await recordEvent(req, "art_failed", { code: "provider_unavailable" }, { ctx: rc });
+    return reply({ error: { code: "provider_unavailable", message: "The selected AI service could not complete this request." } }, 502);
   }
 
   if (saving) {

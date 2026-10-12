@@ -26,13 +26,22 @@ This is a hackathon prototype. Implemented in this repository:
 - Demo mode by default: fixture research (neatHack, The Pale Hours, Harbour FC), simulated art and agent replies, sandbox checkout, and a visible demo banner. Provider keys alone never enable external calls.
 - An opt-in `TICKETSTUB_RUNTIME_MODE=live` development mode with direct Anthropic/OpenAI paths or per-capability OpenRouter routing ([`src/server/ai/providers.ts`](src/server/ai/providers.ts)).
 - Offline provider tests and a production smoke script, run by the [runtime workflow](.github/workflows/runtime.yml).
+- Magic-link sign-in, server-side SQLite storage and file-backed artwork ([PR #20](https://github.com/Jevelopers-neatHack-2026/getticketstub.com/pull/20)) are merged, and [PR #33](https://github.com/Jevelopers-neatHack-2026/getticketstub.com/pull/33) fixed the emailed sign-in confirmation (`bad_origin` when the browser sent no referrer).
+
+Verified on the published host (getticketstub.com, GoDaddy Plus Launch) on 2026-10-11 and 2026-10-12:
+
+- `/api/health` reports `mode=live`, `storage=ok` and `persistence=configured`, with `TICKETSTUB_DB=/private/ticketstub.sqlite` and `TICKETSTUB_FILES=/private/files`.
+- Resend delivered a real sign-in email. `TICKETSTUB_SANDBOX_MAIL` is unset there, so sign-in returns no on-screen link (the `mail-off` check in the [evidence](docs/operations/evidence/auth-storage-2026-10-12) covers this).
+- A synthetic stub and its artwork saved through `/api/wall/sync` survived a Live redeploy (saved 2026-10-11T20:05Z, read again 2026-10-12T03:27Z).
+- A fixture-mode backup and restore drill passes ([PR #63](https://github.com/Jevelopers-neatHack-2026/getticketstub.com/pull/63), [evidence](docs/operations/evidence/auth-storage-2026-10-12)). Restoring a real host backup has not been demonstrated; see the [owner runbook](docs/operations/deployed-auth-storage-runbook.md).
 
 Pending or outside this repository's current state:
 
-- Publishing to Live needs separate authorization; the preview deployment is not a production release.
-- Production identity, budget and URL access controls ([#7](https://github.com/Jevelopers-neatHack-2026/getticketstub.com/issues/7)–[#13](https://github.com/Jevelopers-neatHack-2026/getticketstub.com/issues/13)) and the WP02 customer application epic ([#1](https://github.com/Jevelopers-neatHack-2026/getticketstub.com/issues/1)) are not done. Live mode is not a production deployment.
-- PR [#20](https://github.com/Jevelopers-neatHack-2026/getticketstub.com/pull/20) adds magic-link sign-in, server-side SQLite storage and file-backed artwork. Real email delivery, target-host storage durability and integrated release acceptance remain unverified. Wallet passes, QR codes and checkout remain simulated.
-- All [acceptance criteria](docs/architecture/ACCEPTANCE.md) remain planned in the [master checklist](https://github.com/Jevelopers-neatHack-2026/integration-evals/blob/main/planning/acceptance-checklist.md).
+- Real payment: Dodo ([#66](https://github.com/Jevelopers-neatHack-2026/getticketstub.com/pull/66)) and Stripe ([#71](https://github.com/Jevelopers-neatHack-2026/getticketstub.com/pull/71)) are open, so checkout is still sandbox.
+- The order authorization issuer and verifier ([#41](https://github.com/Jevelopers-neatHack-2026/getticketstub.com/pull/41)) and the artwork approval record and verifier ([#37](https://github.com/Jevelopers-neatHack-2026/getticketstub.com/pull/37)) are merged. An approval does not authorize a purchase. Still open: paid download ([#61](https://github.com/Jevelopers-neatHack-2026/getticketstub.com/pull/61)), versioned order-authorization signing keys ([#76](https://github.com/Jevelopers-neatHack-2026/getticketstub.com/pull/76)) and versioned approval signing keys ([#75](https://github.com/Jevelopers-neatHack-2026/getticketstub.com/pull/75)).
+- Wallet passes and QR codes remain simulated.
+- Publishing to Live needs separate authorization, and production identity, budget and URL access controls ([#7](https://github.com/Jevelopers-neatHack-2026/getticketstub.com/issues/7)–[#13](https://github.com/Jevelopers-neatHack-2026/getticketstub.com/issues/13)) and the WP02 customer application epic ([#1](https://github.com/Jevelopers-neatHack-2026/getticketstub.com/issues/1)) are not done.
+- Integrated v1 acceptance ([#6](https://github.com/Jevelopers-neatHack-2026/getticketstub.com/issues/6)) is not met. All [acceptance criteria](docs/architecture/ACCEPTANCE.md) remain planned in the [master checklist](https://github.com/Jevelopers-neatHack-2026/integration-evals/blob/main/planning/acceptance-checklist.md).
 
 ## Quickstart
 
@@ -100,6 +109,8 @@ Node 22.13 or newer (the database is `node:sqlite`; it may print an experimental
 | `TICKETSTUB_FILES` | Folder for stub art. Embedded images (PNG, JPEG, WebP, up to 6 MB each) are moved out of the database into content-hashed files here and served from `/api/files/<hash>.<ext>`. Default `./data/files` (git-ignored). Back it up with the database. |
 | `TICKETSTUB_SANDBOX_MAIL` | Set to `1` to return `devLink` (and log the link) when there is no mail key, even in production. Never leave it on once Resend is set up. |
 | `TICKETMASTER_API_KEY` | Event lookup through the Ticketmaster Discovery API in `/api/research`. |
+| `DODO_PAYMENTS_API_KEY`, `DODO_PAYMENTS_WEBHOOK_KEY`, `DODO_PAYMENTS_PRODUCT_ID`, `DODO_PAYMENTS_ENVIRONMENT` | Dodo Payments hosted checkout for **all-digital** card or wallet orders (Dodo only accepts digitally delivered goods; physical orders go to Stripe). On only when all four are set, and `DODO_PAYMENTS_ENVIRONMENT` must be `test_mode` or `live_mode` (Dodo defaults to live). The server re-derives the total from the price list (`amount_mismatch` otherwise), and only a signed webhook at `/api/payments/dodo/webhook`, checked against the payment fetched back from Dodo, marks an order paid and sends its receipt. |
+| `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | Stripe hosted Checkout (Link and cards) for card or wallet orders with a **physical** line (#64). Charges only orderable variants, so it stays dormant until a printer SKU is confirmed: today every physical variant is a preview and stays sandbox. Test or live follows the key prefix. The same server-derived total and forward-only webhook rules as Dodo apply, at `/api/payments/stripe/webhook`. Stripe collects the shipping address; the app never stores it. |
 | `OPENAI_API_KEY` and the other OpenAI variables | Ticket reading and art generation. Without them the studio falls back to simulated results. Art generation is capped at 10 a day per account, 10 per device (an httpOnly `ts_device` cookie) and 30 per IP, counted in the SQLite `art_usage` table. Over the cap, `/api/art` answers 429 `art_limit` with `retryAt`, and the editor falls back to procedural art. Sign-in and email change refuse disposable email domains (the bundled list is `src/server/disposable.ts`). |
 | `SESSION_SECRET` | Not used. Session and sign-in tokens are random and stored only as SHA-256 hashes, so there is no secret to configure. |
 

@@ -121,9 +121,11 @@ const ACCOUNT_CAPS = [
 ];
 /** Per project role. The same user holds different roles on different projects. */
 const PROJECT_CAPS: Record<"stub" | "event", Partial<Record<Role, string[]>>> = {
-  stub: { owner: ["stub.read", "stub.write", "share.revoke", "gift.create"], member: ["stub.read"], viewer: ["stub.read"] },
+  stub: { owner: ["stub.read", "stub.write", "stub.approve", "order.authorize", "share.revoke", "gift.create"], member: ["stub.read"], viewer: ["stub.read"] },
   event: { captain: ["event.read", "event.publish", "claims.read"], member: ["event.read"], viewer: ["event.read"] },
 };
+/** Project capabilities only a signed-in account can hold: a guest device that owns a stub still can't approve it. */
+const ACCOUNT_ONLY_PROJECT_CAPS: readonly string[] = ["stub.approve", "order.authorize"];
 /** Staff: the admin mount only. Staff get no read access to anyone's projects. */
 const STAFF_CAPS = ["admin.view"];
 
@@ -133,7 +135,7 @@ export const CAPABILITY_MATRIX = { public: PUBLIC_CAPS, account: ACCOUNT_CAPS, p
 export function capabilitiesFor(actor: RequestContext["actor"]["kind"], role: Role, project: { kind: "stub" | "event" } | undefined, staff: boolean): string[] {
   const caps = new Set<string>(PUBLIC_CAPS);
   if (actor === "account") for (const c of ACCOUNT_CAPS) caps.add(c);
-  if (project) for (const c of PROJECT_CAPS[project.kind][role] ?? []) caps.add(c);
+  if (project) for (const c of PROJECT_CAPS[project.kind][role] ?? []) if (actor === "account" || !ACCOUNT_ONLY_PROJECT_CAPS.includes(c)) caps.add(c);
   if (staff && actor === "account") for (const c of STAFF_CAPS) caps.add(c);
   return [...caps].sort();
 }

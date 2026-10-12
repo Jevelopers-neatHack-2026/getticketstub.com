@@ -54,7 +54,7 @@ function version(v: DesignVersion): DesignVersion {
     id: String(v.id).slice(0, 128),
     ...(typeof v.parentId === "string" ? { parentId: v.parentId.slice(0, 128) } : {}),
     edition: v.edition,
-    art: { kind: src ? a.kind : "procedural", ...(src ? { src } : {}), seed: num(a.seed) ?? 0, ...(str(a.vibe, 120) ? { vibe: str(a.vibe, 120) } : {}), provenance: a.provenance },
+    art: { kind: src ? a.kind : "procedural", ...(src ? { src } : {}), seed: num(a.seed) ?? 0, ...(str(a.vibe, 120) ? { vibe: str(a.vibe, 120) } : {}), provenance: a.provenance, ...(a.unavailable === true ? { unavailable: true } : {}) },
     createdAt: String(v.createdAt ?? "").slice(0, 40),
   };
 }

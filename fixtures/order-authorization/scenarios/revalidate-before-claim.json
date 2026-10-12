@@ -1,0 +1,23 @@
+{
+  "scenario": "revalidate-before-claim",
+  "description": "A revalidate with a claim the issuer never committed: not_claimed. A connector that skipped the claim cannot dispatch.",
+  "drivers": [
+    "reference",
+    "live"
+  ],
+  "steps": [
+    {
+      "op": "issue",
+      "auth": "A"
+    },
+    {
+      "op": "revalidate",
+      "auth": "A",
+      "key": "K1",
+      "expect": {
+        "ok": false,
+        "reason": "not_claimed"
+      }
+    }
+  ]
+}

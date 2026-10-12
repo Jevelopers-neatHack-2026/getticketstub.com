@@ -1,0 +1,47 @@
+{
+  "scenario": "same-key-different-authorization",
+  "description": "A key is bound to the first authorization it claimed. The same key on another authorization is idempotency_conflict, not a second claim.",
+  "drivers": [
+    "reference",
+    "live"
+  ],
+  "steps": [
+    {
+      "op": "issue",
+      "auth": "A"
+    },
+    {
+      "op": "issue",
+      "auth": "B"
+    },
+    {
+      "op": "claim",
+      "auth": "A",
+      "key": "K1",
+      "expect": {
+        "ok": true,
+        "replayed": false,
+        "as": "c1"
+      }
+    },
+    {
+      "op": "claim",
+      "auth": "B",
+      "key": "K1",
+      "expect": {
+        "ok": false,
+        "reason": "idempotency_conflict"
+      }
+    },
+    {
+      "op": "claim",
+      "auth": "B",
+      "key": "K2",
+      "expect": {
+        "ok": true,
+        "replayed": false,
+        "as": "c2"
+      }
+    }
+  ]
+}

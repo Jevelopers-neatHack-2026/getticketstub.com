@@ -559,7 +559,7 @@ async function runViewport(vp) {
     ev = (await events()).slice(from);
     check(T("memory: a closed share sheet is one cancel, not a failure, and copies nothing"), same(named(ev, "share").map((e) => pick(e.p, ["method", "result"])), [{ method: "native", result: "cancel" }]), fmt(ev));
     from = await mark();
-    check(T("memory: Download story image"), await clickText("button", "Download story image"));
+    check(T("memory: Story image"), await clickText("button", "Story image"));
     ev = await waitEvents(from, (e) => named(e, "story_export").length > 0, 8000);
     check(T("memory: story export is the image generated and a download started (downloads are denied in this run)"), same(named(ev, "story_export").map((e) => pick(e.p, ["action", "result"])), [{ action: "download", result: "generated" }]), fmt(ev));
   }

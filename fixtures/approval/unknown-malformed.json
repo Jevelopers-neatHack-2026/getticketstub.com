@@ -1,0 +1,21 @@
+{
+  "fixture": "unknown-malformed",
+  "description": "Not a token at all.",
+  "verifyAt": "2026-10-10T13:00:00.000Z",
+  "token": "not-a-token",
+  "held": {
+    "artBase64": "RklYVFVSRS1BUlQtQllURVMtdjE6IG5vdCBhIHJlYWwgaW1hZ2UsIHN0YW5kcyBpbiBmb3IgdGhlIHN0b3JlZCBQTkc="
+  },
+  "expect": {
+    "tenant": "acc_FIXTURE_owner1",
+    "project": {
+      "kind": "stub",
+      "id": "stub_fx_1"
+    },
+    "purpose": "print.compose"
+  },
+  "outcome": {
+    "ok": false,
+    "reason": "unknown"
+  }
+}

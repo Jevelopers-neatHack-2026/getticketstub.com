@@ -1,0 +1,47 @@
+{
+  "scenario": "changed-terms-after-claim",
+  "description": "Claimed, then the connector's bundle no longer matches what the owner confirmed (quote moved). Revalidate says changed_terms and names the field.",
+  "drivers": [
+    "reference",
+    "live"
+  ],
+  "steps": [
+    {
+      "op": "issue",
+      "auth": "A"
+    },
+    {
+      "op": "claim",
+      "auth": "A",
+      "key": "K1",
+      "expect": {
+        "ok": true,
+        "replayed": false,
+        "as": "c1"
+      }
+    },
+    {
+      "op": "revalidate",
+      "auth": "A",
+      "key": "K1",
+      "mutate": {
+        "quote.amountMinor": 1
+      },
+      "expect": {
+        "ok": false,
+        "reason": "changed_terms",
+        "fields": [
+          "quote.amountMinor"
+        ]
+      }
+    },
+    {
+      "op": "revalidate",
+      "auth": "A",
+      "key": "K1",
+      "expect": {
+        "ok": true
+      }
+    }
+  ]
+}

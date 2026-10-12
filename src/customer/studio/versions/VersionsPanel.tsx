@@ -2,13 +2,19 @@
 // The version history (GT-06A): every version with its thumbnail, short id, parent, how it was made and when; pick any two
 // to compare in words and side by side (switchable on the phone); restore one without changing or generating anything.
 // The selected version is the one checkout and the wall use, and it is named at the top so nothing is ambiguous.
-import { useId, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type { DesignVersion, Stub } from "../types";
 import { StubView } from "@/customer/studio/stub/StubView";
 import { play } from "@/customer/studio/feedback";
+import { api, ApiError, type ApprovalInfo } from "@/customer/account/api";
+import { messageFor } from "@/customer/feedback-messages/messages";
 import { PunchTabs, Tag, Tags, TearLink } from "@/customer/desk/Desk";
+import { WALL_SYNCED } from "@/customer/account/sync";
+import { ApproveSheet, compositionNow } from "../approval/ApproveSheet";
+import { printedLines } from "../approval/printed";
 import { atVersion } from "../editor/ops";
 import { whenLabel } from "../facts/FactsReview";
+import { artUnavailable } from "./retention";
 import { artLabel, compareVersions, howMade, listVersions, restoreVersion, selectedSummary, versionHash } from "./versions";
 import styles from "./Versions.module.css";
 
@@ -45,6 +51,106 @@ function Identity({ stub, v }: { stub: Stub; v: DesignVersion }) {
   );
 }
 
+/** The print approval of the selected version (GT-06B): read from the server, changed only by the two buttons. Never a purchase. */
+function PrintApproval({ stub }: { stub: Stub }) {
+  const [live, setLive] = useState<ApprovalInfo | null>(null);
+  const [state, setState] = useState<"loading" | "ready" | "off">("loading");
+  const [said, setSaid] = useState("");
+  const [wasStale, setWasStale] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [reviewing, setReviewing] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+  const stubId = stub.id;
+  const versionId = stub.currentVersionId;
+
+  // null: signed out, or not saved to a wall yet (approval needs both).
+  const show = useCallback(
+    (all: ApprovalInfo[] | null) => {
+      setLive(all?.find((x) => x.approval.purpose === "print.compose" && x.status === "active" && x.approval.binding.versionId === versionId) ?? null);
+      setWasStale(all?.find((x) => x.approval.purpose === "print.compose")?.status === "stale"); // the newest one no longer matches the stub
+      setState(all ? "ready" : "off");
+    },
+    [versionId],
+  );
+  useEffect(() => {
+    let alive = true;
+    api.approvals(stubId).then(
+      (all) => alive && show(all),
+      () => alive && show(null),
+    );
+    return () => {
+      alive = false;
+    };
+  }, [stubId, show, stub.updatedAt]);
+  // The server only sees an edit once the wall sync lands, so ask again then.
+  useEffect(() => {
+    const again = () => void api.approvals(stubId).then(show, () => show(null));
+    window.addEventListener(WALL_SYNCED, again);
+    return () => window.removeEventListener(WALL_SYNCED, again);
+  }, [stubId, show]);
+
+  const act = async (fn: () => Promise<unknown>, done: string) => {
+    setBusy(true);
+    try {
+      await fn();
+      play("stamp");
+      setSaid(done);
+    } catch (e) {
+      setSaid(messageFor(e instanceof ApiError ? e.code : "unknown").message);
+    }
+    await api.approvals(stubId).then(show, () => show(null));
+    setBusy(false);
+  };
+
+  // An edit shows here at once, from the same fields the binding covers, before the server has heard of it: an approval that no
+  // longer matches never reads as approved. (Title style, hidden fields and the note are caught when the sync lands.)
+  const outOfDate = !!live && (JSON.stringify(live.approval.binding.composition) !== JSON.stringify(compositionNow(stub)) || (!!live.summary && JSON.stringify(live.summary.printed) !== JSON.stringify(printedLines(stub))));
+  if (state === "loading") return null;
+  return (
+    <div ref={box} tabIndex={-1} className={styles.approval} data-approved={live && !outOfDate ? "true" : undefined}>
+      {state === "off" ? (
+        <p className={styles.note}>Sign in and save this stub to your wall to approve it for print.</p>
+      ) : live && !outOfDate ? (
+        <>
+          <p className={styles.selectedLine}>
+            <strong>Approved for print</strong> · <span className={styles.hash}>{live.approval.id.slice(4, 10)}</span>
+          </p>
+          <p className={styles.note}>Covers this version, its facts and settings until {whenLabel(live.approval.expiresAt)}. Change any of them and it needs approving again. It isn&apos;t an order.</p>
+          <Tags label="Print approval">
+            <Tag disabled={busy} onClick={() => act(() => api.revokeApproval(stubId, live.approval.id), "Approval revoked. Your art is still saved.")}>
+              Revoke approval
+            </Tag>
+          </Tags>
+        </>
+      ) : (
+        <>
+          <p className={styles.note}>
+            {outOfDate || wasStale ? "Out of date: this stub changed since you approved it. Approve it again to cover the change." : "Not approved for print yet."} Approving covers this exact version, its facts and settings for 7 days. It isn&apos;t an order or a payment.
+          </p>
+          <Tags label="Print approval">
+            <Tag disabled={busy} onClick={() => setReviewing(true)} aria-haspopup="dialog">
+              Approve for print
+            </Tag>
+          </Tags>
+        </>
+      )}
+      <p className={styles.note} role="status" data-announce="change">
+        {said}
+      </p>
+      <ApproveSheet
+        stub={stub}
+        open={reviewing}
+        onClose={() => setReviewing(false)}
+        onApproved={(done) => {
+          setSaid(done);
+          // The button that opened the sheet turns into "Approved for print", so focus lands on that line instead.
+          void api.approvals(stubId).then(show, () => show(null)).then(() => requestAnimationFrame(() => box.current?.focus({ preventScroll: true })));
+        }}
+      />
+    </div>
+  );
+}
+
 export function VersionsPanel({ stub, onChange, layout }: Props) {
   const [picks, setPicks] = useState<string[]>([]);
   const [side, setSide] = useState<"a" | "b">("a");
@@ -62,7 +168,11 @@ export function VersionsPanel({ stub, onChange, layout }: Props) {
   const restore = (v: DesignVersion) => {
     onChange(restoreVersion(stub, v.id));
     play("stamp");
-    setSaid(`Selected #${versionHash(v)}. Nothing was overwritten and nothing was made again.`);
+    setSaid(
+      artUnavailable(v.art)
+        ? `Selected #${versionHash(v)}, but its image is not kept on this device, so a sample is shown. Nothing was overwritten and nothing was made again.`
+        : `Selected #${versionHash(v)}. Nothing was overwritten and nothing was made again.`,
+    );
   };
 
   return (
@@ -73,6 +183,7 @@ export function VersionsPanel({ stub, onChange, layout }: Props) {
           <span className={styles.hash}>#{selected.hash}</span> {selected.text}
         </p>
         <p className={styles.note}>Checkout and your wall use this version. Pick another below to switch. Nothing is made again.</p>
+        <PrintApproval stub={stub} />
       </section>
 
       <ul className={styles.list} aria-label="Design versions, newest first">

@@ -6,6 +6,7 @@
 //   LLM span       <capability>.<phase>      one per provider_attempt (model, provider, tokens, reported cost)
 //   TOOL span      source.<name>             one per source_fetch (event page, Ticketmaster, weather)
 //   TOOL span      parse.<parser>            one per source_parse
+//   TOOL span      agent.<step>              one per agent_step (plan, result, followup, failure, recovery)
 // The spans carry only the fields the ops schema already allow-lists. Nothing here sees prompts, page text, event
 // titles, URLs, headers or any person, so nothing of that kind can be exported.
 //
@@ -182,6 +183,14 @@ export function buildTrace(events: OpsEvent[], tags: string[]): { traceId: strin
       if (g.costSource === "provider_reported" && num(g.costUsd) !== undefined) attrs.push(["neatlogs.llm.cost_usd", num(g.costUsd)!]);
       if (err) attrs.push(["neatlogs.error.message", err]);
       spans.push({ ...base, name: `${str(g.capability) ?? "ai"}.${str(g.phase) ?? "generate"}`, error: err, attributes: attrs });
+    } else if (e.name === "agent_step") {
+      const tool = `agent.${str(g.step) ?? "step"}`;
+      const err = ["failed", "rejected", "invalid_plan"].includes(String(g.outcome)) ? str(g.code) ?? str(g.outcome) : undefined;
+      spans.push({ ...base, name: tool, error: err, attributes: [
+        ["neatlogs.span.kind", "TOOL"], ["neatlogs.tool.name", tool], ...common,
+        ...Object.entries(g).map(([k, v]) => [`ticketstub.${k}`, v] as Attr),
+        ...(err ? [["neatlogs.error.message", err] as Attr] : []),
+      ] });
     } else if (e.name === "source_fetch" || e.name === "source_parse") {
       const tool = e.name === "source_fetch" ? `source.${str(g.source) ?? "unknown"}` : `parse.${str(g.parser) ?? "none"}`;
       // A source that simply had nothing (no_match, no_data, not_found) or was skipped is not a failure.

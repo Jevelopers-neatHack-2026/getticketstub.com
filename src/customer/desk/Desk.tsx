@@ -388,7 +388,7 @@ export function SandboxStrip({ children = "Sandbox prices. Nothing is charged." 
 }
 
 /** A sheet of paper that slides up (phone) or in from the side (desktop). */
-export function PaperSheet({ open, onClose, title, children }: { open: boolean; onClose: () => void; title: string; children: ReactNode }) {
+export function PaperSheet({ open, onClose, title, wide, children }: { open: boolean; onClose: () => void; title: string; /** A wider sheet on desktop, for two things side by side. */ wide?: boolean; children: ReactNode }) {
   const opened = useRef(false);
   const box = useRef<HTMLElement>(null);
   const titleId = useId();
@@ -398,7 +398,13 @@ export function PaperSheet({ open, onClose, title, children }: { open: boolean; 
     if (!open && opened.current) play("close");
     opened.current = open;
     if (!open) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    // Esc closes the sheet on top only: a sheet opened from inside another leaves the first one open.
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      const modals = document.querySelectorAll('[aria-modal="true"]');
+      if (box.current && modals[modals.length - 1] !== box.current) return;
+      onClose();
+    };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
@@ -406,7 +412,7 @@ export function PaperSheet({ open, onClose, title, children }: { open: boolean; 
   return (
     <>
       <div className={s.scrim} onClick={onClose} aria-hidden />
-      <section ref={box} role="dialog" aria-modal="true" aria-labelledby={titleId} className={s.sheet}>
+      <section ref={box} role="dialog" aria-modal="true" aria-labelledby={titleId} className={cx(s.sheet, wide && s.sheetWide)}>
         <span className={s.sheetGrip} aria-hidden />
         <header className={s.sheetHead}>
           <h2 id={titleId} className={s.sheetTitle}>

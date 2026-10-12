@@ -24,7 +24,7 @@ const OUTCOMES = ["success", "no_content", "invalid_input", "forbidden", "reject
 const SPEC = {
   api_request: {
     route: ["research", "art", "agent"],
-    operation: ["research_link", "research_search", "art_generate", "agent_reply", "unknown"],
+    operation: ["research_link", "research_search", "art_generate", "agent_reply", "agent_plan", "agent_followup", "unknown"],
     status: "status", outcome: OUTCOMES, durationMs: "ms",
     dependency: ["none", "demo", "fixture", "page", "ticketmaster", "provider", "procedural"],
     fallback: ["none", "simulated", "procedural", "slug", "rules", "no_enrichment"],
@@ -43,6 +43,12 @@ const SPEC = {
     outcome: ["ok", "http_error", "timeout", "network_error", "no_match", "no_data", "pending", "skipped", "rate_limited", "auth_failed", "not_found", "bad_response"],
     upstreamStatus: "status", durationMs: "ms",
   },
+  agent_step: {
+    step: ["plan", "result", "followup", "failure", "recovery"],
+    action: ["set_fact", "set_style", "set_material", "set_finish", "set_text", "remix_art", "show_back", "ask_user", "none"],
+    outcome: ["ok", "repaired", "invalid_plan", "applied", "failed", "rejected"],
+    source: ["rules", "live"], code: "code", durationMs: "ms", count: "count",
+  },
   source_parse: { parser: ["schema_org", "title", "none"], outcome: ["ok", "empty"], facts: "count", date: "flag" },
 };
 const ENVIRONMENTS = ["production", "preview", "development", "test", "unspecified"];
@@ -52,7 +58,7 @@ const ENVELOPE = ["schema", "name", "at", "environment", "mode", "operationId", 
 /** Codes the routes and transport actually return. Any other well-formed code is printed only as "other". */
 const KNOWN_CODES = new Set([
   "bad_request", "bad_json", "too_large", "bad_origin", "unauthorized", "forbidden", "not_found", "rate_limited", "internal",
-  "unreadable_link", "demo_only", "art_limit", "storage_unavailable", "server_only",
+  "unreadable_link", "demo_only", "art_limit", "invalid_value", "storage_unavailable", "server_only",
   "missing_provider_key", "invalid_provider_configuration", "invalid_model_configuration", "unsupported_image_model",
   "provider_authentication_failed", "provider_rate_limited", "provider_unavailable", "provider_request_cancelled",
   "unsupported_provider_request", "invalid_provider_response", "unsupported_provider_response", "invalid_image_response",

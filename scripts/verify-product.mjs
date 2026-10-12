@@ -1,5 +1,5 @@
 // One entry point for the product checks, with evidence.
-//   npm run verify:product -- --suite <foundation|access|research|creative|review|capabilities|messages|a11y|production|degraded|mail-off|backup-drill> --mode fixture --evidence-dir <dir>
+//   npm run verify:product -- --suite <foundation|access|approval|order-auth|research|creative|review|capabilities|messages|a11y|agent|download|production|degraded|mail-off|backup-drill> --mode fixture --evidence-dir <dir>
 // (`accessibility` is an alias of `a11y`: GT-11 names the suite that way.)
 // Every suite runs offline: in fixture mode a preload (scripts/lib/fixture-network-guard.mjs) refuses any host but
 // loopback, and the server started here has no provider keys. A missing build or fixture, an unknown suite and
@@ -25,6 +25,16 @@ const MEMBER_EMAIL = "verify-member@example.com";
 const SUITES = {
   foundation: { server: true, needs: [".next/BUILD_ID"], run: foundation },
   access: { server: true, needs: [".next/BUILD_ID", "scripts/smoke-server.mjs"], run: (ctx) => script("scripts/smoke-server.mjs", [ctx.base], { SMOKE_ADMIN_EMAIL: STAFF_EMAIL }) },
+  // GT-06B: the artwork approval and its verifier (two accounts, stale, revoke, 404 parity, Origin, fixtures), against the production build.
+  approval: { server: true, needs: [".next/BUILD_ID", "scripts/check-approval.mjs", "fixtures/approval/index.json", "fixtures/approval/verify.mjs"], run: (ctx) => script("scripts/check-approval.mjs", [ctx.base]) },
+  // GT-07: the order authorization (issuer, verifier, atomic claim, lookup, dispatch-time revalidate), against the production build.
+  // The server and the script share a random per-run CONTEXT_SECRET (to mint an expired row) and ORDER_AUTH_CONSUMER_KEY (to sign consumer requests); neither is the published fixture key.
+  "order-auth": {
+    server: true,
+    env: () => ({ CONTEXT_SECRET: randomBytes(24).toString("hex"), ORDER_AUTH_CONSUMER_KEY: randomBytes(24).toString("hex") }),
+    needs: [".next/BUILD_ID", "scripts/check-order-auth.mjs", "fixtures/order-authorization/index.json", "fixtures/order-authorization/verify.mjs"],
+    run: (ctx) => script("scripts/check-order-auth.mjs", [ctx.base], ctx.env),
+  },
   research: { server: false, needs: ["scripts/smoke-ticketmaster.mjs", "scripts/fixtures/ticketmaster-discovery-event.json"], run: () => script("scripts/smoke-ticketmaster.mjs") },
   creative: { server: false, needs: ["scripts/check-creative-adapter.mjs", "src/customer/studio/creative/fixtures"], run: () => script("scripts/check-creative-adapter.mjs") },
   review: { server: false, needs: ["scripts/check-review-versions.mjs", "src/customer/studio/facts/corrections.ts"], run: () => script("scripts/check-review-versions.mjs") },
@@ -32,6 +42,10 @@ const SUITES = {
   messages: { server: false, needs: ["scripts/check-messages.mjs", "src/customer/feedback-messages/messages.ts"], run: () => script("scripts/check-messages.mjs") },
   // GT-11: axe-core, overflow, keyboard, dialog focus and reduced motion in a real headless Chrome (needs Chrome or Edge, or CHROME_PATH).
   a11y: { server: true, needs: [".next/BUILD_ID", "scripts/check-a11y.mjs", "scripts/lib/cdp.mjs", "scripts/lib/contrast.mjs", "node_modules/axe-core/axe.min.js"], run: (ctx) => script("scripts/check-a11y.mjs", [ctx.base, evidenceDir]) },
+  // GT-04: the agent proposes typed actions, the owner applies them, the result goes back; plus a forced failure and its recovery.
+  agent: { server: true, needs: [".next/BUILD_ID", "scripts/check-agent.mjs", "scripts/lib/cdp.mjs", "src/customer/studio/agent/protocol.ts"], run: (ctx) => script("scripts/check-agent.mjs", [ctx.base, evidenceDir]) },
+  // The exact stub download (#16): the real Download button in headless Chrome, the PNG against the on-screen stub (needs Chrome or Edge, or CHROME_PATH).
+  download: { server: true, needs: [".next/BUILD_ID", "scripts/check-download.mjs", "scripts/lib/cdp.mjs"], run: (ctx) => script("scripts/check-download.mjs", [ctx.base, evidenceDir]) },
   production: { server: true, needs: [".next/BUILD_ID", "scripts/smoke-production.mjs"], run: (ctx) => script("scripts/smoke-production.mjs", [], { SMOKE_BASE_URL: ctx.base }) },
   // Storage that cannot be written: the server starts with TICKETSTUB_DB under a file, so every OS refuses it.
   degraded: { server: true, unwritableStorage: true, needs: [".next/BUILD_ID", "scripts/smoke-production.mjs"], run: degraded },
@@ -255,8 +269,8 @@ async function foundation({ base }) {
   } catch {
     /* asserted below */
   }
-  record("health is 200 with ok, version, mode and time", health.status === 200 && body.ok === true && typeof body.version === "string" && body.mode === "demo" && !Number.isNaN(Date.parse(body.time)), health.text.slice(0, 120));
-  record("health is uncached and carries nothing else", health.headers.get("cache-control") === "no-store" && Object.keys(body).sort().join() === "mode,ok,persistence,storage,time,version" && body.storage === "ok" && body.persistence === "configured", Object.keys(body).join());
+  record("health is 200 with ok, version, commit, mode and time", health.status === 200 && body.ok === true && typeof body.version === "string" && (body.commit === null || /^[0-9a-f]{7,40}$/.test(body.commit)) && body.mode === "demo" && !Number.isNaN(Date.parse(body.time)), health.text.slice(0, 120));
+  record("health is uncached and carries nothing else", health.headers.get("cache-control") === "no-store" && Object.keys(body).sort().join() === "commit,mode,ok,persistence,storage,time,version" && body.storage === "ok" && body.persistence === "configured", Object.keys(body).join());
 
   // admin: anonymous and non-staff never learn it exists; staff get reload and deep links
   const member = client(base);
@@ -323,6 +337,17 @@ async function degraded(ctx) {
     ["POST", "/api/share", { stub: {} }],
     ["GET", "/api/share/abcdefghijkl"],
     ["POST", "/api/share/revoke", { stubId: "s1" }],
+    ["POST", "/api/approvals", { stubId: "s1", purpose: "print.compose", expectedVersionId: "v1" }],
+    ["GET", "/api/approvals?project=stub:s1"],
+    ["POST", "/api/approvals/revoke", { stubId: "s1", approvalId: "apr_x" }],
+    ["POST", "/api/approvals/verify", { token: "x", expect: {} }],
+    ["POST", "/api/order-authorizations", { stubId: "s1", approvalId: "apr_x", expectedVersionId: "v1", orderRef: "ord_00000001", quote: { id: "q", amountMinor: 1, currency: "USD" }, destination: { ref: "dst_00000001", digest: "0".repeat(64) }, idempotencyKey: "issue_00000001", confirm: true }],
+    ["GET", "/api/order-authorizations?project=stub:s1"],
+    ["POST", "/api/order-authorizations/revoke", { stubId: "s1", authorizationId: "oau_x" }],
+    ["POST", "/api/order-authorizations/verify", { token: "x", expect: {} }],
+    ["POST", "/api/order-authorizations/claim", { token: "x", expect: {}, idempotencyKey: "claim_00000001" }],
+    ["POST", "/api/order-authorizations/revalidate", { token: "x", expect: {} }],
+    ["POST", "/api/order-authorizations/claims/lookup", { tenant: "t", project: "stub:s1", idempotencyKey: "claim_00000001" }],
     ["POST", "/api/orders", { order: {} }],
     ["GET", "/api/orders"],
     ["POST", "/api/organizer/events", { title: "x" }],
@@ -667,11 +692,12 @@ try {
     const ctx = {};
     if (suite.server) {
       let extra = {};
+      if (suite.env) extra = ctx.env = suite.env();
       if (suite.unwritableStorage) {
         // A path under a file is not creatable on any OS, whoever runs it.
         const blocker = join(tmp, "not-a-directory");
         writeFileSync(blocker, "x");
-        extra = { TICKETSTUB_DB: join(blocker, "ticketstub.sqlite"), TICKETSTUB_FILES: join(blocker, "files") };
+        extra = { ...extra, TICKETSTUB_DB: join(blocker, "ticketstub.sqlite"), TICKETSTUB_FILES: join(blocker, "files") };
       }
       server = await startServer(extra);
       ctx.base = server.base;

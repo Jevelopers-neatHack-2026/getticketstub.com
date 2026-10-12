@@ -3,9 +3,10 @@
 // Nothing here is a supplier catalog. A physical variant stays "preview" until print-production and fulfillment-connectors
 // hand us an accepted SKU and template (print-production #6, fulfillment-connectors #8 and #9). Swapping in real SKUs means
 // editing the rows below and bumping CAPABILITY_VERSION; every quote, cart item and order names the version it was made under.
+// SANDBOX_VALIDATION_PRODUCTS names the one supplier product used to validate the Prodigi sandbox. It is not a customer mapping.
 import type { Finish, Material } from "@/customer/studio/types";
 
-export const CAPABILITY_VERSION = "2026-10-11.1";
+export const CAPABILITY_VERSION = "2026-10-12.1";
 /** The day the Prodigi pages below were read (issue #23). No authenticated lookup, quote or order was made. */
 export const CAPABILITY_REVIEWED = "2026-10-10";
 
@@ -61,6 +62,7 @@ export const SOURCES = {
   apiReference: "https://www.prodigi.com/print-api/docs/reference/",
   metallicFoil: "https://www.prodigi.com/products/prints-and-posters/specialist-prints/metallic-foil-prints/",
   framedFoil: "https://www.prodigi.com/products/wall-art/framed-prints/classic-framed-metallic-foil-prints/",
+  cTypes: "https://www.prodigi.com/products/prints-and-posters/photo-prints/c-types/",
 } as const;
 
 /** Which sizes each tier is sold at. Four tiers, kept as they are. */
@@ -165,6 +167,64 @@ export function variantFor(material: Material, size: PrintSize, finish: Finish):
   return BY_ID.get(variantId(material, size, finish));
 }
 
+/**
+ * A supplier product used only to validate the Prodigi sandbox: the first owner-approved product-details read, quote and test
+ * order. It is NOT a customer-facing mapping: no tier, size or finish points at it, it never appears in VARIANTS, and it never
+ * makes a variant orderable or changes a price or finish claim. Deciding which customer variants (Classic 2 × 5.5 in, Stamp
+ * 2 × 3 in; matte, foil, holo) map to a supplier product, and how they are trimmed, is a separate, open product decision.
+ */
+export interface SandboxValidationProduct {
+  id: string;
+  purpose: "sandbox-validation";
+  customerFacing: false;
+  supplier: "Prodigi";
+  sku: string;
+  description: string;
+  /** Where the decision is recorded. */
+  decision: string;
+  /** How we know the product facts. No authenticated product-details read has been made. */
+  provenance: CapabilityProvenance;
+  reviewed: string;
+  sources: string[];
+  printArea: "default";
+  orientation: "landscape";
+  /** The physical print, landscape. */
+  size: { w: number; h: number; unit: "in" };
+  artwork: { w: number; h: number; unit: "px"; dpi: number; colorSpace: "sRGB"; format: "jpg"; sizing: "fillPrintArea" };
+  finish: string;
+  destinationCountry: string;
+  shippingMethod: { order: string; quote: string };
+  /** What is still unconfirmed or undecided. */
+  open: string[];
+}
+
+export const SANDBOX_VALIDATION_PRODUCTS: readonly SandboxValidationProduct[] = [
+  {
+    id: "prodigi-sandbox-validation-global-pho-4x6",
+    purpose: "sandbox-validation",
+    customerFacing: false,
+    supplier: "Prodigi",
+    sku: "GLOBAL-PHO-4X6",
+    description: "4 × 6 in (102 × 152 mm) lustre C-type (silver-halide) photo print, printed landscape as 6 × 4 in.",
+    decision: "integration-evals planning/decisions/0003-owner-delegated-decisions-2026-10-12.md, rows R1-R3",
+    provenance: "published-docs",
+    reviewed: "2026-10-12",
+    sources: [SOURCES.cTypes, SOURCES.apiReference],
+    printArea: "default",
+    orientation: "landscape",
+    size: { w: 6, h: 4, unit: "in" },
+    artwork: { w: 1800, h: 1200, unit: "px", dpi: 300, colorSpace: "sRGB", format: "jpg", sizing: "fillPrintArea" },
+    finish: "lustre",
+    destinationCountry: "US",
+    shippingMethod: { order: "Standard", quote: "standard" },
+    open: [
+      "The customer-facing print-tier mapping (finish naming, Classic 2 × 5.5 in and Stamp 2 × 3 in on a 6 × 4 sheet, trim) is an open product decision.",
+      "Lustre is listed for the C-type family, not per SKU: only the owner-approved product-details read confirms the finish attribute and US shipsTo.",
+      "Bleed, safe area and stub layout belong to print-production's PP-03 template (print-production #6).",
+    ],
+  },
+];
+
 /** The documented frame example, kept as a geometry fixture. It is Prodigi's illustration, not a launch SKU. */
 export const GEOMETRY_FIXTURES = [
   {
@@ -254,6 +314,24 @@ export function orderGate(v: Variant | undefined, mode: RuntimeMode): OrderGate 
     return { ok: false, reason: "preview-in-live", message: "This is a preview. We haven't confirmed a printer SKU for it yet, so it can't be ordered." };
   }
   return { ok: true, sandbox: v.sku === null };
+}
+
+export type AuthorizationGate = { ok: true; sku: string | null } | { ok: false; message: string };
+
+/**
+ * May a purchase authorization be issued, or still honoured, for this variant with this provider? It starts from orderGate (so a
+ * preview never passes in live mode and an unavailable variant never passes at all) and adds the provider rule: "sandbox" exists
+ * only outside live mode and carries no SKU; a real provider needs a confirmed SKU from that supplier and a live runtime.
+ * No variant carries a confirmed SKU today, so no live authorization can be issued yet.
+ */
+export function authorizationGate(v: Variant | undefined, provider: string, mode: RuntimeMode): AuthorizationGate {
+  const gate = orderGate(v, mode);
+  if (!gate.ok || !v) return { ok: false, message: gate.ok ? "That combination isn't on our list." : gate.message };
+  if (provider === "sandbox") {
+    return mode === "live" ? { ok: false, message: "Sandbox orders can't be authorized on a live server." } : { ok: true, sku: v.sku };
+  }
+  if (mode === "live" && v.status === "orderable" && v.sku !== null && v.supplier?.toLowerCase() === provider) return { ok: true, sku: v.sku };
+  return { ok: false, message: "We haven't confirmed a printer SKU for that choice with this provider, so it can't be authorized." };
 }
 
 // ---- Stored selections ----

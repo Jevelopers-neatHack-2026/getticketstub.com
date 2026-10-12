@@ -6,8 +6,13 @@ import type { EventData, Fact } from "../types";
 const ORANGE = "Ticket Orange #E4572E";
 
 function factText(event: EventData, id: string): string | undefined {
-  const f: Fact | undefined = event.facts.find((x) => x.id === id);
-  return f ? `${f.label} ${f.value}`.toLowerCase() : undefined;
+  // API callers can have older or partially saved event records without a facts array.
+  const facts = Array.isArray(event?.facts) ? event.facts : [];
+  const f: Fact | undefined = facts.find((x) => x && typeof x === "object" && x.id === id);
+  if (!f) return undefined;
+  const label = typeof f.label === "string" ? f.label : "";
+  const value = typeof f.value === "string" ? f.value : "";
+  return `${label} ${value}`.toLowerCase();
 }
 
 function weatherClause(event: EventData): { weather: string; negatives: string[] } {
@@ -65,10 +70,10 @@ function sceneFor(event: EventData): { place: string; accent: string; light: str
 /** Build the image prompt for an event. `vibe` is a remix chip or free text ("moodier", "sunrise"). */
 export function buildArtPrompt(event: EventData, vibe?: string): string {
   const { weather, negatives } = weatherClause(event);
-  const season = seasonFromDate(event.dateISO);
+  const season = seasonFromDate(typeof event.dateISO === "string" ? event.dateISO : undefined);
   const scene = sceneFor(event);
-  const city = event.city && event.city.toLowerCase() !== "online" ? ` in ${event.city}` : "";
-  const venue = event.venue ? `, inspired by the architecture of ${event.venue} (described, not copied)` : "";
+  const city = typeof event.city === "string" && event.city.toLowerCase() !== "online" ? ` in ${event.city}` : "";
+  const venue = typeof event.venue === "string" && event.venue ? `, inspired by the architecture of ${event.venue} (described, not copied)` : "";
   const mood = vibe?.trim() ? ` Mood: ${vibe.trim()}.` : "";
 
   const lines = [
