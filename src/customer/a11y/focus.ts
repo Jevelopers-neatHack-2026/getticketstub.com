@@ -31,6 +31,27 @@ export function focusables(root: HTMLElement): HTMLElement[] {
   return [...root.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((el) => el.tabIndex >= 0 && availableForFocus(el));
 }
 
+/** Named radios share one sequential stop within their form; arrow keys stay native. */
+function sameRadioGroup(a: HTMLElement, b: HTMLElement): boolean {
+  return a instanceof HTMLInputElement && b instanceof HTMLInputElement && a.type === "radio" && b.type === "radio"
+    && a.name !== "" && a.name === b.name && a.form === b.form && a.getRootNode() === b.getRootNode();
+}
+
+function tabStops(root: HTMLElement, reverse: boolean): HTMLElement[] {
+  const list = focusables(root);
+  return list.filter((el) => {
+    if (!(el instanceof HTMLInputElement) || el.type !== "radio" || !el.name) return true;
+    const group = list.filter((other) => sameRadioGroup(el, other)) as HTMLInputElement[];
+    return el === (group.find((other) => other.checked) ?? group[reverse ? group.length - 1 : 0]);
+  }).sort((a, b) => {
+    // Positive tabindex precedes the ordinary DOM-order stops. Equal values retain DOM order.
+    if (a.tabIndex === b.tabIndex) return 0;
+    if (a.tabIndex === 0) return 1;
+    if (b.tabIndex === 0) return -1;
+    return a.tabIndex - b.tabIndex;
+  });
+}
+
 /**
  * Hold focus inside `ref` while `active`. `initial` picks what gets focus first (a selector inside the dialog);
  * by default the first control, or the dialog itself when it has none ("self" always picks the dialog). Restores focus to the opener on close.
@@ -53,33 +74,38 @@ export function useDialogFocus(ref: RefObject<HTMLElement | null>, active: boole
       target.focus({ preventScroll: true });
     });
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Tab") return;
-      const list = focusables(root);
+      if (e.key !== "Tab" || e.defaultPrevented) return;
+      const at = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      const modal = at?.closest('[aria-modal="true"]');
+      // Both nested and portaled dialogs own their Tab, even when this trap has no usable controls.
+      if (modal && (!at || !root.contains(at) || (modal !== root && root.contains(modal)))) return;
+      const list = tabStops(root, e.shiftKey);
+      e.preventDefault();
       if (!list.length) {
-        e.preventDefault();
         root.focus();
         return;
       }
-      const first = list[0];
-      const last = list[list.length - 1];
-      const at = document.activeElement;
-      // A dialog opened from inside this one holds Tab itself.
-      if (at && !root.contains(at) && at.closest('[aria-modal="true"]')) return;
-      if (!root.contains(at)) {
-        e.preventDefault();
+      const first = list[0], last = list[list.length - 1];
+      if (!at || !root.contains(at) || at === root) {
         (e.shiftKey ? last : first).focus();
-      } else if (e.shiftKey && (at === first || at === root)) {
-        e.preventDefault();
-        last.focus();
-      } else if (!e.shiftKey && at === last) {
-        e.preventDefault();
-        first.focus();
+        return;
       }
+      const index = list.findIndex((el) => el === at || sameRadioGroup(el, at));
+      if (index >= 0) {
+        list[(index + (e.shiftKey ? -1 : 1) + list.length) % list.length].focus();
+        return;
+      }
+      // A programmatic heading or a newly unavailable control is not in the sequential list.
+      // Continue from its DOM position rather than restarting or entering an excluded neighbour.
+      const direction = e.shiftKey ? Node.DOCUMENT_POSITION_PRECEDING : Node.DOCUMENT_POSITION_FOLLOWING;
+      const nearby = focusables(root).filter((el) => list.includes(el) && (at.compareDocumentPosition(el) & direction));
+      (e.shiftKey ? nearby[nearby.length - 1] ?? last : nearby[0] ?? first).focus();
     };
-    document.addEventListener("keydown", onKey, true);
+    // Let an inner widget consume Tab before applying modal traversal.
+    document.addEventListener("keydown", onKey);
     return () => {
       cancelAnimationFrame(raf);
-      document.removeEventListener("keydown", onKey, true);
+      document.removeEventListener("keydown", onKey);
       // Back to the opener, unless focus already went somewhere on purpose (a link that navigated, another dialog).
       const now = document.activeElement;
       if (opener && opener.isConnected && (!now || now === document.body || root.contains(now))) opener.focus({ preventScroll: true });

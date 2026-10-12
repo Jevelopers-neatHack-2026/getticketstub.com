@@ -56,6 +56,227 @@ const initialCases = [
   ["self-initial", '<button id="valid">valid</button>', "self", "dialog"],
   ["empty-fallback", '<button id="hidden" style="visibility:hidden">hidden</button>', null, "dialog"],
 ];
+// Native sequential navigation must never enter a target excluded by focusables().
+const traversalCases = [
+  {
+    "name": "interior-forward",
+    "html": "<button id='first'>first</button><div aria-hidden='true'><button id='excluded'>excluded</button></div><button id='last'>last</button>",
+    "initial": "#first",
+    "keys": [
+      "Tab"
+    ],
+    "expected": [
+      "last"
+    ]
+  },
+  {
+    "name": "interior-reverse",
+    "html": "<button id='first'>first</button><div aria-hidden='true'><button id='excluded'>excluded</button></div><button id='last'>last</button>",
+    "initial": "#last",
+    "keys": [
+      "Shift+Tab"
+    ],
+    "expected": [
+      "first"
+    ]
+  },
+  {
+    "name": "dynamic-interior",
+    "html": "<button id='first'>first</button><div id='hidden'><button id='excluded'>excluded</button></div><button id='last'>last</button>",
+    "initial": "#first",
+    "setup": "document.getElementById('hidden').setAttribute('aria-hidden','true')",
+    "keys": [
+      "Tab"
+    ],
+    "expected": [
+      "last"
+    ]
+  },
+  {
+    "name": "removed-current-forward",
+    "html": "<button id='first'>first</button><div id='hidden'><button id='excluded'>excluded</button></div><button id='last'>last</button>",
+    "initial": "#excluded",
+    "setup": "document.getElementById('hidden').setAttribute('aria-hidden','true')",
+    "keys": [
+      "Tab"
+    ],
+    "expected": [
+      "last"
+    ]
+  },
+  {
+    "name": "removed-current-reverse",
+    "html": "<button id='first'>first</button><div id='hidden'><button id='excluded'>excluded</button></div><button id='last'>last</button>",
+    "initial": "#excluded",
+    "setup": "document.getElementById('hidden').setAttribute('aria-hidden','true')",
+    "keys": [
+      "Shift+Tab"
+    ],
+    "expected": [
+      "first"
+    ]
+  },
+  {
+    "name": "positive-order-forward",
+    "html": "<button id='zero'>zero</button><button id='second' tabindex='2'>two</button><div aria-hidden='true'><button id='excluded' tabindex='3'>excluded</button></div><button id='first' tabindex='1'>one</button>",
+    "initial": "#first",
+    "keys": [
+      "Tab",
+      "Tab",
+      "Tab"
+    ],
+    "expected": [
+      "second",
+      "zero",
+      "first"
+    ]
+  },
+  {
+    "name": "positive-order-reverse",
+    "html": "<button id='zero'>zero</button><button id='second' tabindex='2'>two</button><div aria-hidden='true'><button id='excluded' tabindex='3'>excluded</button></div><button id='first' tabindex='1'>one</button>",
+    "initial": "#zero",
+    "keys": [
+      "Shift+Tab",
+      "Shift+Tab",
+      "Shift+Tab"
+    ],
+    "expected": [
+      "second",
+      "first",
+      "zero"
+    ]
+  },
+  {
+    "name": "checked-radio-forward",
+    "html": "<button id='first'>first</button><div aria-hidden='true'><button id='excluded'>excluded</button></div><input type='radio' name='g' id='one'><input type='radio' name='g' id='two' checked><input type='radio' name='g' id='three'><button id='last'>last</button>",
+    "initial": "#first",
+    "keys": [
+      "Tab",
+      "Tab"
+    ],
+    "expected": [
+      "two",
+      "last"
+    ]
+  },
+  {
+    "name": "checked-radio-reverse",
+    "html": "<button id='first'>first</button><div aria-hidden='true'><button id='excluded'>excluded</button></div><input type='radio' name='g' id='one'><input type='radio' name='g' id='two' checked><input type='radio' name='g' id='three'><button id='last'>last</button>",
+    "initial": "#last",
+    "keys": [
+      "Shift+Tab",
+      "Shift+Tab"
+    ],
+    "expected": [
+      "two",
+      "first"
+    ]
+  },
+  {
+    "name": "unchecked-radio-forward",
+    "html": "<button id='first'>first</button><input type='radio' name='g' id='one'><input type='radio' name='g' id='two'><input type='radio' name='g' id='three'><button id='last'>last</button>",
+    "initial": "#first",
+    "keys": [
+      "Tab",
+      "Tab"
+    ],
+    "expected": [
+      "one",
+      "last"
+    ]
+  },
+  {
+    "name": "unchecked-radio-reverse",
+    "html": "<button id='first'>first</button><input type='radio' name='g' id='one'><input type='radio' name='g' id='two'><input type='radio' name='g' id='three'><button id='last'>last</button>",
+    "initial": "#last",
+    "keys": [
+      "Shift+Tab",
+      "Shift+Tab"
+    ],
+    "expected": [
+      "three",
+      "first"
+    ]
+  },
+  {
+    "name": "different-form-radios",
+    "html": "<button id='first'>first</button><form><input type='radio' name='g' id='one' checked></form><form><input type='radio' name='g' id='two' checked></form><button id='last'>last</button>",
+    "initial": "#first",
+    "keys": [
+      "Tab",
+      "Tab",
+      "Tab"
+    ],
+    "expected": [
+      "one",
+      "two",
+      "last"
+    ]
+  },
+  {
+    "name": "unnamed-radios",
+    "html": "<button id='first'>first</button><input type='radio' id='one'><input type='radio' id='two'><button id='last'>last</button>",
+    "initial": "#first",
+    "keys": [
+      "Tab",
+      "Tab",
+      "Tab"
+    ],
+    "expected": [
+      "one",
+      "two",
+      "last"
+    ]
+  },
+  {
+    "name": "heading-interior-forward",
+    "html": "<button id='first'>first</button><h2 id='heading' tabindex='-1'>Heading</h2><div aria-hidden='true'><button id='excluded'>excluded</button></div><button id='last'>last</button>",
+    "initial": "#heading",
+    "keys": [
+      "Tab"
+    ],
+    "expected": [
+      "last"
+    ]
+  },
+  {
+    "name": "heading-interior-reverse",
+    "html": "<button id='first'>first</button><h2 id='heading' tabindex='-1'>Heading</h2><div aria-hidden='true'><button id='excluded'>excluded</button></div><button id='last'>last</button>",
+    "initial": "#heading",
+    "keys": [
+      "Shift+Tab"
+    ],
+    "expected": [
+      "first"
+    ]
+  },
+  {
+    "name": "one-control",
+    "html": "<button id='first'>first</button>",
+    "initial": "#first",
+    "keys": [
+      "Tab",
+      "Shift+Tab"
+    ],
+    "expected": [
+      "first",
+      "first"
+    ]
+  },
+  {
+    "name": "widget-prevents-tab",
+    "html": "<button id=\"first\">first</button><button id=\"last\">last</button>",
+    "initial": "#first",
+    "setup": "document.getElementById(\"first\").addEventListener(\"keydown\", e => { if(e.key === \"Tab\") e.preventDefault(); })",
+    "keys": [
+      "Tab"
+    ],
+    "expected": [
+      "first"
+    ]
+  }
+];
+
 let browser;
 let requests = 0;
 let exceptions = 0;
@@ -129,8 +350,62 @@ try {
         check(`${width}:${name}`, await active(page), expected);
       });
     }
+    for (const test of traversalCases) {
+      await withPage(width, test.html, async (page) => {
+        await start(page, test.initial);
+        if (test.setup) await page.eval(test.setup);
+        await page.eval(`(() => {
+          window.__keys = []; window.__badFocus = [];
+          document.addEventListener("keydown", (e) => { if (e.key === "Tab") window.__keys.push(e.isTrusted); }, true);
+          document.addEventListener("focusin", (e) => { if (e.target.closest('[aria-hidden="true"]')) window.__badFocus.push(e.target.id); }, true);
+          return true;
+        })()`);
+        const actual = [];
+        for (const key of test.keys) {
+          await page.key("Tab", { shift: key === "Shift+Tab" });
+          actual.push(await active(page));
+        }
+        check(`${width}:${test.name}`, actual, test.expected);
+        check(`${width}:${test.name}:trusted-no-hidden-focus`, await page.eval('({ keys: window.__keys, hidden: window.__badFocus })'),
+          { keys: test.keys.map(() => true), hidden: [] });
+      });
+    }
+    for (const placement of ["nested", "portal"]) {
+      const inner = '<div id="inner" role="dialog" aria-modal="true"><button id="inner-first">first</button><div aria-hidden="true"><button id="excluded">excluded</button></div><button id="inner-last">last</button></div>';
+      await withPage(width, '<button id="outer-first">outer</button>' + (placement === "nested" ? inner : ""), async (page) => {
+        await start(page, "#outer-first");
+        if (placement === "portal") await page.eval(`document.body.insertAdjacentHTML("beforeend", ${JSON.stringify(inner)}); true`);
+        await page.eval(`(() => {
+          const outer = window.__cleanup;
+          window.__focus.useDialogFocus({ current: document.getElementById("inner") }, true);
+          window.__innerCleanup = window.__cleanup;
+          window.__outerCleanup = outer;
+          window.__cleanup = () => { window.__innerCleanup?.(); outer(); };
+          window.__keys = []; window.__badFocus = [];
+          document.addEventListener("keydown", (e) => { if (e.key === "Tab") window.__keys.push(e.isTrusted); }, true);
+          document.addEventListener("focusin", (e) => { if (e.target.closest('[aria-hidden="true"]')) window.__badFocus.push(e.target.id); }, true);
+          return true;
+        })()`);
+        await page.eval("new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(true))))");
+        const actual = [await active(page)];
+        for (const shift of [false, false, true]) {
+          await page.key("Tab", { shift }); actual.push(await active(page));
+        }
+        check(`${width}:${placement}:inner-owns-tab`, actual, ["inner-first", "inner-last", "inner-first", "inner-last"]);
+        if (placement === "portal") {
+          await page.eval('document.getElementById("outer-first").hidden = true; true');
+          await page.key("Tab");
+          check(`${width}:portal:empty-outer-does-not-steal`, await active(page), "inner-first");
+          await page.eval('document.getElementById("outer-first").hidden = false; true');
+        }
+        check(`${width}:${placement}:trusted-no-hidden-focus`, await page.eval('({ keys: window.__keys, hidden: window.__badFocus })'),
+          { keys: Array(placement === "portal" ? 4 : 3).fill(true), hidden: [] });
+        await page.eval('window.__innerCleanup(); window.__innerCleanup = null; window.__cleanup = window.__outerCleanup; true');
+        check(`${width}:${placement}:return-to-parent`, await active(page), "outer-first");
+      });
+    }
   }
-  check("complete unique native matrix", [report.checks.length, new Set(report.checks.map((item) => item.name)).size], [46, 46]);
+  check("complete unique native matrix", [report.checks.length, new Set(report.checks.map((item) => item.name)).size], [128, 128]);
   check("no page HTTP requests", requests, 0);
   check("no page exceptions", exceptions, 0);
   check("source and runtime metadata present", /^[a-f0-9]{40}$/.test(report.revision ?? "") && /^[a-f0-9]{40}$/.test(report.tree ?? "") && report.worktreeStatus === "" && /^\d+\.\d+\.\d+$/.test(report.npm ?? ""), true);
