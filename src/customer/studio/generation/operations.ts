@@ -9,7 +9,7 @@ import type { ArtLayer, Stub } from "../types";
 import { currentVersion } from "../types";
 import { addArtVersion } from "../editor/ops";
 import { readStoredStub } from "../store";
-import { reconcileVersions } from "./reconcile";
+import { compareVersions, reconcileVersions } from "./reconcile";
 import { forgetStatus, loadStatus, saveStatus, type GenerationOp, type GenerationVia } from "./status-store";
 
 export type { GenerationOp, GenerationPhase, GenerationVia } from "./status-store";
@@ -68,6 +68,7 @@ export interface StartResult {
 }
 
 export const CONFLICT_MESSAGE = "Nothing was applied: a version with the same id differs between this editor and what is stored, so they can't be merged safely. Your open draft and the stored project are both unchanged.";
+export const UNVERIFIABLE_MESSAGE = "New art ready, not applied: this editor's copy of an earlier version and the stored copy name their picture differently and the pictures can't be compared, so nothing was merged or written. Nothing is lost; discard this and try again, or reopen the project.";
 export const PEER_SELECTED_MESSAGE = "New art ready, not applied: another editor on this project added or selected a version while this was generating. Apply it to add it as a new version alongside theirs (their versions are kept), or discard it.";
 export const CHANGED_MESSAGE = "This project was replaced on this device (for example restored from elsewhere) while art was being made, so nothing was applied. What is stored now is unchanged.";
 export const UNREADABLE_HOLD_MESSAGE = "New art ready, not applied automatically: this device's storage can't be read right now, so the project can't be updated safely. Apply it to use it in this open editor only (it will not be saved), or discard it.";
@@ -87,6 +88,9 @@ interface Entry {
 }
 
 /** Only these end states can be started again; a discarded run (superseded, removed, project changed) never is. */
+/** Fired by the account sync (src/customer/account/sync.ts WALL_SYNCED) after it wrote the merged wall to this device. */
+export const WALL_SYNCED_EVENT = "ticketstub:wall-synced";
+
 const RETRYABLE = new Set<GenerationOp["phase"]>(["failed", "canceled", "interrupted"]);
 
 let seq = 0;
@@ -102,6 +106,9 @@ export class GenerationController {
   /** Projects this editor has seen saved on the device, and those it has since seen removed (for this editor session). */
   private seen = new Set<string>();
   private removed = new Set<string>();
+  /** `${stubId}\0${versionId}` -> the file reference this editor's own sync wrote in place of that version's inline picture. */
+  private attested = new Map<string, string>();
+  private onSynced = (): void => this.attestSync();
 
   constructor(
     private host: GenerationHost,
@@ -113,6 +120,8 @@ export class GenerationController {
     this.attached = true;
     this.seen.clear();
     this.removed.clear();
+    this.attested.clear();
+    if (typeof window !== "undefined") window.addEventListener(WALL_SYNCED_EVENT, this.onSynced);
     const id = this.host.current()?.id;
     if (id) this.watch(id);
     if (id && !this.latest.has(id)) {
@@ -128,6 +137,7 @@ export class GenerationController {
   /** The editor unmounted (navigation away, project switch): nothing may write after this; pending work becomes unknown. */
   detach(): void {
     this.attached = false;
+    if (typeof window !== "undefined") window.removeEventListener(WALL_SYNCED_EVENT, this.onSynced);
     for (const [runId, e] of [...this.entries]) {
       const op = this.ops.get(runId);
       if (!op || (op.phase !== "pending" && op.phase !== "ready")) continue;
@@ -261,6 +271,7 @@ export class GenerationController {
       return this.ops.get(runId) ?? null;
     }
     if (v.kind === "conflict") return this.finish(runId, { phase: "discarded", code: "version_conflict", message: CONFLICT_MESSAGE });
+    if (v.kind === "unverifiable") return this.finish(runId, { phase: "ready", code: "art_unverifiable", message: UNVERIFIABLE_MESSAGE });
     const { art } = entry.candidate;
     entry.candidate = undefined;
     // an explicit Apply on an unreadable store changes the open editor only: it writes nothing, so nothing can be erased
@@ -326,6 +337,29 @@ export class GenerationController {
     return p;
   }
 
+  /**
+   * This editor's own sync just wrote the merged wall. Where it moved one of this draft's inline pictures to a file, remember
+   * the reference it wrote, so the same version is not mistaken for a conflicting body when its picture cannot be compared
+   * byte for byte. Only a version whose every other field already matches, only an inline draft picture, only a stored
+   * `/api/files/` reference; a later change to that reference voids it.
+   */
+  private attestSync(): void {
+    const cur = this.host.current();
+    if (!this.attached || !cur || !this.host.presence) return;
+    const read = readStoredStub(cur.id);
+    if (read.status !== "present") return;
+    const have = new Map((read.stub.versions ?? []).map((v) => [v.id, v]));
+    for (const v of cur.versions) {
+      const other = have.get(v.id);
+      if (!other || !other.art.src || !v.art.src?.startsWith("data:") || !other.art.src.startsWith("/api/files/")) continue;
+      if (compareVersions(v, other) === "unverifiable") this.attested.set(`${cur.id}\u0000${v.id}`, other.art.src);
+    }
+  }
+
+  private attestedFor(stubId: string): (versionId: string) => string | undefined {
+    return (versionId) => this.attested.get(`${stubId}\u0000${versionId}`);
+  }
+
   /** The project was seen removed or replaced: retire its live operations for good, for this editor session. */
   private latchRemoved(stubId: string, message: string, code: string): void {
     this.removed.add(stubId);
@@ -347,7 +381,7 @@ export class GenerationController {
   private inspect(stubId: string, cur: Stub):
     | { kind: "ok"; stored?: Stub }
     | { kind: "removed" | "replaced" | "unknown" }
-    | { kind: "conflict"; versionId: string }
+    | { kind: "conflict" | "unverifiable"; versionId: string }
     | { kind: "peer_selected"; stored: Stub } {
     if (!this.host.presence) return { kind: "ok" };
     if (this.host.isGone(stubId)) return { kind: "removed" };
@@ -355,9 +389,10 @@ export class GenerationController {
     if (read.status === "unknown") return { kind: "unknown" };
     if (read.status !== "present") return { kind: "removed" };
     const stored = read.stub;
-    const r = reconcileVersions(cur.versions, stored.versions ?? []);
+    const r = reconcileVersions(cur.versions, stored.versions ?? [], this.attestedFor(stubId));
     if (r.status === "replaced") return { kind: "replaced" };
     if (r.status === "conflict") return { kind: "conflict", versionId: r.versionId };
+    if (r.status === "unverifiable") return { kind: "unverifiable", versionId: r.versionId };
     return r.peerOnly.includes(stored.currentVersionId) ? { kind: "peer_selected", stored } : { kind: "ok", stored };
   }
 
@@ -409,6 +444,11 @@ export class GenerationController {
       this.finish(runId, { phase: "discarded", code: "version_conflict", message: CONFLICT_MESSAGE });
       return;
     }
+    if (v.kind === "unverifiable") {
+      entry.candidate = produced;
+      this.finish(runId, { phase: "ready", fallback, code: "art_unverifiable", message: UNVERIFIABLE_MESSAGE });
+      return;
+    }
     if (v.kind === "peer_selected") {
       entry.candidate = produced;
       this.finish(runId, { phase: "ready", fallback, code: "peer_selected", message: PEER_SELECTED_MESSAGE });
@@ -429,7 +469,7 @@ export class GenerationController {
     let next = addArtVersion(cur, art);
     // ...and every version the stored project already has (another editor's, saved meanwhile) is kept alongside it
     if (stored && !memoryOnly) {
-      const merged = reconcileVersions(next.versions, stored.versions ?? []);
+      const merged = reconcileVersions(next.versions, stored.versions ?? [], this.attestedFor(cur.id));
       if (merged.status === "ok") next = { ...next, versions: merged.versions };
     }
     const saved = this.host.commit(next, memoryOnly ? { persist: false } : undefined);

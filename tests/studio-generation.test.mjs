@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { beforeEach, describe, test } from "node:test";
 import "./analytics-hooks.mjs";
 
@@ -32,8 +33,21 @@ globalThis.localStorage = localStorage;
 // ---- deferred /api/art ----
 let calls = [];
 // A tiny in-memory account for the REAL sync client (account/sync.ts syncNow): it records every upsert it is sent.
-const account = { stubs: new Map(), upserts: [], syncs: 0 };
-const resetAccount = () => Object.assign(account, { stubs: new Map(), upserts: [], syncs: 0 });
+const account = { stubs: new Map(), upserts: [], syncs: 0, externalize: false };
+const resetAccount = () => Object.assign(account, { stubs: new Map(), upserts: [], syncs: 0, externalize: false });
+// What src/server/files.ts does on a real sync: every inline image becomes /api/files/<sha256 of the decoded bytes>.<ext>, the
+// version id and updatedAt untouched.
+const externalizeLikeServer = (v) =>
+  typeof v === "string"
+    ? (() => {
+        const m = /^data:image\/(png|jpe?g|webp);base64,(.+)$/.exec(v);
+        return m ? `/api/files/${createHash("sha256").update(Buffer.from(m[2], "base64")).digest("hex")}.${m[1] === "jpeg" ? "jpg" : m[1]}` : v;
+      })()
+    : Array.isArray(v)
+      ? v.map(externalizeLikeServer)
+      : v && typeof v === "object"
+        ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, externalizeLikeServer(x)]))
+        : v;
 globalThis.fetch = (url, init = {}) => {
   if (String(url) === "/api/wall/sync") {
     const { stubs, deleted } = JSON.parse(init.body);
@@ -42,7 +56,7 @@ globalThis.fetch = (url, init = {}) => {
     for (const s of stubs) {
       if (!deleted.includes(s.id)) {
         account.upserts.push(s.id);
-        account.stubs.set(s.id, s);
+        account.stubs.set(s.id, account.externalize ? externalizeLikeServer(s) : s);
       }
     }
     return Promise.resolve(new Response(JSON.stringify({ stubs: [...account.stubs.values()], deleted: [], now: Date.now() }), { status: 200, headers: { "content-type": "application/json" } }));
@@ -1090,5 +1104,177 @@ describe("version history is reconciled, never dropped (PR100-ASTRA-004 / 005)",
     localStorage.setItem("ticketstub.wall.v1", JSON.stringify([makeStub("keep")]));
     assert.equal(store.upsertStub(makeStub("x")), true, "a valid wall is merged");
     assert.match(localStorage.getItem("ticketstub.wall.v1"), /"id":"keep"/, "the unrelated project is preserved");
+  });
+});
+
+const identity = await import("../src/customer/studio/generation/art-identity.ts");
+const reconcile = await import("../src/customer/studio/generation/reconcile.ts");
+
+describe("a server-externalized picture is the same body, not a conflict (PR100-OPUS-001)", () => {
+  const PNG_B64 = "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFElEQVR4nGP8z8Dwn4GBgYGJAQoAHhgCAh6X4CYAAAAASUVORK5CYII=";
+  const PNG2_B64 = PNG_B64.slice(0, -6) + "AAAAAA";
+  const JPG_B64 = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 16, 74, 70, 73, 70, 0, 1, 1, 0, 0, 1, 0, 1, 0, 0, 0xff, 0xd9]).toString("base64");
+  const png = `data:image/png;base64,${PNG_B64}`;
+  const jpg = `data:image/jpeg;base64,${JPG_B64}`;
+  const nameOf = (b64, ext) => `/api/files/${createHash("sha256").update(Buffer.from(b64, "base64")).digest("hex")}.${ext}`;
+
+  test("the synchronous SHA-256 equals node's for every padding boundary and a large buffer", () => {
+    for (const n of [0, 1, 3, 55, 56, 57, 63, 64, 65, 119, 120, 1000, 100000]) {
+      const b = Buffer.alloc(n, 0x61 + (n % 7));
+      assert.equal(identity.sha256Hex(new Uint8Array(b)), createHash("sha256").update(b).digest("hex"), `len ${n}`);
+    }
+  });
+
+  test("the file name derived from inline bytes is the server's (sha256 + sniffed type); wrong or refusable input has none", () => {
+    assert.equal(`/api/files/${identity.dataUrlFileName(png)}`, nameOf(PNG_B64, "png"));
+    assert.equal(`/api/files/${identity.dataUrlFileName(jpg)}`, nameOf(JPG_B64, "jpg"));
+    assert.equal(identity.dataUrlFileName(`data:image/jpeg;base64,${PNG_B64}`), null, "declared type must match the bytes");
+    assert.equal(identity.dataUrlFileName("data:image/png;base64,AAAAAAAA"), null, "not a PNG: the server refuses it");
+    assert.equal(identity.dataUrlFileName("data:text/plain;base64,AAAA"), null);
+    assert.equal(identity.dataUrlFileName("data:image/png;base64,!!!"), null);
+  });
+
+  test("comparison matrix: same bytes are same; other bytes, other names and caller-supplied references are not", () => {
+    const rel = identity.compareArtSrc;
+    assert.equal(rel(png, nameOf(PNG_B64, "png")), "same");
+    assert.equal(rel(nameOf(PNG_B64, "png"), png), "same", "symmetric");
+    assert.equal(rel(png, nameOf(PNG2_B64, "png")), "different", "a server-named file of OTHER bytes is provably different");
+    assert.equal(rel(png, png), "same");
+    assert.equal(rel("/art/a.webp", "/art/b.webp"), "different");
+    assert.equal(rel(png, "/art/a.webp"), "different");
+    assert.equal(rel(png, "/api/files/not-a-server-name.png"), "unverifiable", "a reference the server never produces is not trusted either way");
+    assert.equal(rel(png, "/api/files/abcdef0123456789.png"), "unverifiable");
+    assert.equal(rel("data:image/png;base64,AAAAAAAA", nameOf(PNG_B64, "png")), "unverifiable", "an inline picture the server would refuse");
+    assert.equal(rel(undefined, png), "different");
+  });
+
+  const sheetVersion = (id, art) => ({ id, parentId: "v0", edition: "researched", art, createdAt: "2026-10-03T00:00:00.000Z" });
+  test("compareVersions: externalization alone is the same body; a changed seed, vibe, edition or other bytes is a conflict", () => {
+    const inline = sheetVersion("x", { kind: "image", src: png, seed: 5, vibe: "photo", provenance: "live" });
+    const file = sheetVersion("x", { kind: "image", src: nameOf(PNG_B64, "png"), seed: 5, vibe: "photo", provenance: "live" });
+    assert.equal(reconcile.compareVersions(inline, file), "same");
+    for (const patch of [{ seed: 6 }, { vibe: "other" }, { provenance: "simulated" }, { src: nameOf(PNG2_B64, "png") }]) {
+      assert.equal(reconcile.compareVersions(inline, { ...file, art: { ...file.art, ...patch } }), "different", JSON.stringify(patch));
+    }
+    assert.equal(reconcile.compareVersions(inline, { ...file, edition: "minimal" }), "different");
+  });
+
+  async function generateTwiceAround(syncBetween, art1, art2) {
+    const ed = openEditor();
+    account.externalize = true;
+    const a = ed.ask("sheet");
+    await tick();
+    calls[0].respond(200, art1);
+    assert.equal((await a).op.phase, "applied");
+    const firstInline = JSON.parse(JSON.stringify(ed.stub.versions[1]));
+    if (syncBetween) {
+      const r = await sync.syncNow(); // the REAL sync client: the server's externalized copy comes back (same updatedAt)
+      assert.equal(r.ok, true);
+      assert.ok(account.stubs.get("s1").versions[1].art.src.startsWith("/api/files/"), "precondition: the account holds a file reference");
+    }
+    const b = ed.ask("note");
+    await tick();
+    calls[1].respond(200, art2);
+    return { ed, second: await b, firstInline };
+  }
+
+  for (const [label, art1] of [
+    ["generated inline PNG", { kind: "image", src: png, seed: 31, provenance: "live" }],
+    ["inline photo-style JPEG", { kind: "image", src: jpg, seed: 32, vibe: "photo", provenance: "live" }],
+  ]) {
+    test(`real sync externalizes the editor's own ${label}; the next generation in the SAME open editor still applies, history and bytes intact`, async () => {
+      const { ed, second, firstInline } = await generateTwiceAround(true, art1, { kind: "procedural", seed: 77, provenance: "simulated" });
+      assert.equal(second.op.phase, "applied");
+      assert.notEqual(second.op.code, "version_conflict");
+      assert.equal(second.op.saved, true);
+      const stored = store.getStub("s1");
+      assert.equal(stored.versions.length, 3);
+      assert.deepEqual(stored.versions[1].art, firstInline.art, "the earlier version's body is unchanged (immutable)");
+      assert.deepEqual(ed.stub.versions.map((v) => v.id), stored.versions.map((v) => v.id));
+      await sync.syncNow();
+      const acct = account.stubs.get("s1");
+      assert.equal(acct.versions.length, 3, "the account holds the whole history");
+      assert.equal(acct.versions[1].art.src, nameOf(art1.src.split(",")[1], art1.src.startsWith("data:image/jpeg") ? "jpg" : "png"), "and the same server-owned bytes");
+    });
+  }
+
+  test("without the fix's equivalence the same sequence would be a false conflict (the control: a file-to-file difference still is one)", async () => {
+    const { second } = await generateTwiceAround(true, { kind: "image", src: png, seed: 31, provenance: "live" }, { kind: "procedural", seed: 78, provenance: "simulated" });
+    assert.equal(second.op.phase, "applied");
+    // a GENUINE conflict: the same id, other bytes behind the server-named file
+    const ed = openEditor();
+    account.externalize = true;
+    const a = ed.ask("sheet");
+    await tick();
+    calls[calls.length - 1].respond(200, { kind: "image", src: png, seed: 41, provenance: "live" });
+    await a;
+    const stored = store.getStub("s1");
+    store.upsertStub({ ...stored, versions: stored.versions.map((v, i) => (i === 1 ? { ...v, art: { ...v.art, src: nameOf(PNG2_B64, "png") } } : v)) });
+    const before = localStorage.getItem("ticketstub.wall.v1");
+    const b = ed.ask("note");
+    await tick();
+    calls[calls.length - 1].ok("late");
+    const r = await b;
+    assert.equal(r.op.phase, "discarded");
+    assert.equal(r.op.code, "version_conflict", "different bytes under the same id are still a real conflict");
+    assert.equal(localStorage.getItem("ticketstub.wall.v1"), before, "nothing written");
+  });
+
+  test("a reference THIS editor's own sync wrote is attested: naming need not be re-derived; a later change to it voids that", async () => {
+    const odd = (v) => (typeof v === "string" ? (v.startsWith("data:") ? "/api/files/odd-name-from-a-future-server.png" : v) : Array.isArray(v) ? v.map(odd) : v && typeof v === "object" ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, odd(x)])) : v);
+    const ed = openEditor();
+    const a = ed.ask("sheet");
+    await tick();
+    calls[0].respond(200, { kind: "image", src: png, seed: 61, provenance: "live" });
+    await a;
+    // the account moves the picture under a name this client cannot derive (e.g. the server changed its scheme)
+    const real = globalThis.fetch;
+    globalThis.fetch = async (url, init) => {
+      if (String(url) !== "/api/wall/sync") return real(url, init);
+      const { stubs } = JSON.parse(init.body);
+      return new Response(JSON.stringify({ stubs: stubs.map(odd), deleted: [], now: Date.now() }), { status: 200 });
+    };
+    assert.equal((await sync.syncNow()).ok, true);
+    globalThis.fetch = real;
+    assert.equal(store.getStub("s1").versions[1].art.src, "/api/files/odd-name-from-a-future-server.png");
+    const b = ed.ask("note");
+    await tick();
+    calls[calls.length - 1].ok("attested");
+    assert.equal((await b).op.phase, "applied", "own sync's rewrite is not a conflict");
+    // a peer now points that same version at another file: the attestation no longer matches
+    const stored = store.getStub("s1");
+    store.upsertStub({ ...stored, versions: stored.versions.map((v) => (v.id === ed.stub.versions[1].id ? { ...v, art: { ...v.art, src: "/api/files/someone-elses.png" } } : v)) });
+    const before = localStorage.getItem("ticketstub.wall.v1");
+    const c = ed.ask("note");
+    await tick();
+    calls[calls.length - 1].ok("voided");
+    assert.equal((await c).op.phase, "ready");
+    assert.equal(localStorage.getItem("ticketstub.wall.v1"), before);
+  });
+
+  test("the event name the controller listens for is the sync's own", () => {
+    assert.equal(sync.WALL_SYNCED, "ticketstub:wall-synced");
+  });
+
+  test("a stored reference the server never produces is held, typed, never merged and never applied", async () => {
+    const ed = openEditor();
+    const a = ed.ask("sheet");
+    await tick();
+    calls[0].respond(200, { kind: "image", src: png, seed: 51, provenance: "live" });
+    await a;
+    const stored = store.getStub("s1");
+    store.upsertStub({ ...stored, versions: stored.versions.map((v, i) => (i === 1 ? { ...v, art: { ...v.art, src: "/api/files/abcdef0123456789.png" } } : v)) });
+    const before = localStorage.getItem("ticketstub.wall.v1");
+    const draft = JSON.stringify(ed.stub);
+    const b = ed.ask("note");
+    await tick();
+    calls[calls.length - 1].ok("held");
+    const { op } = await b;
+    assert.equal(op.phase, "ready");
+    assert.equal(op.code, "art_unverifiable");
+    assert.equal(localStorage.getItem("ticketstub.wall.v1"), before);
+    assert.equal(JSON.stringify(ed.stub), draft);
+    assert.equal(ed.gen.apply(op.runId).phase, "ready", "an explicit Apply cannot merge what it cannot compare");
+    assert.equal(localStorage.getItem("ticketstub.wall.v1"), before);
   });
 });
