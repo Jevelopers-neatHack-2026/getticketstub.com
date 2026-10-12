@@ -36,13 +36,40 @@ type Record_ = Pick<GenerationOp, "runId" | "stubId" | "sourceVersionId" | "sour
 export const INTERRUPTED_MESSAGE =
   "This page was closed or reloaded while new art was generating. We can't tell whether it finished, and nothing was applied. Your current art is unchanged. Starting again is a new request.";
 
-function read(storage: Storage | undefined): Record<string, Record_> {
+const PHASES = new Set<GenerationPhase>(["pending", "ready", "applied", "failed", "canceled", "discarded", "interrupted"]);
+const VIAS = new Set<GenerationVia>(["sheet", "note", "agent", "photo"]);
+const record = (value: unknown): value is Record<string, unknown> => !!value && typeof value === "object" && !Array.isArray(value);
+const text = (value: unknown, limit: number, empty = false): value is string =>
+  typeof value === "string" && value.length <= limit && (empty || value.trim().length > 0);
+const count = (value: unknown): value is number => typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+
+/** Storage is untrusted input, including the record's project identity and every field the controller adopts. */
+function valid(value: unknown, stubId: string): value is Record_ {
+  if (!record(value)) return false;
+  return text(stubId, 256) && value.stubId === stubId && text(value.runId, 256) && text(value.sourceVersionId, 256)
+    && count(value.sourceRevision) && count(value.startedAt) && (value.endedAt === undefined || count(value.endedAt))
+    && VIAS.has(value.via as GenerationVia) && PHASES.has(value.phase as GenerationPhase)
+    && text(value.message, 2048) && (value.vibe === undefined || text(value.vibe, 2048, true))
+    && (value.code === undefined || text(value.code, 128, true))
+    && (value.fallback === undefined || typeof value.fallback === "boolean")
+    && (value.saved === undefined || typeof value.saved === "boolean");
+}
+
+/** Copy only the small persisted contract; extra stored fields never enter the live controller. */
+function select(op: Record_): Record_ {
+  const { runId, stubId, sourceVersionId, sourceRevision, via, vibe, phase, startedAt, endedAt, fallback, saved, code, message } = op;
+  return { runId, stubId, sourceVersionId, sourceRevision, via, vibe, phase, startedAt, endedAt, fallback, saved, code, message };
+}
+
+/** null means unreadable content, which must not be replaced by an empty status map. */
+function read(storage: Storage | undefined): Record<string, unknown> | null {
   try {
     const raw = storage?.getItem(KEY);
-    const parsed = raw ? (JSON.parse(raw) as unknown) : {};
-    return parsed && typeof parsed === "object" ? (parsed as Record<string, Record_>) : {};
+    if (raw === undefined || raw === null) return {};
+    const parsed: unknown = JSON.parse(raw);
+    return record(parsed) ? parsed : null;
   } catch {
-    return {};
+    return null;
   }
 }
 
@@ -59,16 +86,20 @@ const KEEP = new Set<GenerationPhase>(["failed", "interrupted"]);
 
 /** Save (or clear) the status record for one stub. A storage failure only loses the reminder, never the draft. */
 export function saveStatus(op: GenerationOp | null, stubId: string, storage: Storage | undefined = defaultStorage()): void {
-  if (!storage) return;
+  if (!storage || !text(stubId, 256)) return;
   try {
     const all = read(storage);
+    // Never erase or normalize unknown reminder bytes, including another project's malformed record.
+    if (!all || Object.entries(all).some(([id, saved]) => !valid(saved, id)) || op && !valid(op, stubId)) return;
+    let next;
     if (op && (op.phase === "pending" || op.phase === "ready" || KEEP.has(op.phase))) {
-      const { runId, sourceVersionId, sourceRevision, via, vibe, phase, startedAt, endedAt, fallback, saved, code, message } = op;
-      all[stubId] = { runId, stubId, sourceVersionId, sourceRevision, via, vibe, phase, startedAt, endedAt, fallback, saved, code, message };
+      // A computed own property also handles an identifier such as "__proto__" without a setter.
+      next = { ...all, [stubId]: select(op) };
     } else {
-      delete all[stubId];
+      next = { ...all };
+      delete next[stubId];
     }
-    storage.setItem(KEY, JSON.stringify(all));
+    storage.setItem(KEY, JSON.stringify(next));
   } catch {
     /* storage unavailable: the status lasts for this visit */
   }
@@ -76,8 +107,10 @@ export function saveStatus(op: GenerationOp | null, stubId: string, storage: Sto
 
 /** The status left for a stub by an earlier page. A pending or ready record becomes interrupted. */
 export function loadStatus(stubId: string, storage: Storage | undefined = defaultStorage()): GenerationOp | null {
-  const rec = read(storage)[stubId];
-  if (!rec || typeof rec.runId !== "string") return null;
+  if (!text(stubId, 256)) return null;
+  const all = read(storage);
+  if (!all || !Object.hasOwn(all, stubId) || !valid(all[stubId], stubId)) return null;
+  const rec = select(all[stubId]);
   if (rec.phase === "pending" || rec.phase === "ready") {
     return { ...rec, phase: "interrupted", code: "interrupted", endedAt: rec.endedAt ?? Date.now(), message: INTERRUPTED_MESSAGE };
   }
