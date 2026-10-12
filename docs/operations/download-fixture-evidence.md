@@ -23,7 +23,7 @@ suggested name must agree with the observed producer. Filename order, arrival ti
 download event do not establish action identity.
 
 `download/download-evidence.json` retains per-case front, edited-front and back receipts and a full final audit.
-The `native-downloads-*` directory retains the GUID-named files. Each invocation creates a new directory; no
+The `native-downloads-<browser-session>-*` directories retain the GUID-named files. Each browser launch creates a new directory; no
 download directory is cleared between actions or removed at teardown. An unknown, duplicate, incomplete or
 ambiguous delivery, a reused document, or a Blob/file mismatch fails the audit. Events remain observed through
 browser shutdown. Share, cancel, tab and unreadable-art cases must observe their path in the current document
@@ -52,14 +52,32 @@ diagnostic subsets when handing evidence to reviewers.
 ## First-capture qualification and diagnostic state
 
 The complete gate retains the original matrix and requires three original/edited first-capture pairs for
-`pale/researched` at each of 390 and 1440 pixels: the baseline pair, then two additional fresh-page pairs per
+`pale/researched` at each of 390 and 1440 pixels: the baseline pair, then two additional cold-browser pairs per
 viewport. All six pairs and twelve first-capture comparisons must finish and pass. Every first screenshot has
 a unique capture ID, file and SHA-256; its result cannot be overwritten by a subsequent comparison. The fixed
 plan continues after a failed pair or page exception. A missing capture, comparison, pair, invalid receipt or
-any failed assertion fails the run even if every later pair passes. The additional pages share the same browser
-profile and cache. Only the baseline's first studio load/download is throttled; these are not cold-cache trials.
+any failed assertion fails the run even if every later pair passes. The baseline matrix keeps its shared browser,
+profile and cache. Each of the four additional pairs starts one new browser process with its own newly created
+temporary profile, preventing browser cache or decoded-image reuse from preceding pairs. Its original and edited
+actions then share that pair's process/profile: the cold claim is at pair start, not at the screenshot instant.
+Only the baseline's first studio load/download is throttled.
 The `captureQualification` record states the selected scope and exact expected, recorded and compared counts.
 `DOWNLOAD_ONLY`/`DOWNLOAD_VP` retain their diagnostic-subset meaning and do not qualify the complete gate.
+
+Before application navigation, `browserSessions` records the actual browser PID from `SystemInfo.getProcessInfo`,
+the throwaway profile argument from `SystemInfo.getInfo`, filesystem creation metadata, blank initial targets,
+and the unchanged launcher's source hash. Only the profile path hash is retained; raw command lines, GPU/model
+data and target URLs are omitted. Protocol, size, path, creation-time or uniqueness failures leave isolation
+unconfirmed and fail the pair. These startup metadata queries can affect timing; they do not establish pixel
+readiness. A generated session label alone is not isolation evidence.
+
+Each session's collector starts before application navigation and remains attached through bounded browser
+shutdown. Its final snapshot is then retained and the listener detached. Process exit, profile removal and
+complete collector cleanup must be confirmed before a pair can qualify, even when both first images passed.
+Every action, producer, native GUID, event and violation is aggregated with its `browserSessionId`; equal IDs
+from separate processes are not deduplicated. Per-case receipts and `downloadReceipts.directories` bind every
+saved GUID to its own session directory. Missing sessions, unsupported setup, late events and incomplete cleanup
+remain explicit and fail closed while the remaining fixed pairs are still attempted. There is no browser retry.
 
 The existing final pre-screenshot evaluation also records bounded computed state for the actual image, figure
 and up to sixteen ancestors per image, including ancestors above the figure. It records numeric transforms,

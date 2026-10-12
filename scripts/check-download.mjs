@@ -19,11 +19,11 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
-import { launchBrowser, chromePath } from "./lib/cdp.mjs";
-import { BEGIN_CAPTURE_PROVENANCE, browserProvenance, captureFailureFrames, readCaptureProvenance } from "./lib/download-capture-diagnostics.mjs";
+import { chromePath } from "./lib/cdp.mjs";
+import { BEGIN_CAPTURE_PROVENANCE, captureFailureFrames, readCaptureProvenance } from "./lib/download-capture-diagnostics.mjs";
 import { DownloadLayerDiagnostics } from "./lib/download-layer-diagnostics.mjs";
 import { CaptureQualification, captureQualificationPlan, retainFirstCapture } from "./lib/download-capture-qualification.mjs";
-import { DownloadReceipts } from "./lib/download-receipts.mjs";
+import { DownloadBrowserSessions, browserSessionIdForPair } from "./lib/download-browser-sessions.mjs";
 import { checkDownloadReceiptControls } from "./lib/download-receipt-controls.mjs";
 import { MESSAGES } from "../src/customer/feedback-messages/messages.ts";
 
@@ -31,8 +31,6 @@ const base = (process.argv[2] ?? "http://127.0.0.1:3000").replace(/\/$/, "");
 const evidenceDir = resolve(process.argv[3] ?? "out/gt-evidence");
 const outDir = join(evidenceDir, "download");
 mkdirSync(outDir, { recursive: true });
-// Retain exact GUID-named native files in a new directory. Never clear a directory while an old download can finish.
-const dlDir = mkdtempSync(join(outDir, "native-downloads-"));
 
 // Tolerances, measured on the quarter-size blurred images (0..255 per channel; mean absolute difference, and the share of
 // pixels where any channel is off by more than 40). The default holds for photo and flat-colour editions. Two editions
@@ -186,15 +184,18 @@ function pngSize(buf) {
   return { sig, width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) };
 }
 
-const browser = await launchBrowser();
-const receipts = new DownloadReceipts(browser, dlDir);
+const browserSessions = new DownloadBrowserSessions(outDir, capturePlan);
+let baselineSession;
 const layerObservers = [];
 evidence.layerObserverCleanup = [];
 try {
   // Startup provenance is outside the capture path; an executable path/inventory is not a measured browser version.
-  evidence.browser = await browserProvenance(browser.conn);
-  await receipts.start();
-  evidence.nativeControls = await checkDownloadReceiptControls(check, mkdtempSync(join(outDir, "native-controls-")));
+  try {
+    baselineSession = await browserSessions.open("baseline");
+    evidence.browser = baselineSession.version;
+  } catch { check("baseline browser session setup completed", false, "baseline_session_setup_failed"); }
+  try { evidence.nativeControls = await checkDownloadReceiptControls(check, mkdtempSync(join(outDir, "native-controls-"))); }
+  catch { check("native receipt controls completed", false, "native_receipt_control_setup_failed"); }
   // Each comparison gets a fresh blank tab: one tab kept for the whole run stopped answering after many large images.
   const within = async (promise, what, ms = 60_000) => {
     let timer;
@@ -206,7 +207,17 @@ try {
       clearTimeout(timer);
     }
   };
-  async function inTab(call) {
+  for (const item of capturePlan) {
+    const { viewport: vp, trial, kind } = item;
+    const browserSessionId = browserSessionIdForPair(item);
+    let page, layers;
+    try {
+    // The fixed extra pairs each launch once, with a separate process/profile and a collector
+    // installed before application navigation. Setup failures never retry or skip later planned pairs.
+    const session = kind === "baseline" ? baselineSession : await browserSessions.open(browserSessionId);
+    if (!session) throw new Error("baseline_session_setup_failed");
+    const { browser, receipts } = session;
+    async function inTab(call) {
     const tab = await browser.newPage({ width: 800, height: 600 });
     try {
       await tab.goto("about:blank", { settle: 30 });
@@ -216,13 +227,9 @@ try {
     } finally {
       await tab.close();
     }
-  }
-  const against = (ref, png, sides) => inTab(`window.__cmp.against(${JSON.stringify(ref.toString("base64"))}, ${JSON.stringify(png.toString("base64"))}, ${sides})`);
-  const between = (a, b, region) => inTab(`window.__cmp.between(${JSON.stringify(a.toString("base64"))}, ${JSON.stringify(b.toString("base64"))}, ${JSON.stringify(region)})`);
-
-  for (const { viewport: vp, trial, kind } of capturePlan) {
-    let page, layers;
-    try {
+    }
+    const against = (ref, png, sides) => inTab(`window.__cmp.against(${JSON.stringify(ref.toString("base64"))}, ${JSON.stringify(png.toString("base64"))}, ${sides})`);
+    const between = (a, b, region) => inTab(`window.__cmp.between(${JSON.stringify(a.toString("base64"))}, ${JSON.stringify(b.toString("base64"))}, ${JSON.stringify(region)})`);
     page = await browser.newPage({ width: vp.width, height: vp.height, dpr: 2, mobile: vp.mobile });
     await receipts.install(page); // observe before app code; every press below gets a fresh openStudio document
     layers = new DownloadLayerDiagnostics(page);
@@ -346,21 +353,22 @@ try {
       try {
         const action = await receipts.arm(page, side, label);
         if (!(await press(side))) return { error: "no visible Download control" };
-        return await receipts.download(action);
+        const result = await receipts.download(action);
+        return { ...result, receipt: { ...result.receipt, browserSessionId } };
       } catch (e) {
         return { error: e instanceof Error ? e.message : String(e) };
       }
     }
 
     for (const c of kind === "baseline" ? CASES : CASES.filter((c) => c.key === "pale" && c.edition === "researched")) {
-      const label = `${vp.name}px ${c.key}/${c.edition} (${c.art} art, ${c.finish})${trial ? ` fresh-page trial ${trial + 1}/3` : ""}`;
-      const rec = { viewport: vp.name, trial, kind, ...c };
+      const label = `${vp.name}px ${c.key}/${c.edition} (${c.art} art, ${c.finish})${trial ? ` cold-browser trial ${trial + 1}/3` : ""}`;
+      const rec = { viewport: vp.name, trial, kind, browserSessionId, ...c };
       evidence.cases.push(rec);
-      const tag = `${vp.name}-${c.key}-${c.edition}${trial ? `-fresh-${trial}` : ""}`;
+      const tag = `${vp.name}-${c.key}-${c.edition}${trial ? `-cold-${trial}` : ""}`;
       const pairId = c.key === "pale" && c.edition === "researched" ? `${vp.name}:${trial}` : null;
       const failedBefore = failed;
       let exception = false;
-      if (pairId) qualification.begin(pairId);
+      if (pairId) qualification.begin(pairId, browserSessionId);
       const retainFirst = (phase, shot) => {
         if (!shot) return;
         const file = `${tag}${phase === "edited" ? "-edited" : ""}-screen.png`;
@@ -368,9 +376,9 @@ try {
         retainFirstCapture({ directory: outDir, file, png: shot.png, captureId: shot.captureId, sha256: shot.sha256, qualification, pairId, phase });
       };
       try {
-        // Only the baseline's first studio load/download is throttled. Fresh pages share this browser's
-        // profile/cache, and do not claim a cold-cache run or deterministic composited-art readiness.
-        const cold = !evidence.cases.slice(0, -1).length;
+        // Only the baseline's first studio load/download is throttled. Additional pairs start in new
+        // processes/profiles; their edited capture shares that pair's cache. None proves compositor readiness.
+        const cold = kind === "baseline" && !evidence.cases.slice(0, -1).length;
         if (cold) {
           await page.send("Emulation.setCPUThrottlingRate", { rate: 6 });
           await page.send("Network.emulateNetworkConditions", { offline: false, latency: 150, downloadThroughput: 200_000, uploadThroughput: 200_000 });
@@ -507,22 +515,25 @@ try {
       }
     }
     } catch (e) {
+      browserSessions.fault(browserSessionId, "page_setup_or_execution_failed");
       check(`${vp.name}px ${kind} trial ${trial + 1}: page setup or execution completed`, false, e instanceof Error ? e.message : String(e));
     } finally {
       if (layers) evidence.layerObserverCleanup.push(await layers.stop());
       try { if (page) await page.close(); }
-      catch (e) { check(`${vp.name}px ${kind} trial ${trial + 1}: page closed`, false, e instanceof Error ? e.message : String(e)); }
+      catch (e) { browserSessions.fault(browserSessionId, "page_cleanup_failed"); check(`${vp.name}px ${kind} trial ${trial + 1}: page closed`, false, e instanceof Error ? e.message : String(e)); }
+      if (kind !== "baseline") await browserSessions.close(browserSessionId);
     }
   }
 } finally {
   for (const layers of layerObservers) if (!layers.stopped) evidence.layerObserverCleanup.push(await layers.stop());
-  try { await browser.close(); }
+  try { await browserSessions.closeAll(); }
   catch (e) { check("browser completed bounded shutdown", false, e instanceof Error ? e.message : String(e)); }
   // Unknown, duplicate and late deliveries remain failures, including arrivals after a no-download terminal.
-  evidence.downloadReceipts = { directory: dlDir, ...receipts.snapshot() };
-  receipts.stop();
+  const { downloadReceipts, ...sessionEvidence } = browserSessions.snapshot();
+  evidence.browserSessions = sessionEvidence;
+  evidence.downloadReceipts = downloadReceipts;
   check("all native downloads have one current document/action/Blob receipt and completed matching GUID", evidence.downloadReceipts.violations.length === 0, JSON.stringify(evidence.downloadReceipts.violations));
-  evidence.captureQualification = qualification.snapshot();
+  evidence.captureQualification = qualification.snapshot(sessionEvidence);
   check("all fixed original/edited first-capture pairs completed and passed", evidence.captureQualification.passed,
     JSON.stringify(evidence.captureQualification));
 }

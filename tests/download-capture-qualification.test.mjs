@@ -7,6 +7,11 @@ import { CaptureQualification, captureQualificationPlan, retainFirstCapture } fr
 
 const plan = captureQualificationPlan([{ name: "390" }, { name: "1440" }]);
 const pairId = ({ viewport, trial }) => `${viewport.name}:${trial}`;
+const expectedSessions = ["baseline", "cold-390-1", "cold-390-2", "cold-1440-1", "cold-1440-2"];
+// Synthetic session evidence for the pure ledger controls; actual identity/shutdown is exercised
+// by download-browser-sessions.test.mjs and the native application fixture.
+const sessionEvidence = () => ({ schema: "ticketstub.download-browser-sessions.v1", expectedSessions,
+  complete: true, passed: true, sessions: expectedSessions.map((sessionId) => ({ sessionId, passed: true })) });
 let sequence = 0;
 function capture(ledger, id, phase, matched = true) {
   const n = ++sequence;
@@ -27,19 +32,23 @@ function run({ failFirst = false, omitLast = false, exceptionFirst = false, skip
   return ledger;
 }
 
-test("fixed matrix preserves both baseline pages then adds exactly two fresh pages per viewport", () => {
+test("fixed matrix preserves both baseline pages then adds exactly two cold browser pairs per viewport", () => {
   assert.deepEqual(plan.map((p) => [p.viewport.name, p.trial, p.kind]), [
-    ["390", 0, "baseline"], ["1440", 0, "baseline"], ["390", 1, "fresh_page"], ["390", 2, "fresh_page"], ["1440", 1, "fresh_page"], ["1440", 2, "fresh_page"],
+    ["390", 0, "baseline"], ["1440", 0, "baseline"], ["390", 1, "cold_browser"], ["390", 2, "cold_browser"], ["1440", 1, "cold_browser"], ["1440", 2, "cold_browser"],
   ]);
-  const record = run().snapshot();
+  const record = run().snapshot(sessionEvidence());
   assert.equal(record.expectedPairs, 6); assert.equal(record.expectedFirstCaptures, 12);
   assert.equal(record.recordedFirstCaptures, 12); assert.equal(record.comparedFirstCaptures, 12);
   assert.equal(record.complete, true); assert.equal(record.passed, true);
-  assert.equal(record.sharedBrowserProfileAndCache, true); assert.equal(record.coldCacheClaim, false);
+  assert.equal(record.baselineBrowserProfileAndCacheShared, true);
+  assert.equal(record.additionalPairs, "new_process_and_profile_at_each_pair_start");
+  assert.equal(record.editedCaptureSharesItsPairProfile, true); assert.equal(record.coldAtScreenshotInstantClaim, false);
+  assert.equal(record.pairs[2].browserSessionId, "cold-390-1");
+  assert.equal(record.pairs[2].phases.edited.browserSessionId, "cold-390-1");
 });
 
 test("one failed first frame is retained and fails the whole matrix after every later pair passes", () => {
-  const record = run({ failFirst: true }).snapshot();
+  const record = run({ failFirst: true }).snapshot(sessionEvidence());
   assert.equal(record.complete, true); assert.equal(record.passed, false);
   assert.equal(record.attemptedPairs, 6); assert.equal(record.comparedFirstCaptures, 12);
   assert.equal(record.pairs[0].phases.original.matched, false);
@@ -49,7 +58,7 @@ test("one failed first frame is retained and fails the whole matrix after every 
 
 test("missing, skipped or exceptional pairs cannot pass even when all observed comparisons pass", () => {
   for (const option of ["omitLast", "exceptionFirst", "skipLastCompare"]) {
-    const record = run({ [option]: true }).snapshot();
+    const record = run({ [option]: true }).snapshot(sessionEvidence());
     assert.equal(record.passed, false, option); assert.equal(record.complete, false, option);
     if (option === "exceptionFirst") { assert.equal(record.attemptedPairs, 6); assert.equal(record.pairs[0].exception, true); }
   }
@@ -57,12 +66,48 @@ test("missing, skipped or exceptional pairs cannot pass even when all observed c
 
 test("a second comparison cannot replace an earlier failed first result", () => {
   const ledger = run({ failFirst: true });
-  const before = ledger.snapshot();
+  const before = ledger.snapshot(sessionEvidence());
   ledger.compared("390:0", "original", true, { mean: 0, bad: 0 });
-  const after = ledger.snapshot();
+  const after = ledger.snapshot(sessionEvidence());
   assert.deepEqual(after.pairs[0], before.pairs[0]);
   assert.ok(after.violations.includes("invalid_or_duplicate_comparison"));
   assert.equal(after.passed, false);
+});
+
+test("all first captures passing cannot qualify an absent, malformed or incomplete isolation receipt", () => {
+  const ledger = run();
+  const missing = sessionEvidence(); missing.sessions.pop();
+  const duplicate = sessionEvidence(); duplicate.sessions[1] = duplicate.sessions[0];
+  for (const evidence of [undefined, {}, { ...sessionEvidence(), expectedSessions: null },
+    { ...sessionEvidence(), sessions: {} }, { ...sessionEvidence(), complete: false }, missing, duplicate]) {
+    const record = ledger.snapshot(evidence);
+    assert.equal(record.capturesComplete, true);
+    assert.equal(record.isolationComplete, false);
+    assert.equal(record.passed, false);
+  }
+});
+
+test("a later cleanup or collector failure invalidates its cold pair without rewriting first results", () => {
+  const ledger = run(), evidence = sessionEvidence();
+  const before = ledger.snapshot(evidence);
+  evidence.sessions[2].passed = false;
+  evidence.passed = false;
+  const after = ledger.snapshot(evidence);
+  const pair = after.pairs.find((item) => item.browserSessionId === evidence.sessions[2].sessionId);
+  assert.equal(pair.firstCaptureStatus, "passed");
+  assert.equal(pair.browserSessionPassed, false);
+  assert.equal(pair.status, "failed_or_incomplete");
+  assert.equal(after.passed, false);
+  assert.deepEqual(after.pairs.map((item) => item.phases), before.pairs.map((item) => item.phases));
+});
+
+test("a pair cannot attach captures to a different browser session", () => {
+  const ledger = new CaptureQualification(plan);
+  ledger.begin("390:1", "baseline");
+  const record = ledger.snapshot(sessionEvidence());
+  assert.equal(record.attemptedPairs, 0);
+  assert.ok(record.violations.includes("unexpected_or_duplicate_pair"));
+  assert.equal(record.passed, false);
 });
 
 test("duplicate capture IDs, malformed metrics and duplicate pair completion fail closed", () => {

@@ -1,7 +1,8 @@
-// Fixed fresh-page qualification, never a retry-until-match loop. The baseline matrix is preserved;
+// Fixed cold-process qualification, never a retry-until-match loop. The baseline matrix is preserved;
 // two additional original/edited pairs cover the image edition at each selected viewport.
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { browserSessionIdForPair } from "./download-browser-sessions.mjs";
 
 export function retainFirstCapture({ directory, file, png, captureId, sha256, qualification, pairId, phase }) {
   // Preserve an existing authoritative file even if the caller reuses an evidence directory or
@@ -13,13 +14,14 @@ export function retainFirstCapture({ directory, file, png, captureId, sha256, qu
 export function captureQualificationPlan(viewports) {
   return [
     ...viewports.map((viewport) => ({ viewport, trial: 0, kind: "baseline" })),
-    ...viewports.flatMap((viewport) => [1, 2].map((trial) => ({ viewport, trial, kind: "fresh_page" }))),
+    ...viewports.flatMap((viewport) => [1, 2].map((trial) => ({ viewport, trial, kind: "cold_browser" }))),
   ];
 }
 
 export class CaptureQualification {
   constructor(plan, { diagnosticSubset = false } = {}) {
     this.expected = plan.map(({ viewport, trial }) => `${viewport.name}:${trial}`);
+    this.sessionIds = new Map(plan.map((item) => [`${item.viewport.name}:${item.trial}`, browserSessionIdForPair(item)]));
     this.diagnosticSubset = diagnosticSubset;
     this.pairs = new Map();
     this.captureIds = new Set();
@@ -32,9 +34,9 @@ export class CaptureQualification {
       || !diagnosticSubset && selected.length !== 2) this.violations.push("invalid_or_incomplete_fixed_plan");
   }
 
-  begin(pairId) {
-    if (!this.expected.includes(pairId) || this.pairs.has(pairId)) { this.violations.push("unexpected_or_duplicate_pair"); return; }
-    this.pairs.set(pairId, { pairId, phases: {}, status: "started" });
+  begin(pairId, browserSessionId = this.sessionIds.get(pairId)) {
+    if (!this.expected.includes(pairId) || this.pairs.has(pairId) || browserSessionId !== this.sessionIds.get(pairId)) { this.violations.push("unexpected_or_duplicate_pair"); return; }
+    this.pairs.set(pairId, { pairId, browserSessionId, phases: {}, status: "started" });
   }
 
   captured(pairId, phase, { captureId, sha256, file }) {
@@ -47,7 +49,7 @@ export class CaptureQualification {
     }
     this.captureIds.add(captureId);
     this.files.add(file);
-    pair.phases[phase] = { captureId, sha256, file, status: "captured_uncompared" };
+    pair.phases[phase] = { captureId, sha256, file, browserSessionId: pair.browserSessionId, status: "captured_uncompared" };
   }
 
   compared(pairId, phase, matched, metrics) {
@@ -69,17 +71,31 @@ export class CaptureQualification {
     pair.status = !pair.exception && failedAssertions === 0 && ["original", "edited"].every((phase) => pair.phases[phase]?.status === "passed") ? "passed" : "failed_or_incomplete";
   }
 
-  snapshot() {
-    const pairs = this.expected.map((pairId) => this.pairs.get(pairId) ?? { pairId, status: "not_attempted", phases: {} });
+  snapshot(browserSessions) {
+    const sessions = Array.isArray(browserSessions?.sessions) ? browserSessions.sessions : [];
+    const pairs = this.expected.map((pairId) => {
+      const pair = this.pairs.get(pairId) ?? { pairId, browserSessionId: this.sessionIds.get(pairId), status: "not_attempted", phases: {} };
+      const session = sessions.find((candidate) => candidate?.sessionId === pair.browserSessionId);
+      return { ...pair, firstCaptureStatus: pair.status, browserSessionPassed: session?.passed === true,
+        status: pair.status === "passed" && session?.passed !== true ? "failed_or_incomplete" : pair.status };
+    });
     const captures = pairs.flatMap((pair) => Object.values(pair.phases));
-    const complete = this.expected.length > 0 && pairs.every((pair) => ["passed", "failed_or_incomplete"].includes(pair.status))
+    const capturesComplete = this.expected.length > 0 && pairs.every((pair) => ["passed", "failed_or_incomplete"].includes(pair.status))
       && captures.length === this.expected.length * 2 && captures.every((capture) => ["passed", "failed"].includes(capture.status));
-    return structuredClone({ schema: "ticketstub.first-capture-qualification.v1", scope: this.diagnosticSubset ? "diagnostic_subset" : "full_matrix",
-      sharedBrowserProfileAndCache: true, coldCacheClaim: false, throttling: "baseline_first_load_only",
+    const expectedSessions = [...new Set(this.sessionIds.values())].sort();
+    const isolationComplete = browserSessions?.schema === "ticketstub.download-browser-sessions.v1" && browserSessions.complete === true
+      && Array.isArray(browserSessions.expectedSessions) && sessions.length === expectedSessions.length
+      && JSON.stringify(sessions.map((session) => session?.sessionId).sort()) === JSON.stringify(expectedSessions)
+      && JSON.stringify([...browserSessions.expectedSessions].sort()) === JSON.stringify(expectedSessions);
+    const complete = capturesComplete && isolationComplete;
+    return structuredClone({ schema: "ticketstub.first-capture-qualification.v2", scope: this.diagnosticSubset ? "diagnostic_subset" : "full_matrix",
+      baselineBrowserProfileAndCacheShared: true, additionalPairs: "new_process_and_profile_at_each_pair_start",
+      editedCaptureSharesItsPairProfile: true, coldAtScreenshotInstantClaim: false, throttling: "baseline_first_load_only",
       policy: "all_fixed_first_captures_must_pass_no_replacement_or_retry", expectedPairs: this.expected.length,
       expectedFirstCaptures: this.expected.length * 2, attemptedPairs: this.pairs.size, recordedFirstCaptures: captures.length,
       comparedFirstCaptures: captures.filter((capture) => ["passed", "failed"].includes(capture.status)).length,
-      complete, passed: complete && this.violations.length === 0 && pairs.every((pair) => pair.status === "passed"),
+      capturesComplete, isolationComplete, complete,
+      passed: complete && browserSessions.passed === true && this.violations.length === 0 && pairs.every((pair) => pair.status === "passed"),
       violations: this.violations, pairs });
   }
 }
