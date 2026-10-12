@@ -142,7 +142,7 @@ export function StudioStart({ fill = false }: { fill?: boolean } = {}) {
       if (!text) {
         flow("intake_paste", { entry, via: "button", result: "empty" });
         setMessage(
-          "Your clipboard is empty. Copy the link from your ticket email or app.",
+          "Your clipboard is empty. Copy the event page link first.",
         );
         inputRef.current?.focus();
         return;
@@ -207,11 +207,11 @@ export function StudioStart({ fill = false }: { fill?: boolean } = {}) {
 
             <div className={s.entry}>
               <h2 id={titleId} className={s.title}>
-                Paste your link. We print the stub.
+                Paste your link. We design the stub.
               </h2>
               <p className={s.lede}>
-                Use the link from your ticket email or app. We find the night
-                and print your stub.
+                Use the event page link, or type the night. We find it
+                and design your keepsake stub.
               </p>
 
               <form
@@ -296,7 +296,7 @@ export function StudioStart({ fill = false }: { fill?: boolean } = {}) {
               </div>
 
               <div className={s.demos}>
-                <p className={cx("desk-label", s.demoLabel)}>Or print a demo</p>
+                <p className={cx("desk-label", s.demoLabel)}>Or try a demo</p>
                 <Tags label="Demo events">
                   {DEMO_TAGS.map((d) => (
                     <Tag

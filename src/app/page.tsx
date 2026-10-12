@@ -1,18 +1,13 @@
+import { Landing } from "@/customer/landing/Landing";
 import { StudioStart } from "@/customer/start/StudioStart";
-import styles from "./page.module.css";
 
 export default function Home() {
+  // the landing page's hero, then the studio start on the cream paper desk, then the rest of the landing page
   return (
-    <main className="desk-surface">
-      {/* PLACEHOLDER HERO: replaced by the landing page. It only holds the place so <StudioStart /> has
-          something above it; the landing page owns the real hero and places <StudioStart /> under it. */}
-      <header className={styles.hero}>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img className={styles.logo} src="/brand/lockup-horizontal.svg" alt="TicketStub" />
-        <h1 className={styles.headline}>Turn your ticket into a stub worth keeping.</h1>
-        <p className={styles.lede}>Paste your event link and we print the night as a keepsake.</p>
-      </header>
-      <StudioStart />
-    </main>
+    <Landing>
+      <div id="start" className="desk-surface">
+        <StudioStart />
+      </div>
+    </Landing>
   );
 }
