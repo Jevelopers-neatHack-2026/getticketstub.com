@@ -8,8 +8,10 @@ import "./analytics-hooks.mjs";
 
 class FakeStorage {
   mode = "ok"; // "ok" | "blocked"
+  readFails = false; // reads throw (storage unavailable) while writes still work
   #m = new Map();
   getItem(k) {
+    if (this.readFails) throw Object.assign(new Error("unreadable"), { name: "SecurityError" });
     return this.#m.has(k) ? this.#m.get(k) : null;
   }
   setItem(k, v) {
@@ -29,8 +31,23 @@ globalThis.localStorage = localStorage;
 
 // ---- deferred /api/art ----
 let calls = [];
+// A tiny in-memory account for the REAL sync client (account/sync.ts syncNow): it records every upsert it is sent.
+const account = { stubs: new Map(), upserts: [], syncs: 0 };
+const resetAccount = () => Object.assign(account, { stubs: new Map(), upserts: [], syncs: 0 });
 globalThis.fetch = (url, init = {}) => {
-  assert.equal(String(url), "/api/art", "only the art route is ever requested");
+  if (String(url) === "/api/wall/sync") {
+    const { stubs, deleted } = JSON.parse(init.body);
+    account.syncs++;
+    for (const id of deleted) account.stubs.delete(id);
+    for (const s of stubs) {
+      if (!deleted.includes(s.id)) {
+        account.upserts.push(s.id);
+        account.stubs.set(s.id, s);
+      }
+    }
+    return Promise.resolve(new Response(JSON.stringify({ stubs: [...account.stubs.values()], deleted: [], now: Date.now() }), { status: 200, headers: { "content-type": "application/json" } }));
+  }
+  assert.equal(String(url), "/api/art", "only the art route and the account sync route are ever requested");
   return new Promise((resolve, reject) => {
     const call = { body: JSON.parse(init.body), signal: init.signal, settled: false };
     call.respond = (status, body) => {
@@ -81,8 +98,10 @@ function openEditor(id = "s1", { seed = true } = {}) {
   ed.stub = initial;
   const stubRef = { get current() { return ed.stub; } };
   const revRef = { get current() { return ed.revision; } };
-  ed.gen = new GenerationController(editorHost(stubRef, revRef, ed.update, (sid) => store.loadDeleted().includes(sid)), localStorage);
+  ed.gen = new GenerationController(editorHost(stubRef, revRef, ed.update, (sid) => store.loadDeleted().includes(sid), store.stubPresence), localStorage);
   ed.gen.attach();
+  // the same observation the Editor wires: wall changes, other-tab storage events and account sync writes
+  for (const ev of [store.WALL_CHANGED, sync.WALL_SYNCED, "storage"]) window.addEventListener(ev, ed.gen.observe);
   /** An entry point asks for art; resolves at a terminal phase. */
   ed.ask = (via = "sheet", fallback = "apply", vibe = undefined) => ed.gen.start({ via, vibe, fallback, run: remixProducer(via, vibe, "none") });
   return ed;
@@ -94,6 +113,8 @@ const withoutArtFields = (s) => ({ ...s, versions: undefined, currentVersionId: 
 beforeEach(() => {
   localStorage.clear();
   localStorage.mode = "ok";
+  localStorage.readFails = false;
+  resetAccount();
   calls = [];
 });
 
@@ -655,5 +676,155 @@ describe("photo art uses the same lifecycle with photo-truthful outcomes", () =>
     assert.equal(op.phase, "failed");
     assert.match(op.message, /couldn't read that photo/);
     assert.equal(JSON.stringify(ed.stub), before);
+  });
+});
+
+describe("an observed removal retires operations for good, independent of the outbound deletion queue (PR100-ASTRA-001)", () => {
+  /** Sign-in has pushed the project; the other tab takes it down; the REAL sync client acknowledges and clears the queue. */
+  async function signedInThenDeletedElsewhere(ed, { restore = false } = {}) {
+    await sync.syncNow();
+    assert.equal(account.stubs.has("s1"), true);
+    store.removeStub("s1"); // the wall's "Take it down" (writes the wall and queues the deletion)
+    window.dispatchEvent(new Event("storage")); // what this tab hears from the other tab's write
+    await sync.syncNow(); // the real client sends the tombstone, the account drops the project, the queue is cleared
+    assert.deepEqual(store.loadDeleted(), [], "the acknowledged deletion queue is empty");
+    assert.equal(account.stubs.has("s1"), false, "the account confirms the project is absent");
+    assert.equal(store.getStub("s1"), undefined);
+    if (restore) {
+      store.upsertStub(makeStub("s1")); // a legitimate re-create/import under the SAME id
+      window.dispatchEvent(new Event("storage"));
+    }
+  }
+
+  test("pending run + deletion acknowledged by real sync: late completion cannot resurrect local, account or versions", async () => {
+    const ed = openEditor();
+    const p = ed.ask("sheet");
+    await tick();
+    await signedInThenDeletedElsewhere(ed);
+    const upserts = account.upserts.length;
+    const saves = ed.saved.length;
+    const r = (calls[0].ok("late"), await p);
+    assert.equal(r.op.phase, "discarded");
+    assert.equal(r.op.code, "project_removed");
+    assert.equal(store.getStub("s1"), undefined, "no local resurrection");
+    assert.deepEqual(store.loadWall(), []);
+    assert.equal(ed.saved.length, saves, "no editor commit at all");
+    await sync.syncNow();
+    assert.equal(account.upserts.length, upserts, "no upsert was dispatched to the account");
+    assert.equal(account.stubs.has("s1"), false, "no server resurrection");
+    assert.equal(calls[0].signal.aborted, true, "transport aborted (no provider-cancel claim)");
+    assert.doesNotMatch(r.op.message, /provider|cancel/i);
+    assert.equal(JSON.stringify(ed.stub).includes("late.webp"), false, "the open draft was not changed to hide the race");
+  });
+
+  test("the same, with the deletion acknowledged BEFORE the response is even released, and the id restored", async () => {
+    const ed = openEditor();
+    const p = ed.ask("note");
+    await tick();
+    await signedInThenDeletedElsewhere(ed, { restore: true });
+    const restored = JSON.stringify(store.getStub("s1"));
+    calls[0].ok("late2");
+    const { op } = await p;
+    assert.equal(op.phase, "discarded");
+    assert.equal(JSON.stringify(store.getStub("s1")), restored, "the restored project is not touched by the old run");
+    assert.equal(store.getStub("s1").versions.length, 1);
+  });
+
+  test("a READY candidate: deletion acknowledged, then Apply, retry, new start and every retained callback are inert", async () => {
+    const ed = openEditor();
+    const a = ed.ask("sheet");
+    await tick();
+    ed.update(ops.setEdition(ed.stub, "risograph")); // selection moves: A is held as ready
+    calls[0].ok("A");
+    const first = await a;
+    assert.equal(first.op.phase, "ready");
+    await signedInThenDeletedElsewhere(ed, { restore: true });
+    const before = JSON.stringify(store.loadWall());
+    const upserts = account.upserts.length;
+    const n = calls.length;
+    assert.equal(ed.gen.apply(first.op.runId).phase, "discarded");
+    assert.equal(ed.gen.retry(first.op.runId), null);
+    const again = await ed.ask("agent", "offer"); // a brand-new request in the stale open draft
+    assert.equal(again.started, false);
+    assert.equal(again.op.code, "project_removed");
+    assert.equal(calls.length, n, "no art request for a removed project");
+    for (const m of ["discard", "cancel", "dismiss", "apply"]) ed.gen[m](first.op.runId);
+    assert.equal(JSON.stringify(store.loadWall()), before, "no localStorage change");
+    await sync.syncNow();
+    // the legitimately re-created project syncs as itself (one upsert at most); nothing the old run made reaches the account
+    assert.ok(account.upserts.length - upserts <= 1);
+    assert.equal(account.stubs.get("s1").versions.length, 1, "the account holds the restored project, not the generated art");
+    assert.equal(JSON.stringify(account.stubs.get("s1")).includes("A.webp"), false);
+  });
+
+  test("a deletion seen by a purely LOCAL save path (no account, no event helper) is observed at the guard too", async () => {
+    const ed = openEditor();
+    const p = ed.ask("photo" === "x" ? "sheet" : "sheet");
+    await tick();
+    store.removeStub("s1");
+    store.saveDeleted([]); // the queue is emptied by whatever means
+    calls[0].ok("quiet");
+    assert.equal((await p).op.phase, "discarded");
+    assert.equal(store.getStub("s1"), undefined);
+  });
+
+  test("unknown storage is honest: never 'deleted', never an unsafe write; the draft stays open", async () => {
+    const ed = openEditor();
+    const other = makeStub("keep");
+    store.upsertStub(other);
+    const p = ed.ask("sheet");
+    await tick();
+    localStorage.readFails = true; // storage became unreadable
+    const wallBefore = JSON.stringify([...store.loadWall()]); // (reads empty while unreadable: the helper must not call it deleted)
+    calls[0].ok("held");
+    const { op } = await p;
+    assert.equal(op.phase, "ready", "held for review rather than written blindly");
+    assert.notEqual(op.code, "project_removed");
+    assert.match(op.message, /can't confirm/);
+    assert.equal(ed.stub.versions.length, 1, "open draft untouched");
+    const tries = ed.gen.apply(op.runId);
+    assert.equal(tries.phase, "ready", "explicit Apply also refuses to write into an unreadable store");
+    assert.match(tries.message, /can't be read/);
+    assert.equal(ed.stub.versions.length, 1);
+    localStorage.readFails = false;
+    assert.ok(store.getStub("keep"), "other projects were not overwritten");
+    assert.equal(store.stubPresence("s1"), "present");
+    assert.equal(ed.gen.apply(op.runId).phase, "applied", "once readable again, the explicit Apply works exactly once");
+    assert.equal(ed.stub.versions.length, 2);
+    void wallBefore;
+  });
+
+  test("write failure and quota on a valid project still apply at most once with the draft kept and an unsaved warning", async () => {
+    const ed = openEditor();
+    const p = ed.ask();
+    await tick();
+    localStorage.mode = "blocked";
+    calls[0].ok("nosave2");
+    const { op } = await p;
+    assert.equal(op.phase, "applied");
+    assert.equal(op.saved, false);
+    assert.match(op.message, /could not be saved on this device/);
+    ed.gen.apply(op.runId);
+    assert.equal(ed.stub.versions.length, 2);
+  });
+
+  test("legitimate flows keep working: a freshly opened editor on a restored or new project applies art once; old versions unchanged", async () => {
+    const ed = openEditor();
+    const oldVersions = JSON.stringify(ed.stub.versions);
+    await signedInThenDeletedElsewhere(ed, { restore: true });
+    const ed2 = openEditor("s1"); // a new editor session on the restored project
+    const p = ed2.ask("sheet");
+    await tick();
+    calls[calls.length - 1].ok("fresh");
+    assert.equal((await p).op.phase, "applied");
+    const s1 = store.getStub("s1");
+    assert.equal(s1.versions.length, 2);
+    assert.equal(JSON.stringify(s1.versions.slice(0, 1)), oldVersions, "the immutable older version is byte-equal");
+    const created = openEditor("brand-new");
+    const q = created.ask("note");
+    await tick();
+    calls[calls.length - 1].ok("new");
+    assert.equal((await q).op.phase, "applied");
+    assert.equal(store.getStub("brand-new").versions.length, 2);
   });
 });

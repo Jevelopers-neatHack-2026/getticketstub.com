@@ -18,8 +18,14 @@ export interface GenerationHost {
   current(): Stub | null;
   /** The editor's committed-edit counter. */
   revision(): number;
-  /** The project was deleted on this device. */
+  /** The project was deleted on this device (a queued deletion). One signal among several, never the only authority. */
   isGone(stubId: string): boolean;
+  /**
+   * What this device's store says about the project now. Once an operation has seen it "present", a later "absent" is a
+   * removal, whatever happens to any outbound queue afterwards. "unknown" (storage unreadable) is never a removal.
+   * Optional: a host without a store has nothing to observe.
+   */
+  presence?(stubId: string): "present" | "absent" | "unknown";
   /** Replace the live draft and persist it. True when it reached this device's storage. */
   commit(next: Stub): boolean;
 }
@@ -30,8 +36,9 @@ export function editorHost(
   revision: { readonly current: number },
   commit: (next: Stub) => boolean,
   isGone: (stubId: string) => boolean,
+  presence?: (stubId: string) => "present" | "absent" | "unknown",
 ): GenerationHost {
-  return { current: () => stub.current, revision: () => revision.current, isGone, commit };
+  return { current: () => stub.current, revision: () => revision.current, isGone, commit, presence };
 }
 
 export interface Produced {
@@ -55,6 +62,7 @@ export interface StartResult {
   op: GenerationOp;
 }
 
+export const REMOVED_MESSAGE = "This project was removed from this device while art was being made, so nothing was applied. Your open draft is unchanged.";
 export const STOPPED_MESSAGE =
   "Stopped. If a result still arrives it is ignored. This does not cancel the request on the art service, which may still finish it.";
 /** A photo is read on this device: there is no art service to speak of. */
@@ -69,6 +77,9 @@ interface Entry {
   candidate?: Produced;
 }
 
+/** Only these end states can be started again; a discarded run (superseded, removed, project changed) never is. */
+const RETRYABLE = new Set<GenerationOp["phase"]>(["failed", "canceled", "interrupted"]);
+
 let seq = 0;
 const newRunId = (): string => `gen-${Date.now().toString(36)}-${(++seq).toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 
@@ -79,6 +90,9 @@ export class GenerationController {
   private listeners = new Set<() => void>();
   private attached = false;
   private tick = 0;
+  /** Projects this editor has seen saved on the device, and those it has since seen removed (for this editor session). */
+  private seen = new Set<string>();
+  private removed = new Set<string>();
 
   constructor(
     private host: GenerationHost,
@@ -88,7 +102,10 @@ export class GenerationController {
   /** The editor mounted (also after a Strict Mode re-run): adopt what an earlier page left for this stub. */
   attach(): void {
     this.attached = true;
+    this.seen.clear();
+    this.removed.clear();
     const id = this.host.current()?.id;
+    if (id) this.watch(id);
     if (id && !this.latest.has(id)) {
       const old = loadStatus(id, this.storage);
       if (old) {
@@ -121,6 +138,19 @@ export class GenerationController {
   /** Changes whenever any operation does (a useSyncExternalStore snapshot). */
   version = (): number => this.tick;
 
+  /**
+   * Re-read the store for every project with a live operation (call it on wall, storage and sync events). A removal seen
+   * here retires those operations at once and for good: a project restored under the same id later does not revive them.
+   */
+  observe = (): void => {
+    if (!this.attached) return;
+    const ids = new Set<string>();
+    for (const op of this.ops.values()) if (op.phase === "pending" || op.phase === "ready") ids.add(op.stubId);
+    const cur = this.host.current()?.id;
+    if (cur) ids.add(cur);
+    ids.forEach((id) => this.watch(id));
+  };
+
   /** The latest operation for a project, if there is one to show. */
   get(stubId: string): GenerationOp | null {
     const id = this.latest.get(stubId);
@@ -134,8 +164,30 @@ export class GenerationController {
   start(req: StartRequest): Promise<StartResult> {
     const source = this.host.current();
     if (!source || !this.attached) return Promise.reject(new Error("The editor is not open."));
+    this.watch(source.id);
     const active = this.get(source.id);
     if (active?.phase === "pending") return Promise.resolve({ started: false, op: active });
+    if (this.removed.has(source.id)) {
+      // this open draft's project was removed from the device: nothing may be generated into it
+      if (active) this.retire(active);
+      const runId = newRunId();
+      const op: GenerationOp = {
+        runId,
+        stubId: source.id,
+        sourceVersionId: currentVersion(source).id,
+        sourceRevision: this.host.revision(),
+        via: req.via,
+        phase: "discarded",
+        code: "project_removed",
+        startedAt: Date.now(),
+        endedAt: Date.now(),
+        message: REMOVED_MESSAGE,
+      };
+      this.ops.set(runId, op);
+      this.latest.set(source.id, runId);
+      this.emit();
+      return Promise.resolve({ started: false, op });
+    }
     // A new request replaces whatever the status was showing. An unapplied ready result is deliberately retired first,
     // so the older run can no longer be applied, retried or shown over the newer one.
     if (active) this.retire(active);
@@ -185,10 +237,14 @@ export class GenerationController {
     const entry = this.entries.get(runId);
     // only the project's CURRENT operation may write; an older run's Apply is inert
     if (!op || !this.isLatest(op) || op.phase !== "ready" || !entry?.candidate) return op ?? null;
-    const { art } = entry.candidate;
-    entry.candidate = undefined;
     const cur = this.guard(op);
     if (!cur) return this.discardGone(runId);
+    if (this.seen.has(op.stubId) && this.host.presence?.(op.stubId) === "unknown") {
+      // an unreadable store cannot be merged into safely: keep the candidate, say so, write nothing
+      return this.finish(runId, { phase: "ready", message: "Not applied: this device's storage can't be read right now, so the project can't be updated safely. Try Apply again, or discard it." });
+    }
+    const { art } = entry.candidate;
+    entry.candidate = undefined;
     return this.commitArt(runId, cur, art, !!op.fallback);
   }
 
@@ -219,13 +275,13 @@ export class GenerationController {
     const op = this.ops.get(runId);
     const entry = this.entries.get(runId);
     // only the current operation can be retried: an older run must not displace a newer pending or ready one
-    if (!op || !entry || !this.isLatest(op) || op.phase === "pending" || op.phase === "ready" || op.phase === "applied") return null;
+    if (!op || !entry || !this.isLatest(op) || !RETRYABLE.has(op.phase)) return null;
     return this.start(entry.req);
   }
 
   canRetry(runId: string): boolean {
     const op = this.ops.get(runId);
-    return !!op && this.isLatest(op) && this.entries.has(runId);
+    return !!op && this.isLatest(op) && RETRYABLE.has(op.phase) && this.entries.has(runId);
   }
 
   /* ---------------- internals ---------------- */
@@ -242,10 +298,27 @@ export class GenerationController {
     this.entries.delete(op.runId);
   }
 
-  /** The current draft, when this operation may still write to it. */
+  /** Compare the store with what this editor has seen of the project. A removal latches for the session. */
+  private watch(stubId: string): "present" | "absent" | "unknown" | undefined {
+    const p = this.host.presence?.(stubId);
+    if (p === "present") this.seen.add(stubId);
+    else if (p === "absent" && this.seen.has(stubId) && !this.removed.has(stubId)) {
+      this.removed.add(stubId);
+      for (const op of [...this.ops.values()]) {
+        if (op.stubId !== stubId || (op.phase !== "pending" && op.phase !== "ready")) continue;
+        this.entries.get(op.runId)?.ac.abort();
+        this.finish(op.runId, { phase: "discarded", code: "project_removed", message: REMOVED_MESSAGE });
+      }
+    }
+    return p;
+  }
+
+  /** The current draft, when this operation may still write to it: it is the open project, and not seen removed. */
   private guard(op: GenerationOp): Stub | null {
     const cur = this.host.current();
-    if (!this.attached || !cur || cur.id !== op.stubId || this.host.isGone(op.stubId)) return null;
+    if (!this.attached || !cur || cur.id !== op.stubId) return null;
+    this.watch(op.stubId);
+    if (this.removed.has(op.stubId) || this.host.isGone(op.stubId)) return null;
     return cur;
   }
 
@@ -260,6 +333,16 @@ export class GenerationController {
       return;
     }
     const fallback = !!produced.limitNote;
+    if (this.seen.has(op.stubId) && this.host.presence?.(op.stubId) === "unknown") {
+      // storage cannot be read: we cannot tell "saved" from "removed". Never call it deleted, never auto-write; keep for review.
+      entry.candidate = produced;
+      this.finish(runId, {
+        phase: "ready",
+        fallback,
+        message: "New art ready, not applied automatically: this device's storage could not be read, so we can't confirm the project is still saved. Apply it as a new version, or discard it.",
+      });
+      return;
+    }
     if (fallback && entry.req.fallback === "offer") {
       this.finish(runId, {
         phase: "failed",
@@ -295,6 +378,8 @@ export class GenerationController {
   }
 
   private discardGone(runId: string): GenerationOp {
+    const was = this.ops.get(runId)!;
+    if (was.phase !== "pending" && was.phase !== "ready") return was; // already retired (e.g. removal seen first)
     return this.finish(runId, { phase: "discarded", code: "project_changed", message: "The project changed or was removed while art was generating, so the result was not applied." });
   }
 

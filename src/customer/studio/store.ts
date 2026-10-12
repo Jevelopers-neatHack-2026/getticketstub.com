@@ -99,6 +99,22 @@ export function saveWall(stubs: Stub[]): boolean {
   return ok;
 }
 
+/** What this device's wall says about one stub right now. "unknown" means storage could not be read: never "gone". */
+export type StubPresence = "present" | "absent" | "unknown";
+
+/** A typed presence read that, unlike loadWall, does not turn a failed read into an empty wall. */
+export function stubPresence(id: string): StubPresence {
+  try {
+    const raw = localStorage.getItem(KEY);
+    if (raw === null) return "absent";
+    const wall = JSON.parse(raw) as unknown;
+    if (!Array.isArray(wall)) return "unknown";
+    return wall.some((s) => (s as Stub | null)?.id === id) ? "present" : "absent";
+  } catch {
+    return "unknown";
+  }
+}
+
 export function getStub(id: string): Stub | undefined {
   return loadWall().find((s) => s.id === id);
 }

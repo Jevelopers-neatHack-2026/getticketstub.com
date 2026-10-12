@@ -3,13 +3,13 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import type { Edition, Material, Stub } from "../types";
 import { EDITIONS, currentVersion } from "../types";
-import { encodeStub, getStub, loadDeleted, upsertStub } from "../store";
+import { WALL_CHANGED, encodeStub, getStub, loadDeleted, stubPresence, upsertStub } from "../store";
 import { StubView } from "@/customer/studio/stub/StubView";
 import { EDITION_META } from "@/customer/studio/stub/editions";
 import { announce } from "@/customer/a11y/announce";
 import { haptic, play } from "@/customer/studio/feedback";
 import { getAccountState } from "@/customer/account/useAccount";
-import { isOnServer } from "@/customer/account/sync";
+import { WALL_SYNCED, isOnServer } from "@/customer/account/sync";
 import { reportEvent } from "@/customer/feedback-messages/report";
 import { AgentChat } from "@/customer/studio/agent/AgentChat";
 import { AgentNotes } from "@/customer/studio/agent/AgentNotes";
@@ -217,9 +217,16 @@ function EditorLoaded({ id }: { id: string }) {
   // The one art-generation controller. It lives as long as this editor, not as long as any panel, and commits through update().
   // The host only reads the refs when an operation settles, never during render.
   // eslint-disable-next-line react-hooks/refs
-  const [generation] = useState(() => new GenerationController(editorHost(stubRef, revisionRef, update, (id) => loadDeleted().includes(id))));
+  const [generation] = useState(() => new GenerationController(editorHost(stubRef, revisionRef, update, (id) => loadDeleted().includes(id), stubPresence)));
   useEffect(() => {
     generation.attach();
+    // A removal is observed when it happens (local save, another tab, an account sync), not inferred later from a queue
+    // that sync may already have emptied. Once seen, the operation is retired for good.
+    const observe = () => generation.observe();
+    window.addEventListener(WALL_CHANGED, observe);
+    window.addEventListener(WALL_SYNCED, observe);
+    window.addEventListener("storage", observe);
+    window.addEventListener("focus", observe);
     // say each transition once, through the single polite live region; the sheet and chat do not announce it again
     const said = new Map<string, string>();
     const unsub = generation.subscribe(() => {
@@ -236,6 +243,10 @@ function EditorLoaded({ id }: { id: string }) {
       }
     });
     return () => {
+      window.removeEventListener(WALL_CHANGED, observe);
+      window.removeEventListener(WALL_SYNCED, observe);
+      window.removeEventListener("storage", observe);
+      window.removeEventListener("focus", observe);
       unsub();
       generation.detach();
     };
