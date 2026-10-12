@@ -16,9 +16,9 @@ NAVY = "#0a0f3c"
 LINING = 'style="font-variant-numeric: lining-nums tabular-nums"'
 
 C = 24       # concave corner radius
-BR = 11      # scallop bite radius (top + bottom)
+BR = 12      # scallop bite radius (top + bottom)
 BN = 5       # bites per end
-BP = 44      # bite pitch
+BP = 52      # bite pitch
 NR = 11      # side notch radius at the perforation
 
 
@@ -46,7 +46,7 @@ def outline(d=0.0):
 
 
 DIE = outline(0)
-K = 15  # keyline inset
+K = 11  # keyline inset
 KEY = outline(K)
 KN = math.sqrt((NR + K) ** 2 - K ** 2)  # keyline notch half-height
 
@@ -65,18 +65,19 @@ def film_defs():
       </feComponentTransfer>
       <feComposite in2="SourceGraphic" operator="in"/>
     </filter>
-    <linearGradient id="oilG" gradientUnits="userSpaceOnUse" x1="40" y1="60" x2="520" y2="700" spreadMethod="reflect">
-      <stop offset="0" stop-color="#2233b8"/><stop offset="0.16" stop-color="#2f8bff"/><stop offset="0.3" stop-color="#16d1c0"/>
-      <stop offset="0.44" stop-color="#8dff5a"/><stop offset="0.56" stop-color="#ffd23f"/><stop offset="0.7" stop-color="#ff6a1a"/>
-      <stop offset="0.84" stop-color="#e2205b"/><stop offset="1" stop-color="#6a1fc4"/>
+    <linearGradient id="oilG" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="480" y2="190">
+      <stop offset="0.18" stop-color="#7a2cff"/><stop offset="0.27" stop-color="#1fb8ff"/><stop offset="0.35" stop-color="#2af0e0"/>
+      <stop offset="0.42" stop-color="#3a7bff"/><stop offset="0.49" stop-color="#ff9a24"/><stop offset="0.55" stop-color="#ff4a3a"/>
+      <stop offset="0.62" stop-color="#ff2f8a"/><stop offset="0.75" stop-color="#ff6a1a"/><stop offset="0.8" stop-color="#ffa43a"/>
+      <stop offset="0.84" stop-color="#ff3d8a"/><stop offset="0.88" stop-color="#6a3cff"/>
     </linearGradient>
     <filter id="oilF" x="0" y="0" width="1" height="1" filterUnits="objectBoundingBox" color-interpolation-filters="sRGB">
       <feTurbulence type="fractalNoise" baseFrequency="0.0021 0.0029" numOctaves="2" seed="23" result="t"/>
       <feDisplacementMap in="SourceGraphic" in2="t" scale="420" xChannelSelector="R" yChannelSelector="G"/>
     </filter>
     <filter id="crinkle" x="0" y="0" width="1" height="1" filterUnits="objectBoundingBox" color-interpolation-filters="sRGB">
-      <feTurbulence type="fractalNoise" baseFrequency="0.042" numOctaves="4" seed="8" result="n"/>
-      <feDiffuseLighting in="n" surfaceScale="3.2" diffuseConstant="0.86" lighting-color="#ffffff" result="l">
+      <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed="8" result="n"/>
+      <feDiffuseLighting in="n" surfaceScale="0.9" diffuseConstant="0.82" lighting-color="#ffffff" result="l">
         <feDistantLight azimuth="235" elevation="52"/>
       </feDiffuseLighting>
       <feComposite in="l" in2="SourceGraphic" operator="in"/>
@@ -92,10 +93,12 @@ def film_defs():
       <feDropShadow dx="0" dy="0.8" stdDeviation="1.4" flood-color="#060a2e" flood-opacity="0.45"/>
     </filter>
     <linearGradient id="bandG" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="480" y2="190">
-      <stop offset="0.2" stop-color="#fff" stop-opacity="0"/>
-      <stop offset="0.33" stop-color="#fff" stop-opacity="0.9"/>
-      <stop offset="0.5" stop-color="#fff" stop-opacity="1"/>
-      <stop offset="0.6" stop-color="#fff" stop-opacity="0.25"/>
+      <stop offset="0.14" stop-color="#fff" stop-opacity="0"/>
+      <stop offset="0.24" stop-color="#fff" stop-opacity="0.85"/>
+      <stop offset="0.33" stop-color="#fff" stop-opacity="0.45"/>
+      <stop offset="0.42" stop-color="#fff" stop-opacity="0.95"/>
+      <stop offset="0.53" stop-color="#fff" stop-opacity="1"/>
+      <stop offset="0.6" stop-color="#fff" stop-opacity="0.3"/>
       <stop offset="0.67" stop-color="#fff" stop-opacity="0"/>
       <stop offset="0.76" stop-color="#fff" stop-opacity="0"/>
       <stop offset="0.81" stop-color="#fff" stop-opacity="0.9"/>
@@ -126,6 +129,14 @@ def film_defs():
         <feFuncB type="table" tableValues="0 0 0.18 0.95 1"/>
       </feComponentTransfer>
     </filter>
+    <filter id="duo" color-interpolation-filters="sRGB">
+      <feColorMatrix type="matrix" values="0.3 0.59 0.11 0 0  0.3 0.59 0.11 0 0  0.3 0.59 0.11 0 0  0 0 0 1 0"/>
+      <feComponentTransfer>
+        <feFuncR type="table" tableValues="0.03 0.05 0.32 0.82 1"/>
+        <feFuncG type="table" tableValues="0.05 0.08 0.36 0.86 1"/>
+        <feFuncB type="table" tableValues="0.2 0.28 0.62 0.96 1"/>
+      </feComponentTransfer>
+    </filter>
     <filter id="mono" color-interpolation-filters="sRGB">
       <feColorMatrix type="matrix" values="0.3 0.59 0.11 0 0  0.3 0.59 0.11 0 0  0.3 0.59 0.11 0 0  0 0 0 1 0"/>
       <feComponentTransfer>
@@ -147,35 +158,32 @@ def oil(clip=""):
 FLOW_T = "transform: translate(calc((var(--lx, 38%) - 38%) * 1.1), calc((var(--ly, 30%) - 30%) * 0.6))"
 # poured-oil zones + one steep band and a thin echo, all sliding together with the light
 BAND = (f'<g style="{FLOW_T}">'
-        '<rect x="-480" y="-480" width="1440" height="1920" fill="#fff" filter="url(#zones)"/>'
         '<rect x="-480" y="-480" width="1440" height="1920" fill="url(#bandG)" filter="url(#bandWarp)"/></g>')
 
 
 def band_colour(y0=0, y1=H, x0=0, x1=W):
-    """Spectral colour only inside the band (colour blend on the masked group itself): the band runs
-    orange to green to blue along its length, while the rest of the film stays deep indigo."""
+    """Prismatic colour inside the two sweeps only (colour blend on the masked group itself)."""
     return (f'<mask id="bandMask{y0}" maskUnits="userSpaceOnUse" x="{x0}" y="{y0}" width="{x1 - x0}" height="{y1 - y0}">'
             f'<rect x="{x0}" y="{y0}" width="{x1 - x0}" height="{y1 - y0}" fill="#000"/>{BAND}</mask>'
-            f'<g mask="url(#bandMask{y0})" style="mix-blend-mode: color" opacity="0.78" data-screen-only="">'
-            f'<rect x="-300" y="-300" width="{W + 600}" height="{H + 600}" fill="url(#oilG)" filter="url(#oilF)" '
-            f'style="transform: translate(calc((var(--lx, 38%) - 38%) * -0.8), calc((var(--ly, 30%) - 30%) * -0.8))"/></g>')
+            f'<g mask="url(#bandMask{y0})" style="mix-blend-mode: color" opacity="0.85" data-screen-only="">'
+            f'<g style="{FLOW_T}"><rect x="-480" y="-480" width="1440" height="1920" fill="url(#oilG)" filter="url(#bandWarp)"/></g></g>')
 
 
 def film_mask(y0=0, y1=H):
     """Holo layer content: a quiet film base (indigo shows through), then poured-oil zones and the bands
     at full strength, then fine dark veins."""
-    return (f'<rect x="0" y="{y0}" width="{W}" height="{y1 - y0}" fill="#262626"/>\n'
+    return (f'<rect x="0" y="{y0}" width="{W}" height="{y1 - y0}" fill="#1e1e1e"/>\n'
             f'    {BAND}\n'
-            f'    <rect x="0" y="{y0}" width="{W}" height="{y1 - y0}" fill="#fff" filter="url(#swirl)" opacity="0.22"/>')
+            f'    <rect x="0" y="{y0}" width="{W}" height="{y1 - y0}" fill="#fff" filter="url(#swirl)" opacity="0.15"/>')
 
 
-def textures(y0=0, y1=H, crinkle=0.5, clip=""):
+def textures(y0=0, y1=H, crinkle=0.22, clip=""):
     """Relief + tooth over the film (overlay keeps the film's hue, adds the pressed-foil texture).
     A clip sits on the blended element itself, so the blend still sees the film below."""
     h = y1 - y0
     c = f' clip-path="url(#{clip})"' if clip else ""
     return (f'<rect x="0" y="{y0}" width="{W}" height="{h}" fill="#fff" filter="url(#crinkle)" style="mix-blend-mode: overlay" opacity="{crinkle}"{c} data-screen-only=""/>\n'
-            f'    <rect x="0" y="{y0}" width="{W}" height="{h}" fill="#fff" filter="url(#tooth)" style="mix-blend-mode: overlay" opacity="0.28"{c} data-screen-only=""/>')
+            f'    <rect x="0" y="{y0}" width="{W}" height="{h}" fill="#fff" filter="url(#tooth)" style="mix-blend-mode: overlay" opacity="0.12"{c} data-screen-only=""/>')
 
 
 def sparkle(cx, cy, r, w=1.6):
@@ -232,12 +240,12 @@ def perforation(y=P):
 
 
 # ------------------------------------------------------------------ front: the poster face
-ART = (40, 290, 400, 520)  # x, y, w, h of the front art slot
+ART = (30, 300, 420, 450)  # x, y, w, h of the front art slot
 MED = (240, 484, 184)       # medallion centre + radius
 
 
 def art_image(x, y, w, h, extra):
-    return (f'<image data-slot="art" x="{x}" y="{y}" width="{w}" height="{h}" preserveAspectRatio="xMidYMax meet" {extra}/>')
+    return (f'<image data-slot="art" x="{x}" y="{y}" width="{w}" height="{h}" preserveAspectRatio="xMidYMid meet" {extra}/>')
 
 
 def front():
@@ -259,12 +267,21 @@ def front():
     </linearGradient>
     <linearGradient id="artFadeG" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" stop-color="#000"/>
-      <stop offset="0.06" stop-color="#fff"/>
-      <stop offset="0.6" stop-color="#fff"/>
-      <stop offset="0.8" stop-color="#000"/>
+      <stop offset="0.1" stop-color="#fff"/>
+      <stop offset="0.5" stop-color="#fff"/>
+      <stop offset="0.68" stop-color="#bbb"/>
+      <stop offset="0.86" stop-color="#3a3a3a"/>
+      <stop offset="1" stop-color="#000"/>
     </linearGradient>
+    <linearGradient id="artFadeX" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#000"/><stop offset="0.08" stop-color="#fff"/>
+      <stop offset="0.92" stop-color="#fff"/><stop offset="1" stop-color="#000"/>
+    </linearGradient>
+    <mask id="artFadeXm" maskUnits="userSpaceOnUse" x="0" y="0" width="{W}" height="{H}">
+      <rect x="{ax}" y="0" width="{aw}" height="{H}" fill="url(#artFadeX)"/>
+    </mask>
     <mask id="artFade" maskUnits="userSpaceOnUse" x="0" y="0" width="{W}" height="{H}">
-      <rect x="0" y="{ay}" width="{W}" height="{ah}" fill="url(#artFadeG)"/>
+      <g mask="url(#artFadeXm)"><rect x="0" y="{ay}" width="{W}" height="{ah}" fill="url(#artFadeG)"/></g>
     </mask>
     <mask id="notArt" maskUnits="userSpaceOnUse" x="0" y="0" width="{W}" height="{H}">
       <rect width="{W}" height="{H}" fill="#fff"/>
@@ -285,34 +302,34 @@ def front():
   </g>
   <g data-layer="art">
     <g mask="url(#notArt)">
-      {halo(*MED)}
-      {guilloche(MED[0], MED[1], 98, 9, k=14, n=9, w=0.5, op=0.42)}
-      <g data-hide-if="art">{sparkle(MED[0], MED[1], 30, 1.3)}</g>
+      <g data-show-if="art">{halo(*MED)}
+      {guilloche(MED[0], MED[1], 98, 9, k=14, n=9, w=0.5, op=0.42)}</g>
+      <g data-hide-if="art">{halo(240, 500, 150)}
+      {guilloche(240, 500, 80, 8, k=12, n=9, w=0.5, op=0.42)}
+      {sparkle(240, 500, 26, 1.3)}</g>
     </g>
-    {art_image(ax, ay, aw, ah, 'filter="url(#mono)" mask="url(#artFade)" style="mix-blend-mode: multiply" opacity="0.45"')}
-    {art_image(ax, ay, aw, ah, 'filter="url(#mono)" mask="url(#artFade)" style="mix-blend-mode: soft-light" opacity="0.95"')}
-    {art_image(ax, ay, aw, ah, 'filter="url(#glint)" mask="url(#artFade)" style="mix-blend-mode: screen" opacity="0.5"')}
+    {art_image(ax, ay, aw, ah, 'filter="url(#duo)" mask="url(#artFade)"')}
   </g>
   <g data-layer="ink" fill="{WHITE}" filter="url(#lift)">
     <path d="{KEY}" fill="none" stroke="{WHITE}" stroke-width="2.2"/>
     {perforation()}
     <!-- stub: vertical type (reads bottom to top), star mark, edition -->
     <g transform="translate(54 180) rotate(-90)">
-      <text data-slot="kicker" x="0" y="0" {lab} font-size="8.5" letter-spacing="2.2" data-case="upper" data-default="ADMIT ONE" data-wrap="142" data-lines="1" data-min="7">.</text>
+      <text data-slot="kicker" x="0" y="0" {lab} font-size="8.5" letter-spacing="2.2" data-case="upper" data-default="KEEPSAKE" data-wrap="142" data-lines="1" data-min="7">.</text>
       <text data-slot="dateShort" x="0" y="34" font-family="{DISPLAY}" font-weight="800" font-size="30" letter-spacing="-0.5" data-fit="142" {LINING}>.</text>
       <text x="0" y="52" {lab} font-size="8.5" letter-spacing="2.2" data-fit="142" {LINING}><tspan data-slot="weekday">.</tspan><tspan data-slot="time" data-prefix=" · SHOW ">.</tspan></text>
     </g>
     {sparkle(388, 86, 34, 1.8)}
-    <text data-slot="edition" x="388" y="160" text-anchor="middle" font-family="{DISPLAY}" font-weight="600" font-size="11" letter-spacing="1.4" data-default="ADMIT ONE" data-fit="104" {LINING}>.</text>
+    <text data-slot="edition" x="388" y="160" text-anchor="middle" font-family="{DISPLAY}" font-weight="600" font-size="11" letter-spacing="1.4" data-default="KEEPSAKE" data-fit="104" {LINING}>.</text>
     <text x="442" y="40" {lab} font-size="7.5" letter-spacing="2" transform="rotate(90 442 40)" opacity="0.9">KEEP THIS STUB</text>
     <!-- body -->
     <g data-slot="barcode" data-w="250" data-h="40" data-color="{WHITE}" transform="translate(115 224)"></g>
     <text data-slot="seatLine" x="{W/2}" y="284" text-anchor="middle" {lab} font-size="9" letter-spacing="2.4" data-default="GENERAL ADMISSION" data-fit="300" {LINING}>.</text>
-    <text x="445" y="318" {lab} font-size="8" letter-spacing="2.4" transform="rotate(90 445 318)" data-fit="410" data-min="7" {LINING}><tspan data-slot="date">.</tspan><tspan>   ·   </tspan><tspan data-slot="place" data-case="upper">.</tspan></text>
+    <text x="445" y="318" {lab} font-size="8" letter-spacing="2.4" transform="rotate(90 445 318)" data-fit="360" data-min="7" {LINING}><tspan data-slot="date">.</tspan><tspan>   ·   </tspan><tspan data-slot="place" data-case="upper">.</tspan></text>
     <text x="35" y="760" {lab} font-size="7.5" letter-spacing="1.8" transform="rotate(-90 35 760)" opacity="0.9" data-fit="440">TICKETSTUB ORIGINAL   ·   COMMEMORATIVE KEEPSAKE   ·   NOT VALID FOR ENTRY</text>
     <!-- poster type -->
-    <text data-slot="title" x="{W/2}" y="834" text-anchor="middle" font-family="{DISPLAY}" font-weight="800" font-size="74" letter-spacing="-1" data-case="upper" data-wrap="404" data-lines="4" data-leading="0.96" data-anchor="bottom" data-min="18" {LINING}>.</text>
-    <text data-slot="subtitle" x="{W/2}" y="868" text-anchor="middle" {lab} font-size="11" letter-spacing="1.8" data-case="upper" data-wrap="404" data-lines="2" data-leading="1.4" data-min="8">.</text>
+    <text data-slot="title" x="{W/2}" y="786" text-anchor="middle" font-family="{DISPLAY}" font-weight="800" font-size="74" letter-spacing="0" data-case="upper" data-wrap="408" data-lines="4" data-leading="1.02" data-anchor="middle" data-min="18" {LINING}>.</text>
+    <text data-slot="subtitle" x="{W/2}" y="880" text-anchor="middle" {lab} font-size="11" letter-spacing="1.8" data-case="upper" data-wrap="404" data-lines="2" data-leading="1.4" data-min="8">.</text>
   </g>
   <path data-layer="dieline" d="{DIE}" fill="none" stroke="#ec008c" stroke-width="0.5"/>
 </svg>
@@ -321,7 +338,7 @@ def front():
 
 
 # ------------------------------------------------------------------ back: the collector card
-PAN = (296, 384, 148, 206)
+PAN = (262, 384, 182, 206)
 
 
 def cutrect(x, y, w, h, c):
@@ -353,11 +370,10 @@ def back():
                     f'<text data-slot="{slot}" x="{x}" y="160" text-anchor="middle" {big2} font-weight="600" font-size="13" data-fit="66" data-min="8" data-case="upper">.</text></g>')
     cells = [f'<g data-show-if="seat">{"".join(seat)}</g>',
              f'<g data-hide-if="seat">'
-             f'<text x="300" y="80" {slab}>ENTRY</text>'
-             f'<text x="300" y="108" text-anchor="middle" {big2} font-weight="800" font-size="24" letter-spacing="-0.3" data-fit="240">GENERAL</text>'
-             f'<text x="300" y="134" text-anchor="middle" {big2} font-weight="800" font-size="24" letter-spacing="-0.3" data-fit="240">ADMISSION</text>'
-             f'<path d="M190 148 H410" stroke="{WHITE}" stroke-width="1"/>'
-             f'<text x="300" y="166" {slab} data-fit="220"><tspan data-slot="admit" data-default="ADMIT ONE" data-case="upper">.</tspan><tspan> · KEEP THIS STUB</tspan></text></g>']
+             f'<text x="300" y="86" {slab}>SEATING</text>'
+             f'<text x="300" y="118" text-anchor="middle" {big2} font-weight="800" font-size="17" letter-spacing="0" data-fit="236">GENERAL ADMISSION</text>'
+             f'<path d="M190 140 H410" stroke="{WHITE}" stroke-width="1"/>'
+             f'<text x="300" y="160" {slab} data-fit="220">UNRESERVED · KEEP THIS STUB</text></g>']
     s = head()
     s += f'''  <defs>
 {film_defs()}
@@ -389,6 +405,8 @@ def back():
       <path d="{PD}" fill="#fff"/>
       {art_image(px + 4, py + 8, pw - 8, ph - 8, 'filter="url(#sil)"')}
     </mask>
+    <clipPath id="notPanel"><path d="M0 {P} H{W} V{H} H0Z {PD}" clip-rule="evenodd"/></clipPath>
+    <clipPath id="bodyClip"><rect x="0" y="{P}" width="{W}" height="{H - P}"/></clipPath>
     <clipPath id="stubClip"><rect width="{W}" height="{P}"/></clipPath>
     <clipPath id="panelClip"><path d="{PD}"/></clipPath>
   </defs>
@@ -399,27 +417,29 @@ def back():
     <rect width="{W}" height="{H}" fill="#fff" filter="url(#ts-grain-light)" opacity="0.06"/>
   </g>
   <g data-layer="holo">
-    <rect x="0" y="{P}" width="{W}" height="{H - P}" fill="#121212"/>
+    <g clip-path="url(#bodyClip)" opacity="0.5">{film_mask(P, H)}</g>
+    <path d="{PD}" fill="none" stroke="#fff" stroke-width="2.6"/>
+    <path d="M{L} 370 H{R} M{L} 606 H{R} M{L} 688 H{R} M{L} 818 H{R}" stroke="#fff" stroke-width="1.3" fill="none"/>
     <g clip-path="url(#stubClip)">{film_mask(0, P)}</g>
     <g clip-path="url(#panelClip)">{film_mask(py, py + ph)}</g>
   </g>
   <g data-layer="paper">
     <rect width="{W}" height="{P}" fill="#7a7a7a" style="mix-blend-mode: saturation" opacity="0.12" data-screen-only=""/>
     {band_colour(0, P)}
+    {band_colour(P, H)}
     {band_colour(py, py + ph, px, px + pw)}
-    {textures(0, P, 0.5)}
-    {textures(py, py + ph, 0.45, "panelClip")}
+    {textures(0, P)}
+    {textures(py, py + ph, clip="panelClip")}
     <rect width="{W}" height="{P}" fill="url(#stubDepth)" style="mix-blend-mode: multiply"/>
     <path d="{PD}" fill="url(#panelDepth)" style="mix-blend-mode: multiply"/>
+    <rect x="0" y="{P}" width="{W}" height="{H - P}" fill="#070a24" opacity="0.4" clip-path="url(#notPanel)"/>
   </g>
   <g data-layer="art">
     <g mask="url(#notArtB)">
       {guilloche(px + pw / 2, py + ph / 2 - 6, 56, 11, k=12, n=10, w=0.45, op=0.5)}
       {guilloche(px + pw / 2, py + ph / 2 - 6, 26, 6, k=7, n=6, w=0.45, op=0.5)}
     </g>
-    {art_image(px + 4, py + 8, pw - 8, ph - 8, 'filter="url(#mono)" mask="url(#artMaskB)" style="mix-blend-mode: multiply" opacity="0.6"')}
-    {art_image(px + 4, py + 8, pw - 8, ph - 8, 'filter="url(#mono)" mask="url(#artMaskB)" style="mix-blend-mode: soft-light" opacity="0.95"')}
-    {art_image(px + 4, py + 8, pw - 8, ph - 8, 'filter="url(#glint)" mask="url(#artMaskB)" style="mix-blend-mode: screen" opacity="0.45"')}
+    {art_image(px + 4, py + 8, pw - 8, ph - 8, 'filter="url(#duo)" mask="url(#artMaskB)"')}
   </g>
   <g data-layer="ink">
     <path d="{KEY}" fill="none" stroke="{WHITE}" stroke-width="2.2"/>
@@ -429,29 +449,25 @@ def back():
     <g data-slot="qr" data-size="104" data-color="{WHITE}" transform="translate(44 50)"></g>
     {''.join(cells)}
     <!-- body -->
-    <text x="{L}" y="228" {lab}>TICKETSTUB · ORIGINAL KEEPSAKE</text>
-    <text data-slot="categoryLabel" x="{R}" y="228" text-anchor="end" {lab}>.</text>
-    <text data-slot="title" x="{L}" y="314" font-family="{DISPLAY}" font-weight="800" font-size="30" letter-spacing="-0.4" fill="{WHITE}" data-case="upper" data-wrap="372" data-lines="3" data-leading="1.14" data-anchor="bottom" data-min="13" {LINING}>.</text>
-    <text data-slot="subtitle" x="{L}" y="338" {val} font-size="12" opacity="0.85" data-wrap="{R-L}" data-lines="2" data-leading="1.3" data-min="9">.</text>
-    <path d="M{L} 370 H{R}" {rule}/>
+    <text x="{L}" y="234" {lab}>TICKETSTUB · ORIGINAL KEEPSAKE</text>
+    <text data-slot="categoryLabel" x="{R}" y="234" text-anchor="end" {lab}>.</text>
+    <text data-slot="title" x="{L}" y="300" font-family="{DISPLAY}" font-weight="800" font-size="30" letter-spacing="-0.4" fill="{WHITE}" data-case="upper" data-wrap="372" data-lines="3" data-leading="1.14" data-anchor="bottom" data-min="13" {LINING}>.</text>
+    <text data-slot="subtitle" x="{L}" y="324" {val} font-size="12" opacity="0.85" data-wrap="372" data-lines="2" data-leading="1.3" data-min="9">.</text>
     <text x="{L}" y="400" {lab}>DATE</text>
-    <text data-slot="dateLong" x="{L}" y="418" {val} font-size="13" data-wrap="244" data-lines="1" data-min="10" {LINING}>.</text>
+    <text data-slot="dateLong" x="{L}" y="418" {val} font-size="13" data-wrap="210" data-lines="1" data-min="10" {LINING}>.</text>
     <text x="{L}" y="448" {lab}>SHOW</text>
     <text data-slot="time" x="{L}" y="472" {big} font-size="20" data-default="—">.</text>
 
     <text x="{L}" y="502" {lab}>CITY</text>
-    <text data-slot="city" x="{L}" y="520" {val} font-size="13" data-wrap="244" data-lines="1" data-min="10" data-default="—">.</text>
+    <text data-slot="city" x="{L}" y="520" {val} font-size="13" data-wrap="210" data-lines="1" data-min="10" data-default="—">.</text>
     <text x="{L}" y="550" {lab}>VENUE</text>
-    <text data-slot="venue" x="{L}" y="568" {val} font-size="13" data-wrap="244" data-lines="2" data-leading="1.2" data-min="10" data-default="—">.</text>
-    <path d="M{L} 606 H{R}" {rule}/>
+    <text data-slot="venue" x="{L}" y="568" {val} font-size="13" data-wrap="210" data-lines="2" data-leading="1.2" data-min="10" data-default="—">.</text>
     <text x="{L}" y="632" {lab}>LINE-UP</text>
     <text data-slot="peopleAll" x="{L}" y="652" {val} font-size="12" data-wrap="{R-L}" data-lines="2" data-leading="1.35" data-min="9" data-default="—">.</text>
-    <path d="M{L} 688 H{R}" {rule}/>
     <text x="{L}" y="720" {lab}>YOUR RATING</text>
     {stars}
     <text x="{L}" y="752" {lab}>REVIEW</text>
     <text data-slot="tagline" x="{L}" y="774" {val} font-size="12.5" opacity="0.92" data-wrap="{R-L}" data-lines="2" data-leading="1.35" data-min="9.5" data-prefix="“" data-suffix="”">.</text>
-    <path d="M{L} 818 H{R}" {rule}/>
     <g data-slot="barcode" data-w="230" data-h="32" data-color="{WHITE}" transform="translate({L} 836)"></g>
     <text data-slot="serial" x="{L}" y="884" font-family="{TEXT}" font-size="8" font-weight="500" letter-spacing="3.2" fill="{WHITE}" opacity="0.8" {LINING}>.</text>
     <text data-slot="edition" x="{R}" y="860" text-anchor="end" {big} font-size="17" data-default="No. 0001" data-fit="160">.</text>

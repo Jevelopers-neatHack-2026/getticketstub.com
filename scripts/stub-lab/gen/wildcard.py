@@ -114,12 +114,13 @@ def front():
         x, y = rnd.uniform(bx + 70, bx + bw - 70), rnd.uniform(by + 10, by + 420)
         specks.append(f'<circle cx="{f(x)}" cy="{f(y)}" r="{rnd.choice([0.5,0.6,0.8,1])}" fill="{CREAM}" opacity="{rnd.uniform(.15,.5):.2f}"/>')
     cx, cy = 248, 452  # sun centre, behind the performer
-    TB = by + bh - 114  # title baseline (bottom line)
+    TB = by + bh - 114  # footer reference (rule sits at TB+18)
+    TM = 748  # title block's middle baseline: caps centre in the zone 605..830
 
     flames = [
-        fh(100, 576, 0.64, rot=-4), fh(380, 576, 0.64, rot=4, flip=True),
-        fh(150, 582, 0.38, rot=4, flip=True), fh(332, 584, 0.36, rot=-4),
-        fh(112, 456, 0.36, rot=-20), fh(374, 404, 0.4, rot=18, flip=True),
+        fh(96, 582, 0.6, rot=-14, sy=1.18), fh(390, 580, 0.72, rot=16, flip=True, sy=0.82),
+        fh(150, 588, 0.3, rot=18, flip=True, sy=1.35), fh(328, 588, 0.44, rot=-6, sy=1.05),
+        fh(114, 452, 0.3, rot=-34, sy=1.3), fh(372, 404, 0.42, rot=28, flip=True, sy=0.95),
     ]
     sunrise = sunrise_mark(hx, hy, hw, hh)
     sparkles = [sparkle(366, 236, 12), sparkle(392, 268, 5.5), sparkle(78, 360, 7), sparkle(368, 418, 5),
@@ -128,9 +129,9 @@ def front():
     perf = "".join(f'<circle cx="{f(x)}" cy="{PERF}" r="1.6"/>' for x in range(22, W - 20, 8))
     col = (f'font-family="{DISP}" font-weight="800" fill="{PINK}" font-size="19" letter-spacing="9" writing-mode="vertical-rl" '
            f'style="text-orientation: upright; font-variant-numeric: lining-nums" data-fit="400" data-min="11"')
-    title = (f'text-anchor="middle" font-family="{DISP}" font-weight="900" font-size="132" letter-spacing="1" '
-             f'style="font-variant-numeric: lining-nums" data-case="upper" data-wrap="360" data-lines="4" '
-             f'data-leading="0.98" data-anchor="bottom" data-min="28"')
+    title = (f'text-anchor="middle" font-family="{DISP}" font-weight="900" font-size="124" letter-spacing="1" '
+             f'style="font-variant-numeric: lining-nums" data-case="upper" data-wrap="300" data-lines="4" '
+             f'data-leading="0.98" data-anchor="middle" data-min="24"')
 
     s = head()
     s += f'''  <defs>
@@ -191,13 +192,23 @@ def front():
       <stop offset="0.32" stop-color="#17121a"/>
       <stop offset="1" stop-color="#120f13"/>
     </linearGradient>
+    <radialGradient id="moon" cx="0.38" cy="0.34" r="0.7">
+      <stop offset="0" stop-color="#fbf3dc"/>
+      <stop offset="0.6" stop-color="#ecdcb6"/>
+      <stop offset="1" stop-color="#bfa678"/>
+    </radialGradient>
+    <radialGradient id="horizon" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#c8662e" stop-opacity="0.42"/>
+      <stop offset="0.55" stop-color="#8a3a2a" stop-opacity="0.18"/>
+      <stop offset="1" stop-color="#8a3a2a" stop-opacity="0"/>
+    </radialGradient>
     <clipPath id="frameclip"><path clip-rule="evenodd" d="{frame}"/></clipPath>
     <filter id="brushL" x="0" y="0" width="1" height="1" filterUnits="objectBoundingBox">
-      <feTurbulence type="fractalNoise" baseFrequency="0.003 1.1" numOctaves="2" seed="4"/>
+      <feTurbulence type="fractalNoise" baseFrequency="0.035 2.4" numOctaves="1" seed="4"/>
       <feColorMatrix type="matrix" values="0 0 0 0 1  0 0 0 0 0.95  0 0 0 0 0.8  1.6 0 0 0 -0.7"/>
     </filter>
     <filter id="brushD" x="0" y="0" width="1" height="1" filterUnits="objectBoundingBox">
-      <feTurbulence type="fractalNoise" baseFrequency="0.004 0.9" numOctaves="2" seed="9"/>
+      <feTurbulence type="fractalNoise" baseFrequency="0.03 2.2" numOctaves="1" seed="9"/>
       <feColorMatrix type="matrix" values="0 0 0 0 0.25  0 0 0 0 0.16  0 0 0 0 0.05  0 1.6 0 0 -0.7"/>
     </filter>
     <mask id="fadex" maskUnits="userSpaceOnUse" x="0" y="0" width="{W}" height="{H}">
@@ -211,21 +222,24 @@ def front():
     <g clip-path="url(#bodyclip)">
       <circle cx="{cx}" cy="{cy}" r="240" fill="url(#sun)"/>
       {''.join(specks)}
-      <circle cx="116" cy="222" r="32" fill="{CREAM}"/>
-      <circle cx="106" cy="213" r="5" fill="#dccba6" opacity="0.75"/>
-      <circle cx="128" cy="232" r="7" fill="#dccba6" opacity="0.6"/>
-      <circle cx="122" cy="204" r="2.6" fill="#dccba6" opacity="0.7"/>
-      <circle cx="101" cy="238" r="3.3" fill="#dccba6" opacity="0.55"/>
+      <circle cx="116" cy="222" r="32" fill="url(#moon)"/>
+      <g fill="#cdb78c" stroke="#b39c70" stroke-width="0.6">
+        <circle cx="106" cy="213" r="5" opacity="0.8"/><circle cx="128" cy="232" r="7" opacity="0.7"/>
+        <circle cx="122" cy="204" r="2.6" opacity="0.8"/><circle cx="101" cy="238" r="3.3" opacity="0.7"/>
+        <circle cx="132" cy="214" r="1.8" opacity="0.7"/><circle cx="112" cy="246" r="2" opacity="0.6"/>
+      </g>
+      <circle cx="116" cy="222" r="32" fill="#fff" filter="url(#ts-grain)" opacity="0.25"/>
     </g>
   </g>
   <g data-layer="foil" fill="{GOLD}">
     <g mask="url(#lanemask)"><g mask="url(#floormask)"><g mask="url(#raymask)" opacity="0.7">{sunburst(cx, cy, 128, 470, 72)}</g></g></g>
+    {fh(318, 470, 0.66, rot=14, flip=True, sy=1.05)}{fh(176, 478, 0.5, rot=-18, sy=1.25)}
     <circle cx="{cx}" cy="{cy}" r="120" fill="none" stroke="{GOLD}" stroke-width="1.1"/>
     <circle cx="{cx}" cy="{cy}" r="112" fill="none" stroke="{GOLD}" stroke-width="0.6" stroke-dasharray="1.2 3.4"/>
     <circle cx="116" cy="222" r="38" fill="none" stroke="{GOLD}" stroke-width="0.7"/>
-    {sparkle(cx, cy, 64)}
+    <g data-hide-if="art">{sparkle(cx, cy, 64)}
     <circle cx="{cx}" cy="{cy}" r="16" fill="none" stroke="{GOLD}" stroke-width="0.8"/>
-    <circle cx="{cx}" cy="{cy}" r="58" fill="none" stroke="{GOLD}" stroke-width="0.6" stroke-dasharray="0.8 3"/>
+    <circle cx="{cx}" cy="{cy}" r="58" fill="none" stroke="{GOLD}" stroke-width="0.6" stroke-dasharray="0.8 3"/></g>
   </g>
   <g data-layer="art" clip-path="url(#bodyclip)" mask="url(#fadex)">
     <g mask="url(#fade)">
@@ -234,6 +248,7 @@ def front():
   </g>
   <g data-layer="paper">
     <rect x="{bx}" y="440" width="{bw}" height="{by+bh-440}" fill="url(#foot)" clip-path="url(#bodyclip)"/>
+    <ellipse cx="{W/2}" cy="640" rx="230" ry="74" fill="url(#horizon)" clip-path="url(#bodyclip)"/>
     <rect width="{W}" height="{H}" fill="#fff" filter="url(#ts-grain-light)" opacity="0.07"/>
     <rect width="{W}" height="{H}" fill="#000" filter="url(#ts-grain)" opacity="0.10"/>
   </g>
@@ -245,28 +260,23 @@ def front():
     <g clip-path="url(#headclip)">{sunrise}{sparkle(hx+hw-150, hy+50, 5)}{sparkle(hx+hw-128, hy+70, 3)}</g>
     <text data-slot="admit" data-default="Admit one" x="{hx+20}" y="{hy+30}" font-family="{MONO}" font-size="8.5" font-weight="700" letter-spacing="2.4" data-case="upper" data-fit="180">.</text>
     <text data-slot="edition" x="{hx+hw-20}" y="{hy+30}" text-anchor="end" font-family="{MONO}" font-size="8.5" font-weight="700" letter-spacing="1.6" data-fit="120">.</text>
-    <text data-slot="title" x="{W/2+1.2}" y="{TB+1.4}" {title}>.</text>
+    <text data-slot="title" x="{W/2+1.2}" y="{TM+1.4}" {title}>.</text>
     <path d="M{bx+70} {TB+18} H{W/2-14} M{W/2+14} {TB+18} H{bx+bw-70}" stroke="{GOLD}" stroke-width="0.9" fill="none"/>
     {star5(W/2, TB+18, 6)}
   </g>
   <g data-layer="ink" fill="#1a1418">
-    <g clip-path="url(#frameclip)" data-screen-only="">
-      <rect width="{W}" height="{H}" fill="#c9a24f" opacity="0.28"/>
-      <rect width="{W}" height="{H}" fill="#fff" filter="url(#brushL)" opacity="0.5"/>
-      <rect width="{W}" height="{H}" fill="#000" filter="url(#brushD)" opacity="0.5"/>
-    </g>
     <g opacity="0.6">{perf}</g>
   </g>
   <g data-layer="ink">
     <text data-slot="categoryLabel" x="{hx+18}" y="{hy+84}" font-family="{DISP}" font-weight="800" fill="{PINK}" font-size="44" letter-spacing="13" data-fit="250" data-min="22">.</text>
     <text data-slot="kicker" data-default="Commemorative stub" x="{hx+20}" y="{hy+102}" font-family="{MONO}" font-size="8" font-weight="500" letter-spacing="2.2" fill="{CREAM}" opacity="0.72" data-case="upper" data-fit="250">.</text>
-    <text x="44" y="{by+30}" {col}><tspan data-slot="date">.</tspan></text>
-    <text x="436" y="{by+30}" {col}><tspan data-slot="weekday">.</tspan><tspan data-slot="time" data-prefix=" · ">.</tspan></text>
-    <text data-slot="title" x="{W/2}" y="{TB}" fill="{PINK}" {title}>.</text>
-    <text data-slot="subtitle" x="{W/2}" y="{TB+48}" text-anchor="middle" font-family="{MONO}" font-size="10" font-weight="600" letter-spacing="2.2" fill="{CREAM}" data-case="upper" data-wrap="384" data-lines="2" data-leading="1.3" data-anchor="bottom" data-min="7.5">.</text>
-    <text data-show-if="subtitle" x="{W/2}" y="{TB+66}" text-anchor="middle" font-family="{MONO}" font-size="9" letter-spacing="1.4" fill="{CREAM}" opacity="0.75" data-wrap="384" data-lines="2" data-leading="1.3" data-min="7"><tspan data-slot="date">.</tspan><tspan> · </tspan><tspan data-slot="place" data-case="upper">.</tspan></text>
-    <text data-hide-if="subtitle" x="{W/2}" y="{TB+46}" text-anchor="middle" font-family="{MONO}" font-size="9" letter-spacing="1.4" fill="{CREAM}" opacity="0.75" data-wrap="384" data-lines="2" data-leading="1.3" data-min="7"><tspan data-slot="date">.</tspan><tspan> · </tspan><tspan data-slot="place" data-case="upper">.</tspan></text>
-    <text x="{W/2}" y="{by+bh-14}" text-anchor="middle" font-family="{MONO}" font-size="6.5" letter-spacing="1.3" fill="{CREAM}" opacity="0.45">TICKETSTUB · COMMEMORATIVE KEEPSAKE · NOT VALID FOR ENTRY</text>
+    <text x="44" y="{by+30}" {col}><tspan data-slot="day">.</tspan><tspan data-slot="month" data-prefix="★">.</tspan><tspan data-slot="year" data-prefix="★">.</tspan></text>
+    <text x="436" y="{by+30}" {col}><tspan data-slot="weekday">.</tspan><tspan data-slot="time" data-default="LIVE" data-prefix="★">.</tspan></text>
+    <text data-slot="title" x="{W/2}" y="{TM}" fill="{PINK}" {title}>.</text>
+    <text data-slot="subtitle" x="{W/2}" y="{TB+48}" text-anchor="middle" font-family="{MONO}" font-size="10" font-weight="600" letter-spacing="1.8" fill="{CREAM}" data-case="upper" data-wrap="350" data-lines="2" data-leading="1.3" data-anchor="bottom" data-min="7.5">.</text>
+    <text data-show-if="subtitle" x="{W/2}" y="{TB+66}" text-anchor="middle" font-family="{MONO}" font-size="9" letter-spacing="1.4" fill="{CREAM}" opacity="0.8" data-wrap="350" data-lines="2" data-leading="1.3" data-min="7.5"><tspan data-slot="date">.</tspan><tspan> · </tspan><tspan data-slot="place" data-case="upper">.</tspan></text>
+    <text data-hide-if="subtitle" x="{W/2}" y="{TB+46}" text-anchor="middle" font-family="{MONO}" font-size="9" letter-spacing="1.4" fill="{CREAM}" opacity="0.8" data-wrap="350" data-lines="2" data-leading="1.3" data-min="7.5"><tspan data-slot="date">.</tspan><tspan> · </tspan><tspan data-slot="place" data-case="upper">.</tspan></text>
+    <text x="{W/2}" y="{by+bh-13}" text-anchor="middle" font-family="{MONO}" font-size="8.8" font-weight="500" letter-spacing="1.6" fill="{CREAM}" opacity="0.75">KEEPSAKE · NOT VALID FOR ENTRY</text>
   </g>
   <path data-layer="dieline" d="{die()}" fill="none" stroke="#ec008c" stroke-width="0.5"/>
 </svg>
@@ -277,10 +287,10 @@ def front():
 # ------------------------------------------------------------------ back: kraft info card
 def back():
     L, R = 40, 404
-    lab = f'font-family="{MONO}" font-size="7.5" font-weight="700" letter-spacing="1.8" fill="{INK}" opacity="0.72"'
+    lab = f'font-family="{MONO}" font-size="9" font-weight="700" letter-spacing="1.5" fill="{INK}" opacity="0.88"'
     big = f'font-family="{DISP}" font-weight="800" fill="{INK}" style="font-variant-numeric: lining-nums"'
-    rule = f'stroke="{GOLD}" stroke-width="1.4" fill="none"'
-    hair = f'stroke="{GOLD}" stroke-width="0.9" fill="none"'
+    rule = f'stroke="{GOLD}" stroke-width="2.2" fill="none"'
+    hair = f'stroke="{GOLD}" stroke-width="1.3" fill="none"'
     dash = f'stroke="{INK}" stroke-width="0.7" stroke-dasharray="2 2.6" fill="none" opacity="0.6"'
     perf = "".join(f'<circle cx="{f(x)}" cy="{PERF}" r="1.6"/>' for x in range(22, W - 20, 8))
     hx, hy, hw, hh = HEAD
@@ -307,26 +317,35 @@ def back():
 
     stars = "".join(star5(L + 83 + i * 26, 535, 9, fill="none", stroke=INK, sw=1.1) for i in range(5))
 
-    # venue map: a little street diagram in ink lines
+    # venue plan: stage, floor, two tiers of seating and the entry gates, in ink lines
     mx, my, mw, mh = L, 640, R - L, 150
     mp = f'stroke="{INK}" stroke-width="1" fill="none"'
-    vb = (mx + 214, my + 66, 116, 62)  # venue block
-    door = vb[0] + vb[2] / 2
+    c0 = mx + mw / 2 - 20  # plan centre (leaves room for the compass at the right)
+    tiny = f'font-family="{MONO}" font-size="7" font-weight="700" letter-spacing="1.2" fill="{INK}"'
+
+    def bowl(off):
+        x0, x1, y0, y1 = c0 - 74 - off, c0 + 74 + off, my + 10, my + 100 + off * 0.6
+        return f'M{x0} {y0} V{y1 - 22} Q{x0} {y1} {x0 + 22} {y1} H{x1 - 22} Q{x1} {y1} {x1} {y1 - 22} V{y0}'
+    gates = "".join(
+        f'<rect x="{f(gx - 11)}" y="{my+mh-14}" width="22" height="10" fill="{INK}" opacity="0.85"/>'
+        f'<text x="{f(gx)}" y="{my+mh-6.6}" text-anchor="middle" font-family="{MONO}" font-size="6.5" font-weight="700" fill="{KRAFT}">{g}</text>'
+        for g, gx in (("A", c0 - 70), ("B", c0), ("C", c0 + 70)))
     map_svg = f'''
-      <path d="M{mx} {my+40} H{mx+mw} M{mx} {my+52} H{mx+mw}" {mp}/>
-      <path d="M{mx+92} {my} V{my+40} M{mx+104} {my} V{my+40} M{mx+92} {my+52} V{mh+my} M{mx+104} {my+52} V{my+mh}" {mp}/>
-      <path d="M{mx+176} {my+52} V{my+mh} M{mx+188} {my+52} V{my+mh}" {mp}/>
-      <path d="M{mx+104} {my+98} H{mx+176} M{mx+104} {my+108} H{mx+176}" {mp}/>
-      <path d="M{mx+250} {my} L{mx+290} {my+40} M{mx+266} {my} L{mx+306} {my+40}" {mp}/>
-      <rect x="{vb[0]}" y="{vb[1]}" width="{vb[2]}" height="{vb[3]}" fill="{INK}" opacity="0.12"/>
-      <rect x="{vb[0]}" y="{vb[1]}" width="{vb[2]}" height="{vb[3]}" fill="none" stroke="{INK}" stroke-width="1.3"/>
-      <rect x="{vb[0]+4}" y="{vb[1]+4}" width="{vb[2]-8}" height="{vb[3]-8}" fill="none" stroke="{INK}" stroke-width="0.5"/>
-      <path d="M{door-10} {vb[1]+vb[3]} v-9 h20 v9Z" fill="{INK}"/>
-      <text x="{door}" y="{vb[1]+27}" text-anchor="middle" font-family="{DISP}" font-weight="800" font-size="16" letter-spacing="2" fill="{INK}">STAGE</text>
-      <text data-slot="gate" x="{door}" y="{vb[1]+42}" text-anchor="middle" font-family="{MONO}" font-size="7" font-weight="700" letter-spacing="1.2" fill="{INK}" data-prefix="ENTRY · GATE " data-case="upper" data-fit="100">.</text>
-      <path d="M{mx+20} {my+122} C{mx+80} {my+124} {mx+150} {my+142} {door} {vb[1]+vb[3]+4}" stroke="{INK}" stroke-width="1.1" stroke-dasharray="1 3.2" stroke-linecap="round" fill="none"/>
-      <circle cx="{mx+20}" cy="{my+122}" r="3.5" fill="{INK}"/><circle cx="{mx+20}" cy="{my+122}" r="7.5" fill="none" stroke="{INK}" stroke-width="0.7"/>
-      <text x="{mx}" y="{my+144}" font-family="{MONO}" font-size="6.5" letter-spacing="0.8" fill="{INK}">YOU ARE HERE</text>
+      <rect x="{c0-56}" y="{my}" width="112" height="22" fill="{INK}" opacity="0.14"/>
+      <rect x="{c0-56}" y="{my}" width="112" height="22" fill="none" stroke="{INK}" stroke-width="1.3"/>
+      <text x="{c0}" y="{my+15}" text-anchor="middle" font-family="{DISP}" font-weight="800" font-size="13" letter-spacing="3" fill="{INK}">STAGE</text>
+      <path d="M{c0-40} {my+22} V{my+30} H{c0+40} V{my+22}" {mp}/>
+      <rect x="{c0-52}" y="{my+34}" width="104" height="50" fill="none" stroke="{INK}" stroke-width="0.8" stroke-dasharray="2 2.4"/>
+      <text x="{c0}" y="{my+63}" text-anchor="middle" {tiny}>FLOOR</text>
+      <path d="{bowl(0)}" stroke="{INK}" stroke-width="1.2" fill="none"/>
+      <path d="{bowl(16)}" stroke="{INK}" stroke-width="1.2" fill="none"/>
+      <path d="M{c0-74} {my+50} H{c0-90} M{c0+74} {my+50} H{c0+90} M{c0} {my+100} V{my+110}" stroke="{INK}" stroke-width="0.6" fill="none"/>
+      <text x="{c0-82}" y="{my+42}" text-anchor="middle" font-family="{MONO}" font-size="6.5" font-weight="700" fill="{INK}">L</text>
+      <text x="{c0+82}" y="{my+42}" text-anchor="middle" font-family="{MONO}" font-size="6.5" font-weight="700" fill="{INK}">R</text>
+      {gates}
+      <path d="M{c0} {my+mh-16} V{my+122}" stroke="{INK}" stroke-width="1.1" stroke-dasharray="1 3" stroke-linecap="round"/>
+      <text data-slot="gate" x="{c0+100}" y="{my+mh-6.6}" {tiny} data-prefix="YOUR GATE · " data-case="upper" data-fit="96">.</text>
+      <text x="{mx}" y="{my+mh-6.6}" {tiny}>ENTRY</text>
       <g transform="translate({mx+mw-14} {my+16})"><path d="M0 -12 L5 4 L0 0 L-5 4Z" fill="{INK}"/><text y="16" text-anchor="middle" font-family="{MONO}" font-size="7" font-weight="700" fill="{INK}">N</text></g>
     '''
 
@@ -340,26 +359,28 @@ def back():
     <rect width="{W}" height="{H}" fill="#fff" filter="url(#ts-grain-light)" opacity="0.10"/>
     <rect width="{W}" height="{H}" fill="#000" filter="url(#ts-grain)" opacity="0.14"/>
     <g>{''.join(fibres)}</g>
+    <g data-show-if="edition"><rect x="{R-144}" y="870" width="144" height="32" rx="3" fill="{INK}"/></g>
   </g>
   <g data-layer="foil" fill="{GOLD}">
-    <path d="{notch_rect(hx+5, hy+5, hw-10, hh-10, 9)}" fill="none" stroke="{GOLD}" stroke-width="0.9"/>
-    <path d="{notch_rect(bx+5, by+5, bw-10, bh-10, 11)}" fill="none" stroke="{GOLD}" stroke-width="0.9"/>
+    <path d="{notch_rect(hx+5, hy+5, hw-10, hh-10, 9)}" fill="none" stroke="{GOLD}" stroke-width="1.6"/>
+    <path d="{notch_rect(bx+5, by+5, bw-10, bh-10, 11)}" fill="none" stroke="{GOLD}" stroke-width="1.6"/>
+    <g data-show-if="edition"><text data-slot="edition" x="{R-10}" y="893" text-anchor="end" font-family="{DISP}" font-weight="800" font-size="26" letter-spacing="0.5" style="font-variant-numeric: lining-nums" data-fit="124">.</text></g>
     {sparkle(hx+hw-150, hy+56, 5)}{sparkle(hx+hw-130, hy+76, 3)}
+    <text x="{L}" y="48" font-family="{MONO}" font-size="9" font-weight="800" letter-spacing="1.6">TICKETSTUB ORIGINAL · SERIAL</text>
+    <text data-slot="admit" data-default="Admit one" x="{hx+hw-20}" y="48" text-anchor="end" font-family="{MONO}" font-size="9" font-weight="800" letter-spacing="1.6" data-case="upper" data-fit="120">.</text>
     <path d="M{L} 254 H{R} M{L} 330 H{R} M{L} 416 H{R} M{L} 500 H{R} M{L} 600 H{R} M{L} 806 H{R}" {rule}/>
     <path d="M418 186 V914" {hair}/>
-    {grid_div}
+    <g data-show-if="seat">{grid_div}</g>
   </g>
   <g data-layer="ink" fill="{INK}">
     <g opacity="0.55">{perf}</g>
-    <text x="{L}" y="48" {lab}>TICKETSTUB ORIGINAL · SERIAL</text>
     <g transform="rotate(-1.6 {L+107} 86)">
-      <rect x="{L}" y="60" width="214" height="52" fill="#5a3a18" opacity="0.12"/>
-      <rect x="{L}" y="60" width="214" height="52" fill="none" stroke="{INK}" stroke-width="1.8"/>
-      <rect x="{L+4}" y="64" width="206" height="44" fill="none" stroke="{INK}" stroke-width="0.6"/>
-      <text data-slot="serial" x="{L+107}" y="95" text-anchor="middle" font-family="{MONO}" font-size="22" font-weight="700" letter-spacing="5" data-fit="190">.</text>
+      <rect x="{L}" y="60" width="214" height="52" fill="#d81b5c" opacity="0.1"/>
+      <rect x="{L}" y="60" width="214" height="52" fill="none" stroke="#d81b5c" stroke-width="2"/>
+      <rect x="{L+4}" y="64" width="206" height="44" fill="none" stroke="#d81b5c" stroke-width="0.7"/>
+      <text data-slot="serial" x="{L+107}" y="95" text-anchor="middle" font-family="{MONO}" font-size="22" font-weight="700" letter-spacing="5" fill="#d81b5c" data-fit="190">.</text>
     </g>
-    <text data-slot="admit" data-default="Admit one" x="{hx+hw-20}" y="48" text-anchor="end" {lab} data-case="upper" data-fit="120">.</text>
-    <text data-slot="title" x="{hx+hw-20}" y="94" text-anchor="end" {big} font-size="24" letter-spacing="0.6" data-case="upper" data-wrap="160" data-lines="2" data-leading="0.95" data-anchor="bottom" data-min="13">.</text>
+    <text data-slot="title" x="{hx+hw-20}" y="94" text-anchor="end" {big} font-size="24" letter-spacing="0.6" data-case="upper" data-wrap="160" data-lines="3" data-leading="0.95" data-anchor="bottom" data-min="10">.</text>
     <text x="{hx+hw-20}" y="112" text-anchor="end" font-family="{MONO}" font-size="8" letter-spacing="1.6" data-wrap="160" data-lines="1" data-min="6.5"><tspan data-slot="year">.</tspan><tspan data-slot="city" data-prefix=" · " data-case="upper">.</tspan></text>
 
     <text x="{L}" y="196" {lab}>VENUE</text>
@@ -368,13 +389,19 @@ def back():
 
     <text x="{L}" y="274" {lab}>DATE</text>
     <text x="{L+160}" y="274" {lab}>TIME</text>
-    <text x="{L+262}" y="274" {lab}>DOORS</text>
     <text data-slot="dateDots" data-default="—" x="{L}" y="314" {big} font-size="32" letter-spacing="0.5" data-fit="140">.</text>
     <text data-slot="time" data-default="—" x="{L+160}" y="314" {big} font-size="32" data-fit="88">.</text>
-    <text data-slot="doors" data-default="—" x="{L+262}" y="314" {big} font-size="32" data-fit="96">.</text>
-    <path d="M{L+150} 262 V322 M{L+252} 262 V322" {dash}/>
+    <g data-show-if="doors"><text x="{L+262}" y="274" {lab}>DOORS</text>
+    <text data-slot="doors" x="{L+262}" y="314" {big} font-size="32" data-fit="96">.</text>
+    <path d="M{L+252} 262 V322" {dash}/></g>
+    <path d="M{L+150} 262 V322" {dash}/>
 
-    {''.join(grid)}
+    <g data-show-if="seat">{''.join(grid)}</g>
+    <g data-hide-if="seat">
+      <text x="{L}" y="358" {lab}>ADMISSION</text>
+      <text data-slot="section" data-default="GENERAL ADMISSION" x="{L}" y="394" {big} font-size="30" letter-spacing="0.6" data-case="upper" data-fit="{R-L}" data-min="14">.</text>
+      <path d="M{L} 402 H{R}" {dash}/>
+    </g>
 
     <text x="{L}" y="436" {lab}>LINE-UP</text>
     <text data-slot="peopleAll" data-default="—" x="{L}" y="456" font-family="{MONO}" font-size="10" letter-spacing="0.3" data-wrap="{R-L-44}" data-lines="3" data-leading="1.45" data-min="7">.</text>
@@ -388,14 +415,14 @@ def back():
     <text x="{L}" y="626" {lab}>MAP</text>
     {map_svg}
 
-    <text data-slot="tagline" x="{L}" y="828" font-family="{MONO}" font-size="9.5" font-style="italic" data-wrap="{R-L}" data-lines="2" data-leading="1.4" data-min="7" data-prefix="“" data-suffix="”">.</text>
-    <g data-slot="barcode" data-w="196" data-h="30" data-color="{INK}" transform="translate({L} 856)"></g>
-    <g data-show-if="edition"><text x="{R}" y="866" text-anchor="end" {lab}>EDITION</text>
-    <text data-slot="edition" x="{R}" y="894" text-anchor="end" {big} font-size="28" letter-spacing="0.5" data-fit="150">.</text></g>
-    <text x="{L}" y="918" font-family="{MONO}" font-size="6.5" letter-spacing="1.1" opacity="0.85" data-fit="250">COMMEMORATIVE KEEPSAKE · NOT VALID FOR ENTRY</text>
+    <text data-slot="tagline" x="{L}" y="824" font-family="{MONO}" font-size="9" font-style="italic" data-wrap="{R-L}" data-lines="2" data-leading="1.35" data-min="7" data-prefix="“" data-suffix="”">.</text>
+    <g data-slot="barcode" data-w="196" data-h="30" data-color="{INK}" transform="translate({L} 860)"></g>
+    <g data-show-if="edition"><text x="{R-144}" y="866" {lab}>EDITION</text>
+</g>
+    <text x="{L}" y="918" font-family="{MONO}" font-size="8.8" font-weight="500" letter-spacing="1.2" data-fit="250">KEEPSAKE · NOT VALID FOR ENTRY</text>
     <text x="{R}" y="918" text-anchor="end" font-family="{DISP}" font-weight="800" font-size="10" letter-spacing="2.6">TICKETSTUB™</text>
 
-    <text transform="translate(440 196) rotate(90)" {big} font-size="20" letter-spacing="3" data-wrap="700" data-lines="1" data-min="13"><tspan data-slot="title" data-case="upper">.</tspan><tspan data-slot="date" data-prefix="  ·  ">.</tspan></text>
+    <text transform="translate(430 196) rotate(90)" {big} font-size="20" letter-spacing="3" data-wrap="700" data-lines="1" data-min="13"><tspan data-slot="title" data-case="upper">.</tspan><tspan data-slot="date" data-prefix="  ·  ">.</tspan></text>
   </g>
   <path data-layer="dieline" d="{die()}" fill="none" stroke="#ec008c" stroke-width="0.5"/>
 </svg>
