@@ -52,7 +52,7 @@ export function navItem(key: string): NavItem {
 }
 
 /** Routes that sit on a route with no nav at all. */
-export const NAV_FREE = ["/", "/parts"];
+export const NAV_FREE = ["/", "/parts", "/stub-lab"];
 
 /** The most recent stubs the Wall group lists before "All stubs". */
 export const WALL_LIST = 4;
