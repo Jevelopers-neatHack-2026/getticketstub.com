@@ -33,6 +33,7 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { launchBrowser } from "./lib/cdp.mjs";
+import { submitSheetEmail } from "./lib/analytics-sheet-readiness.mjs";
 
 const root = new URL("..", import.meta.url).pathname;
 if (!existsSync(join(root, ".next/BUILD_ID"))) {
@@ -599,9 +600,10 @@ async function runViewport(vp) {
   check(T("claim: Claim with no name is claim_invalid(name_missing), not a claim"), same(named(ev, "claim_invalid").map((e) => e.p.reason), ["name_missing"]) && named(ev, "claim_complete").length === 0, fmt(ev));
   from = await mark();
   check(T("claim: Email me a link"), await clickText("button", "Email me a link"));
-  await page.waitFor(`document.querySelector("#signin-email")`);
-  await typeInto("#signin-email", SEED.email);
-  check(T("claim: the sheet's Email me a link (submit)"), await tap('[role="dialog"] form button[type="submit"]', "Email me a link"));
+  const claimSubmit = await submitSheetEmail(page, SEED.email);
+  console.log(`info ${T("claim: bounded sheet readiness")} ${JSON.stringify(claimSubmit)}`);
+  if (claimSubmit.clicked) realClicks++;
+  check(T("claim: the sheet's Email me a link (submit)"), claimSubmit.ok, JSON.stringify(claimSubmit));
   ev = await waitEvents(from, (e) => named(e, "sign_in_link").length > 0, 6000);
   check(T("claim: the sign-in choice, then a sandbox link at the server's answer; never a login"), same(named(ev, "signin_choice").map((e) => pick(e.p, ["choice", "reason"])), [{ choice: "sign_in", reason: "claim" }]) && same(named(ev, "sign_in_link").map((e) => pick(e.p, ["reason", "result"])), [{ reason: "claim", result: "sandbox" }]) && named(ev, "sign_in_return").length === 0, fmt(ev));
   await clickText('[role="dialog"] button', "Close");

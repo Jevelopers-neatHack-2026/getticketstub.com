@@ -92,6 +92,7 @@ The [runtime workflow](.github/workflows/runtime.yml) also runs offline Chrome a
 | Document | What it covers |
 | --- | --- |
 | [Preview runtime and providers](docs/operations/preview-runtime.md) | Toolchain, build and start, Plus Launch settings, runtime mode, direct and OpenRouter provider settings, verification |
+| [Prodigi sandbox callbacks](docs/operations/prodigi-callbacks-runbook.md) | The off-by-default callback route, durable store and job worker, settings, and the owner steps before callback registration |
 | [Studio module](src/customer/studio/README.md) | Routes, real versus simulated behaviour, storage, brand rules |
 | [Assembly evidence](docs/integration/assembly-evidence.md) | Offline component/fixture snapshots and their limits |
 | [Context fixtures](fixtures/context/README.md) · [Approval fixtures](fixtures/approval/README.md) · [Order-authorization fixtures](fixtures/order-authorization/README.md) | Public synthetic protocols, verifier commands and consumer boundaries |

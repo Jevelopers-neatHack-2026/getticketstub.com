@@ -338,8 +338,75 @@ try {
       check(`${width}:mask-unmount:restores-owned-only`, await page.eval('({ hidden: document.getElementById("hidden").getAttribute("inert"), existing: document.getElementById("owned").getAttribute("inert"), focus: document.activeElement.id })'),
         { hidden: null, existing: "owner", focus: "opener" });
     });
+    // Regressions found by independent current-source review: SVG boundaries, native
+    // positive-tabindex radio grouping, and media exits into a parent modal/browser chrome.
+    for (const [name, html, target] of [
+      ["svg-root", '<svg xmlns="http://www.w3.org/2000/svg" id="svg" tabindex="0" width="40" height="40"><rect width="40" height="40"/></svg>', "svg"],
+      ["svg-link", '<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><a id="svglink" href="#"><rect width="40" height="40"/></a></svg>', "svglink"],
+    ]) {
+      await withPage(width, html, async (page) => {
+        await page.key("Tab");
+        check(`${width}:${name}:untrapped-native`, await active(page), target);
+        await page.eval('document.getElementById("opener").focus(); true');
+        await start(page);
+        check(`${width}:${name}:initial`, await active(page), target);
+        const sequence = [];
+        for (const shift of [false, true]) { await page.key("Tab", { shift }); sequence.push(await active(page)); }
+        check(`${width}:${name}:boundary`, sequence, [target, target]);
+        await page.eval('window.__cleanup(); window.__cleanup = null; true');
+        check(`${width}:${name}:return`, await active(page), "opener");
+      });
+    }
+    await withPage(width, '<button id="first">first</button><svg xmlns="http://www.w3.org/2000/svg" aria-hidden="true" width="40" height="40"><a id="excluded" href="#"><rect width="40" height="40"/></a></svg><button id="last">last</button>', async (page) => {
+      await start(page, "#first");
+      await page.eval(`(() => { window.__badFocus = [];
+        document.addEventListener("focusin", (e) => { if (e.target.closest('[aria-hidden="true"]')) window.__badFocus.push(e.target.id); }, true);
+        return true;
+      })()`);
+      const sequence = [];
+      for (const shift of [false, true]) { await page.key("Tab", { shift }); sequence.push(await active(page)); }
+      check(`${width}:hidden-svg-interior`, sequence, ["last", "first"]);
+      check(`${width}:hidden-svg-no-transient`, await page.eval("window.__badFocus"), []);
+    });
+    for (const [direction, initial, reverse, expectedNative] of [
+      ["forward", "#one", false, "last"], ["reverse", "#two", true, "first"],
+    ]) {
+      const html = '<button id="first" tabindex="1">first</button><input type="radio" name="g" id="one" tabindex="2"><input type="radio" name="g" id="two" tabindex="3"><input type="radio" name="g" id="three" tabindex="4"><button id="last" tabindex="5">last</button>';
+      let native;
+      await withPage(width, html, async (page) => {
+        await page.eval(`document.querySelector(${JSON.stringify(initial)}).focus(); true`);
+        await page.key("Tab", { shift: reverse }); native = await active(page);
+      });
+      check(`${width}:positive-radio-${direction}:native-control`, native, expectedNative);
+      await withPage(width, html, async (page) => {
+        await start(page, initial);
+        await page.key("Tab", { shift: reverse });
+        check(`${width}:positive-radio-${direction}:parity`, await active(page), native);
+      });
+    }
+    for (const placement of ["nested", "portal"]) {
+      const inner = '<div id="inner" aria-modal="true" role="dialog"><button id="innerfirst">inner</button><audio id="audio" controls></audio></div>';
+      await withPage(width, '<button id="outerfirst">outer</button>' + (placement === "nested" ? inner : "") + '<button id="outerlast">outer last</button>', async (page) => {
+        await start(page, "#outerfirst");
+        if (placement === "portal") await page.eval(`document.body.insertAdjacentHTML("beforeend", ${JSON.stringify(inner)}); true`);
+        await page.eval(`(() => {
+          const outer = window.__cleanup;
+          window.__focus.useDialogFocus({ current: document.getElementById("inner") }, true, "#innerfirst");
+          window.__innerCleanup = window.__cleanup; window.__outerCleanup = outer;
+          window.__cleanup = () => { window.__innerCleanup?.(); outer(); };
+          return true;
+        })()`);
+        await page.eval("new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(true))))");
+        const sequence = [];
+        for (let step = 0; step < 8; step++) { await page.key("Tab"); sequence.push(await active(page)); }
+        check(`${width}:${placement}-media-contains`, sequence.every((id) => ["audio", "innerfirst"].includes(id)), true);
+        check(`${width}:${placement}-media-exercised`, sequence.includes("audio") && sequence.includes("innerfirst"), true);
+        await page.eval('window.__innerCleanup(); window.__innerCleanup = null; window.__cleanup = window.__outerCleanup; true');
+        check(`${width}:${placement}-media-returns-parent`, await active(page), "outerfirst");
+      });
+    }
   }
-  check("complete unique native matrix", [report.checks.length, new Set(report.checks.map((item) => item.name)).size], [242, 242]);
+  check("complete unique native matrix", [report.checks.length, new Set(report.checks.map((item) => item.name)).size], [282, 282]);
   check("no page HTTP requests", requests, 0);
   check("no page exceptions", exceptions, 0);
   check("source and runtime metadata present", /^[a-f0-9]{40}$/.test(report.revision ?? "") && /^[a-f0-9]{40}$/.test(report.tree ?? "") && report.worktreeStatus === "" && /^\d+\.\d+\.\d+$/.test(report.npm ?? ""), true);

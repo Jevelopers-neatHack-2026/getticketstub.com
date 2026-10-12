@@ -34,12 +34,16 @@ export async function browserProvenance(conn) {
   }
 }
 
-// This function is serialized into an ALREADY EXISTING page eval. Before the first screenshot,
-// sample() reads only bounded identity/source/readiness properties: no style/layout reads or awaits.
+// This function is serialized into an ALREADY EXISTING page eval. The final pre-capture sample now
+// explicitly reads bounded presentation state. Those reads can flush layout and affect the first frame;
+// they are observations, never readiness gates. Earlier identity/decode samples still do not read styles.
 function installCaptureProvenance() {
-  const MAX_IMAGES = 8, MAX_SNAPSHOTS = 6, MAX_SOURCE_CHARS = 65536, MAX_ANCESTORS = 6;
+  const MAX_IMAGES = 8, MAX_SNAPSHOTS = 6, MAX_SOURCE_CHARS = 65536, MAX_ANCESTORS = 16, MAX_CAPTURE_NODES = 48;
   const nodes = new WeakMap();
   const snapshots = [];
+  const capturedNodes = new Map(), capturedParents = new Map(), omittedNodes = new WeakSet();
+  let captureId = null, captureNodeIds = [], nodeRetentionOmissions = 0, nodesReleased = false;
+  let capturedFigure = null, capturedImages = [], capturedImageCount = 0, captureBindingStatus = "not_requested";
   let nextId = 1;
   let snapshotsOmitted = 0;
   const id = (node) => {
@@ -55,8 +59,17 @@ function installCaptureProvenance() {
   // No arbitrary CSS text, URLs, class names, element IDs, animation names or text content.
   const styles = (node) => {
     const s = getComputedStyle(node);
+    const animations = node.getAnimations();
     const choice = (value, allowed) => allowed.includes(value) ? value : "other";
     const matrix = /^(none|matrix(3d)?\([-+\d., eE]+\))$/;
+    const tiltVariable = (name, unit) => {
+      const value = s.getPropertyValue?.(name)?.trim();
+      if (!value) return { status: "unset_or_unavailable" };
+      const numeric = unit === "deg" ? /^[-+]?(\d+(\.\d*)?|\.\d+)deg$/ : /^[-+]?(\d+(\.\d*)?|\.\d+)$/;
+      const parsed = Number.parseFloat(value);
+      return value.length <= 32 && numeric.test(value) && Number.isFinite(parsed) && Math.abs(parsed) <= 10000
+        ? { status: "recorded", value: finite(parsed), unit } : { status: "omitted_unrecognized_value" };
+    };
     return {
       display: choice(s.display, ["none", "block", "inline", "inline-block", "flex", "grid", "contents"]),
       visibility: choice(s.visibility, ["visible", "hidden", "collapse"]),
@@ -66,12 +79,20 @@ function installCaptureProvenance() {
       perspective: s.perspective === "none" ? "none" : finite(Number.parseFloat(s.perspective)),
       backfaceVisibility: choice(s.backfaceVisibility, ["visible", "hidden"]),
       hasFilter: s.filter !== "none", hasMask: s.maskImage !== "none", hasClipPath: s.clipPath !== "none",
+      isolation: choice(s.isolation, ["auto", "isolate"]),
+      overflowX: choice(s.overflowX, ["visible", "hidden", "clip", "scroll", "auto"]),
+      overflowY: choice(s.overflowY, ["visible", "hidden", "clip", "scroll", "auto"]),
       contentVisibility: choice(s.contentVisibility, ["visible", "hidden", "auto"]),
       objectFit: choice(s.objectFit, ["fill", "contain", "cover", "none", "scale-down"]),
-      animationCount: node.getAnimations().length,
-      animations: node.getAnimations().slice(0, 4).map((a) => ({
+      // useTilt writes these numeric variables from JS requestAnimationFrame; getAnimations alone
+      // cannot establish that the element is stationary. Never export arbitrary custom properties.
+      tilt: { rx: tiltVariable("--rx", "deg"), ry: tiltVariable("--ry", "deg"), px: tiltVariable("--px", "number"), py: tiltVariable("--py", "number") },
+      animationCount: animations.length, animationsTruncated: animations.length > 4,
+      animations: animations.slice(0, 4).map((a) => ({
+        kind: "transitionProperty" in a ? "css_transition" : "animationName" in a ? "css_animation" : "other",
         playState: choice(a.playState, ["idle", "running", "paused", "finished"]),
-        currentTime: finite(a.currentTime),
+        pending: a.pending === true, currentTime: finite(a.currentTime), startTime: finite(a.startTime), playbackRate: finite(a.playbackRate),
+        durationMs: finite(a.effect?.getComputedTiming?.().duration),
       })),
     };
   };
@@ -90,33 +111,92 @@ function installCaptureProvenance() {
     return raw.length > MAX_SOURCE_CHARS ? { status: "omitted_too_long", chars: raw.length } : { status: "pending_digest", raw };
   };
   const collector = {
-    sample(phase, figure, images, afterCapture = false) {
+    sample(phase, figure, images, includePresentation = false, requestedCaptureId = null) {
       if (snapshots.length >= MAX_SNAPSHOTS) { snapshotsOmitted++; return; }
       const snapshot = { phase, at: finite(performance.now()), figureId: id(figure), imageCount: images.length, imagesTruncated: images.length > MAX_IMAGES };
       snapshots.push(snapshot);
+      const beforeFirst = phase === "before_original_capture" && includePresentation;
+      if (includePresentation) snapshot.presentationRead = beforeFirst ? "before_first_screenshot" : "after_screenshot";
+      if (beforeFirst) {
+        if (captureId) captureBindingStatus = "duplicate_capture_binding";
+        else if (typeof requestedCaptureId === "string" && /^[a-f\d]{8}(-[a-f\d]{4}){3}-[a-f\d]{12}$/.test(requestedCaptureId)) {
+          captureId = requestedCaptureId;
+          capturedFigure = figure;
+          capturedImageCount = images.length;
+          capturedImages = images.slice(0, MAX_IMAGES);
+          captureBindingStatus = "recorded";
+        } else captureBindingStatus = "invalid_capture_id";
+      }
+      const retain = (node) => {
+        if (!beforeFirst || captureBindingStatus !== "recorded" || !node || capturedNodes.has(id(node)) || omittedNodes.has(node)) return;
+        if (capturedNodes.size === MAX_CAPTURE_NODES) { omittedNodes.add(node); nodeRetentionOmissions++; return; }
+        capturedNodes.set(id(node), node);
+        capturedParents.set(id(node), node.parentElement);
+        captureNodeIds.push(id(node));
+      };
+      const presentations = new Map();
+      const presentation = (node) => {
+        retain(node);
+        if (!presentations.has(node)) {
+          try { presentations.set(node, { presentationStatus: "recorded", rect: rect(node), styles: styles(node) }); }
+          catch { presentations.set(node, { presentationStatus: "unavailable" }); }
+        }
+        return presentations.get(node);
+      };
       try {
         snapshot.status = figure ? "recorded" : "figure_unavailable";
         snapshot.fonts = document.fonts.status === "loaded" ? "loaded" : "loading";
         snapshot.visibility = ["visible", "hidden"].includes(document.visibilityState) ? document.visibilityState : "other";
+        if (includePresentation && figure) snapshot.figure = { nodeId: id(figure), ...presentation(figure) };
         snapshot.images = images.slice(0, MAX_IMAGES).map((img) => {
           const image = { nodeId: id(img), connected: img.isConnected === true, complete: img.complete === true,
             naturalWidth: finite(img.naturalWidth), naturalHeight: finite(img.naturalHeight),
             src: retainSource(img.src), currentSrc: retainSource(img.currentSrc) };
-          if (afterCapture) {
-            image.rect = rect(img);
-            image.styles = styles(img);
+          if (includePresentation) {
+            Object.assign(image, presentation(img));
             image.ancestors = [];
-            for (let p = img.parentElement, n = 0; p && n < MAX_ANCESTORS; p = p.parentElement, n += 1) {
-              image.ancestors.push({ nodeId: id(p), rect: rect(p), styles: styles(p) });
-              if (p === figure) break;
+            let p = img.parentElement, last = null;
+            for (let n = 0; p && n < MAX_ANCESTORS; p = p.parentElement, n += 1) {
+              image.ancestors.push({ nodeId: id(p), ...presentation(p) });
+              last = p;
             }
+            // Continue above the figure: page/checkout ancestors can animate or hide the whole preview.
+            image.ancestorsTruncated = !!p;
+            image.ancestorBoundary = p ? "limit" : last === document.documentElement ? "document_root" : "detached_or_shadow_root";
           }
           return image;
         });
-        if (afterCapture && figure) snapshot.figureRect = rect(figure);
+        if (includePresentation && figure) {
+          snapshot.figureRect = snapshot.figure.rect;
+          snapshot.presentationReadCompletedAt = finite(performance.now());
+        }
       } catch {
         snapshot.status = "unavailable";
       }
+    },
+    // Only retained pre-first references are exposed as remote objects, after that screenshot returns.
+    // A fresh query could silently map a replacement element to an earlier layer record.
+    nodeStatusForCapture(requestedId, currentFigure) {
+      const unavailable = (reason) => ({ status: "unavailable", reason });
+      if (requestedId !== captureId || captureBindingStatus !== "recorded") return unavailable("capture_binding_unavailable");
+      if (nodesReleased) return unavailable("references_released");
+      if (!capturedFigure || capturedFigure !== currentFigure || !capturedFigure.isConnected) return unavailable("figure_replaced_or_disconnected");
+      const currentImages = [...currentFigure.querySelectorAll("img")];
+      if (currentImages.length !== capturedImageCount || capturedImages.some((node, index) => node !== currentImages[index])) return unavailable("images_replaced");
+      for (const [nodeId, node] of capturedNodes) {
+        if (!node.isConnected) return unavailable("node_disconnected");
+        if (node.parentElement !== capturedParents.get(nodeId)) return unavailable("ancestry_changed");
+      }
+      return { status: nodeRetentionOmissions || capturedImageCount > MAX_IMAGES ? "partial" : "recorded", nodeIds: [...captureNodeIds], omitted: nodeRetentionOmissions };
+    },
+    nodesForCapture(requestedId, currentFigure) {
+      const state = this.nodeStatusForCapture(requestedId, currentFigure);
+      return ["recorded", "partial"].includes(state.status) ? captureNodeIds.map((nodeId) => capturedNodes.get(nodeId)) : null;
+    },
+    releaseCapture(requestedId) {
+      if (requestedId !== captureId) return false;
+      capturedNodes.clear(); capturedParents.clear(); capturedImages = []; capturedFigure = null; nodesReleased = true;
+      return true;
     },
     async read() {
       // Hash after the original screenshot. Raw sources never cross the CDP return boundary.
@@ -127,9 +207,13 @@ function installCaptureProvenance() {
           delete held.raw;
         }
       }
-      return { status: "recorded", schema: "ticketstub.capture-provenance.v1", timeOrigin: finite(performance.timeOrigin),
-        limits: { images: MAX_IMAGES, snapshots: MAX_SNAPSHOTS, sourceCharacters: MAX_SOURCE_CHARS, ancestors: MAX_ANCESTORS },
-        sampledStylesOnlyAfterCapture: true, instrumentationMayAffectLaterScheduling: true,
+      const firstPresentationRead = snapshots.some((s) => s.presentationRead === "before_first_screenshot");
+      return { status: "recorded", schema: "ticketstub.capture-provenance.v2", timeOrigin: finite(performance.timeOrigin),
+        limits: { images: MAX_IMAGES, snapshots: MAX_SNAPSHOTS, sourceCharacters: MAX_SOURCE_CHARS, ancestors: MAX_ANCESTORS, captureNodes: MAX_CAPTURE_NODES },
+        captureId, captureBindingStatus, preCaptureNodeIds: [...captureNodeIds], nodeRetentionOmissions, nodesReleased,
+        sampledStylesOnlyAfterCapture: !firstPresentationRead, instrumentationMayAffectFirstCapture: firstPresentationRead,
+        presentationReadsMayFlushLayout: firstPresentationRead, instrumentationMayAffectLaterScheduling: true,
+        animationObservationDoesNotIncludeJavaScriptFrameLoops: true,
         snapshotsTruncated: snapshotsOmitted > 0, snapshotsOmitted, snapshots };
     },
   };

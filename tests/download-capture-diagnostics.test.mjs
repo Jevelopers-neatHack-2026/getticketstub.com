@@ -8,6 +8,7 @@ const SECRET = "private-token-for-diagnostic-redaction";
 const secretUrl = `https://user:${SECRET}@private.invalid/art.png?key=${SECRET}#${SECRET}`;
 const hash = (value) => createHash("sha256").update(value).digest("hex");
 const plain = (value) => JSON.parse(JSON.stringify(value));
+const CAPTURE = "00000000-0000-0000-0000-000000000001";
 
 function browserFixture({ crypto = webcrypto } = {}) {
   const reads = { layout: 0, style: 0 };
@@ -29,7 +30,7 @@ function browserFixture({ crypto = webcrypto } = {}) {
   return { collector, reads, node, figure, context };
 }
 
-test("existing pre-capture boundaries read no layout/style and serialized evidence contains only source digests", async () => {
+test("identity-only decode boundaries read no layout/style and serialized evidence contains only source digests", async () => {
   const { collector, reads, node, figure } = browserFixture();
   const image = node(); image.parentElement = figure;
   collector.sample("decode_start", figure, [image]);
@@ -47,6 +48,94 @@ test("existing pre-capture boundaries read no layout/style and serialized eviden
   for (const privateValue of [SECRET, "private.invalid", "https:", "url(", "rawSrc", "rawCurrentSrc"]) assert.ok(!serialized.includes(privateValue), privateValue);
   assert.equal(record.snapshots[3].images[0].styles.transform, "other");
   assert.equal(record.snapshots[3].images[0].styles.hasMask, true);
+});
+
+test("the final pre-first sample records outer ancestors and active transitions without URL, keyframe or name leakage", async () => {
+  const { collector, reads, node, figure, context } = browserFixture();
+  const image = node(), outer = node("");
+  image.parentElement = figure; figure.parentElement = outer;
+  context.document.documentElement = outer;
+  figure.querySelectorAll = () => [image];
+  outer.getAnimations = () => [{ transitionProperty: SECRET, playState: "running", pending: true, currentTime: 32, startTime: 10, playbackRate: 1,
+    effect: { getKeyframes() { throw new Error("keyframes must never be read"); } } }];
+  const previousStyle = context.getComputedStyle;
+  context.getComputedStyle = (n) => ({ ...previousStyle(n), visibility: n === outer ? "hidden" : "visible", opacity: n === outer ? "0.25" : "1", transform: "matrix(1, 0, 0, 1, 3, 4)",
+    getPropertyValue: (name) => ({ "--rx": "1.250deg", "--ry": `url(${secretUrl})`, "--px": "0.25", "--py": "0" })[name] });
+  collector.sample("decode_start", figure, [image]);
+  assert.deepEqual(reads, { layout: 0, style: 0 });
+  collector.sample("before_original_capture", figure, [image], true, CAPTURE);
+  const record = plain(await collector.read());
+  const before = record.snapshots[1];
+  assert.equal(record.sampledStylesOnlyAfterCapture, false);
+  assert.equal(record.instrumentationMayAffectFirstCapture, true);
+  assert.equal(record.presentationReadsMayFlushLayout, true);
+  assert.equal(before.presentationRead, "before_first_screenshot");
+  assert.equal(before.images[0].ancestors.length, 2);
+  assert.equal(before.images[0].ancestorBoundary, "document_root");
+  assert.equal(before.images[0].ancestors[1].styles.visibility, "hidden");
+  assert.equal(before.images[0].ancestors[1].styles.opacity, 0.25);
+  assert.equal(before.images[0].ancestors[1].styles.animations[0].kind, "css_transition");
+  assert.equal(before.images[0].ancestors[1].styles.animations[0].pending, true);
+  assert.deepEqual(before.images[0].styles.tilt.rx, { status: "recorded", value: 1.25, unit: "deg" });
+  assert.deepEqual(before.images[0].styles.tilt.px, { status: "recorded", value: 0.25, unit: "number" });
+  assert.equal(before.images[0].styles.tilt.ry.status, "omitted_unrecognized_value");
+  assert.equal(record.animationObservationDoesNotIncludeJavaScriptFrameLoops, true);
+  assert.equal(reads.style, 3); // one read per retained node, including the shared figure ancestor
+  assert.ok(!JSON.stringify(record).includes(SECRET));
+  assert.equal(collector.nodesForCapture(CAPTURE, figure)[0], figure);
+  assert.equal(collector.releaseCapture(CAPTURE), true);
+  assert.equal(collector.nodesForCapture(CAPTURE, figure), null);
+});
+
+test("retained pre-first references refuse same-source replacement, disconnect and moved ancestry", () => {
+  for (const mutation of ["image", "figure", "disconnected", "ancestry"]) {
+    const { collector, node, figure } = browserFixture();
+    const original = node(), parent = node("");
+    original.parentElement = figure; figure.parentElement = parent;
+    let images = [original];
+    figure.querySelectorAll = () => images;
+    collector.sample("before_original_capture", figure, images, true, CAPTURE);
+    assert.ok(collector.nodesForCapture(CAPTURE, figure));
+    if (mutation === "image") images = [node(original.src)];
+    if (mutation === "disconnected") original.isConnected = false;
+    if (mutation === "ancestry") figure.parentElement = node("");
+    assert.equal(collector.nodesForCapture(CAPTURE, mutation === "figure" ? node("") : figure), null, mutation);
+  }
+});
+
+test("pre-first evidence retains bounded nodes and explicitly reports ancestor, animation and identity omissions", async () => {
+  const { collector, node, figure } = browserFixture();
+  const images = Array.from({ length: 10 }, () => node());
+  for (const image of images) {
+    let last = image;
+    for (let n = 0; n < 18; n++) { const parent = node(""); last.parentElement = parent; last = parent; }
+  }
+  images[0].getAnimations = () => Array.from({ length: 7 }, () => ({ playState: "running", currentTime: 1 }));
+  figure.querySelectorAll = () => images;
+  collector.sample("before_original_capture", figure, images, true, CAPTURE);
+  const record = plain(await collector.read());
+  const image = record.snapshots[0].images[0];
+  assert.equal(record.preCaptureNodeIds.length, 48);
+  assert.ok(record.nodeRetentionOmissions > 0);
+  assert.equal(image.ancestors.length, 16); assert.equal(image.ancestorsTruncated, true);
+  assert.equal(image.ancestorBoundary, "limit");
+  assert.equal(image.styles.animationCount, 7); assert.equal(image.styles.animationsTruncated, true);
+  assert.equal(image.styles.animations.length, 4);
+  assert.equal(collector.nodeStatusForCapture(CAPTURE, figure).status, "partial");
+});
+
+test("an unavailable pre-first style read still discloses its timing effect and duplicate bindings cannot reuse references", async () => {
+  const { collector, node, figure, context } = browserFixture();
+  const image = node(); figure.querySelectorAll = () => [image];
+  context.getComputedStyle = () => { throw new Error(secretUrl); };
+  collector.sample("before_original_capture", figure, [image], true, CAPTURE);
+  const first = plain(await collector.read());
+  assert.equal(first.instrumentationMayAffectFirstCapture, true);
+  assert.equal(first.snapshots[0].figure.presentationStatus, "unavailable");
+  assert.ok(!JSON.stringify(first).includes(SECRET));
+  collector.sample("before_original_capture", figure, [image], true, "00000000-0000-0000-0000-000000000002");
+  assert.equal(collector.nodesForCapture(CAPTURE, figure), null);
+  assert.equal((await collector.read()).captureBindingStatus, "duplicate_capture_binding");
 });
 
 test("a source change and a same-source node replacement remain distinguishable", async () => {

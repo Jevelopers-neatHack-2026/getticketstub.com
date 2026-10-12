@@ -59,7 +59,7 @@ Migration adds `order_authorizations`, `order_authorization_revocations`, `order
 ## Limitations (read these)
 
 - **Not the canonical `OrderAuthorization`.** shared-contracts #26 has no schema or pin yet; no mapping is accepted. The claim response follows fulfillment-connectors' `AuthorizationClaimResult` shape and `actionId`/`claimReference` names as read from its types, which is not an agreed protocol.
-- **No consumer adoption or conformance.** fulfillment-connectors has not run against this port.
+- **Limited simulated consumer coverage; no app-server conformance.** The `fulfillment-connectors` main source contains a fixture-tested simulated protocol consumer that uses a fake issuer/HTTP port. It has not run against this app server. The app has no runtime import of that package; there is no accepted shared-contracts #26 mapping or pin, cross-repository conformance, runtime adoption, or integration-evals acceptance.
 - **No real quote.** The amount is the maximum the owner confirmed for a sandbox quote id; the studio does not re-price it and the real `FulfillmentQuote` (shared-contracts #25) is not wired. The destination is a reference the studio does not hold or validate against anything.
 - **No payment or budget.** Nothing here captures money or reserves budget; cost-intelligence is separate.
 - **Stopgap consumer auth**: one shared key, one consumer id, no rotation, signed requests replayable for five minutes (claims are idempotent; the rest are read only). The unset-key 503 is confirmed by source check only, because the suite's server has the key.

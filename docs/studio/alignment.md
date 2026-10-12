@@ -2,6 +2,8 @@
 
 How the ticket studio design (`product-spec.md`, `flow.md`, `stub-system.md`) fits the architecture kit (`../architecture-kit/v1.0/`) and the contract catalog maintained in `shared-contracts`. Decided 2026-10-10.
 
+> **Design-intent record, not an implementation map.** The decisions and ownership assignments below capture the studio proposal as of 2026-10-10. The current app still owns local research and creative adapters, and not every proposed repository or contract is connected at runtime. Use the source-pinned [current architecture and integration state](../architecture/CURRENT-STATE.md) for what `main` implements and the master checklist it links for acceptance. Keep this dated design record as historical intent; do not use its tables as proof that a component, contract or workflow has shipped.
+
 ## Decisions
 
 | Topic | Architecture kit says | Studio decision |

@@ -1,6 +1,29 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { connect } from '../scripts/lib/cdp.mjs';
+import { browserLaunchArguments, connect } from '../scripts/lib/cdp.mjs';
+
+test('default browser consumers retain all original launch arguments and order', () => {
+  const profile = '/synthetic/ticketstub-chrome-default';
+  const original = [
+    '--headless=new', '--mute-audio', '--disable-features=HardwareMediaKeyHandling', '--disable-gpu',
+    '--no-first-run', '--no-default-browser-check', '--hide-scrollbars', '--remote-debugging-port=0',
+    `--user-data-dir=${profile}`,
+    '--host-resolver-rules=MAP * ~NOTFOUND , EXCLUDE 127.0.0.1 , EXCLUDE localhost', 'about:blank',
+  ];
+  assert.deepEqual(browserLaunchArguments(profile), original);
+  assert.deepEqual(browserLaunchArguments(profile, { downloadIsolation: false }), original);
+});
+
+test('download isolation adds only its two extension flags without changing later default launches', () => {
+  const profile = '/synthetic/ticketstub-chrome-download';
+  const original = browserLaunchArguments(profile);
+  const isolated = browserLaunchArguments(profile, { downloadIsolation: true });
+  const flags = ['--disable-extensions', '--disable-component-extensions-with-background-pages'];
+  assert.deepEqual(isolated.filter((argument) => !flags.includes(argument)), original);
+  assert.deepEqual(isolated.filter((argument) => flags.includes(argument)), flags);
+  assert.equal(isolated.at(-1), 'about:blank');
+  assert.deepEqual(browserLaunchArguments(profile), original);
+});
 
 // Deterministic synthetic transport controls; these make no browser or network request.
 function opening() {

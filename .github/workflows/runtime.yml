@@ -17,6 +17,8 @@ jobs:
           cache: npm
       - name: Select pinned npm
         run: npm install --global npm@11.16.0
+      - name: Verify fresh browser identity before application checks (no navigation)
+        run: node scripts/check-download-browser-identity.mjs --evidence-dir /tmp/ticketstub-product-evidence
       - run: npm ci
       - run: npm run lint
       - run: npm test
