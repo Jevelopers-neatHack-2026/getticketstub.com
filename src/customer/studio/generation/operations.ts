@@ -8,7 +8,7 @@
 import type { ArtLayer, Stub } from "../types";
 import { currentVersion } from "../types";
 import { addArtVersion } from "../editor/ops";
-import { readStoredStub } from "../store";
+import { readGenerationStorage } from "./storage-snapshot";
 import { reconcileVersions } from "./reconcile";
 import { forgetStatus, loadStatus, saveStatus, type GenerationOp, type GenerationVia } from "./status-store";
 
@@ -78,6 +78,8 @@ export const STOPPED_MESSAGE =
 /** A photo is read on this device: there is no art service to speak of. */
 export const PHOTO_STOPPED_MESSAGE = "Stopped. The photo is ignored if it finishes reading. Your current art is unchanged.";
 export const PHOTO_PENDING_MESSAGE = "Adding your photo as the art. Your current art stays in place until it is ready.";
+export const COMMIT_UNKNOWN_MESSAGE =
+  "We couldn't confirm whether the new art was applied or saved. Check the open design and your wall before starting another request. This result will not be applied again.";
 
 interface Entry {
   req: StartRequest;
@@ -233,10 +235,12 @@ export class GenerationController {
       } catch (e) {
         work = Promise.reject(e);
       }
-      work.then(
-        (produced) => this.settle(runId, produced),
-        (error) => this.fail(runId, error),
-      );
+      void work
+        .then(
+          (produced) => this.settle(runId, produced),
+          (error) => this.fail(runId, error),
+        )
+        .catch(() => this.interruptUnconfirmed(runId));
     });
   }
 
@@ -353,7 +357,9 @@ export class GenerationController {
     | { kind: "peer_selected"; stored: Stub } {
     if (!this.host.presence) return { kind: "ok" };
     if (this.host.isGone(stubId)) return { kind: "removed" };
-    const read = readStoredStub(stubId);
+    // Retention during the eventual save reads the other projects too. A malformed unrelated
+    // history is unknown storage, not permission to enter a live commit that may then throw.
+    const read = readGenerationStorage(stubId);
     if (read.status === "unknown") return { kind: "unknown" };
     if (read.status !== "present") return { kind: "removed" };
     const stored = read.stub;
@@ -440,7 +446,14 @@ export class GenerationController {
       const merged = reconcileVersions(next.versions, stored.versions ?? []);
       if (merged.status === "ok") next = { ...next, versions: merged.versions };
     }
-    const saved = this.host.commit(next, memoryOnly ? { persist: false } : undefined);
+    let saved: boolean;
+    try {
+      saved = this.host.commit(next, memoryOnly ? { persist: false } : undefined);
+    } catch {
+      // Editor updates its live state before saving. An exception cannot prove that nothing
+      // changed, or that persistence failed; never send it through the provider-failure copy.
+      return this.interruptUnconfirmed(runId)!;
+    }
     if (memoryOnly) {
       return this.finish(runId, {
         phase: "applied",
@@ -473,13 +486,28 @@ export class GenerationController {
     this.finish(runId, { phase: "failed", code, message: `${text} Your current art and edits are unchanged. Try again starts a new request.` });
   }
 
-  private finish(runId: string, patch: Partial<GenerationOp> & Pick<GenerationOp, "phase" | "message">): GenerationOp {
+  /** An uncertain application is terminal: no retained candidate or request can be applied/retried. */
+  private interruptUnconfirmed(runId: string): GenerationOp | null {
+    const op = this.ops.get(runId);
+    if (!op || !this.isLatest(op) || (op.phase !== "pending" && op.phase !== "ready")) return op ?? null;
+    const patch = { phase: "interrupted" as const, code: "commit_unknown", message: COMMIT_UNKNOWN_MESSAGE };
+    try {
+      return this.finish(runId, patch, true);
+    } catch {
+      // finish latches the status and resolves the caller before notifying subscribers. A
+      // subscriber exception must not recreate an unhandled rejection or revive its request.
+      return this.ops.get(runId) ?? { ...op, ...patch };
+    }
+  }
+
+  private finish(runId: string, patch: Partial<GenerationOp> & Pick<GenerationOp, "phase" | "message">, releaseRequest = false): GenerationOp {
     const op = this.ops.get(runId)!;
     const next: GenerationOp = { ...op, ...patch, ...(patch.phase === "ready" ? {} : { endedAt: Date.now() }) };
     this.ops.set(runId, next);
     const entry = this.entries.get(runId);
     if (entry) {
       if (patch.phase !== "ready") entry.candidate = undefined;
+      if (releaseRequest) this.entries.delete(runId);
       entry.done(next);
     }
     this.persist(next);
