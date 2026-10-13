@@ -70,6 +70,25 @@ check("Creative response dispatch and the app error type agree", routeCodes.leng
   && contractCodes.length === new Set(contractCodes).size && routeCodes.length === contractCodes.length
   && routeCodes.every((code) => contractCodes.includes(code)));
 for (const code of new Set([...routeCodes, ...contractCodes].filter(Boolean))) add(code, creativeRoute);
+// The same route forwards caught CreativeHostError codes from these app-owned
+// modules. Include constructor defaults and the host's fail(code) wrapper;
+// inspecting syntax keeps server-only imports and Finance/providers inactive.
+const hostCodes = new Set();
+for (const name of ["config", "host", "finance"]) {
+  const file = join(SRC, "server", "creative", `${name}.mjs`);
+  const visit = (node) => {
+    let value;
+    if (ts.isNewExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "CreativeHostError") value = node.arguments?.[0];
+    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "fail") value = node.arguments[0];
+    if (ts.isParameter(node) && ts.isIdentifier(node.name) && node.name.text === "code") value = node.initializer;
+    if (value && ts.isStringLiteral(value) && /^creative_[a-z_]+$/.test(value.text)) {
+      hostCodes.add(value.text); add(value.text, file);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(parse(file));
+}
+check("the app Creative host rejection codes were found", hostCodes.size > 0);
 check("found the raised error codes", codes.size >= 25, `only ${codes.size}`);
 for (const [code, file] of [...codes].sort()) {
   check(`code "${code}" (${file}) has a catalog entry`, Object.hasOwn(MESSAGES, code));
@@ -106,12 +125,12 @@ for (const odd of ["totally_new_code", "", undefined, null, 42, {}, "__proto__",
 }
 check("a raw code or stack never reaches the person", !messageForError(Object.assign(new Error("at Object.<anonymous> (/srv/app.js:1:1)"), { code: "ENOENT" })).message.includes("ENOENT"));
 check("an abort is a timeout", messageForError(Object.assign(new Error("x"), { name: "AbortError" })).code === "timeout");
-for (const code of contractCodes.filter(Boolean)) {
+for (const code of new Set([...contractCodes.filter(Boolean), ...hostCodes])) {
   const m = messageForError({ error: { code, message: "private-fixture-detail", diagnostic_ref: "private-fixture-reference", retryable: true } });
   check(`forwarded Creative error "${code}" gets only its safe catalog projection`, m.code === code
     && !JSON.stringify(m).includes("private-fixture-") && !("diagnostic_ref" in m));
 }
-for (const code of ["budget_unavailable", "cancelled"]) {
+for (const code of ["budget_unavailable", "cancelled", ...hostCodes]) {
   const m = messageForError({ error: { code, retryable: true } });
   check(`uncertain Creative outcome "${code}" cannot grant an immediate retry`, m.code === code && !m.retryable && m.action?.action !== "retry");
 }
