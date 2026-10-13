@@ -1,9 +1,8 @@
-// The admin mount contract (docs/architecture/routes.md, "Admin mount contract"). Types only, so the server page,
-// the client mount and the team-dashboard package all import the same shapes. Everything here is serializable:
-// it crosses from the server page into a client component.
+// App-owned display projection only. This is not the team-dashboard package's
+// HostSessionVerifier or Finance interface. No serialized field is authority.
 
 /** Bump when a field is removed or changes meaning; adding an optional field is not a bump. */
-export const ADMIN_MOUNT_CONTRACT = "ticketstub.admin-mount/1";
+export const ADMIN_MOUNT_CONTRACT = "ticketstub.admin-mount/2";
 
 /** Where the host owns the URL space. The dashboard routes live below it and never above it. */
 export const ADMIN_BASE_PATH = "/admin";
@@ -23,24 +22,27 @@ export interface AdminNavInjection {
   items: AdminNavItem[];
 }
 
-/** The server's reading of the signed-in staff member. Display only: the token is the authority. */
+/** The server's current, minimal display projection. Credentials stay server-only. */
 export interface AdminContextSummary {
   schema: string;
-  actorKind: "account" | "guest" | "anonymous";
+  actorKind: "account";
   role: string;
   tenantId: string;
   environment: "development" | "preview" | "live";
-  mode: "fixture" | "sandbox" | "live";
-  capabilities: string[];
+  economicMode: "none" | "sandbox" | "paid_test" | "live";
+  evidenceMode: "fixture" | "synthetic" | "live";
+  projectRef: string | null;
+  revision: string;
+  capabilities: readonly string[];
   expiresAt: string;
   /** The server verified its own token before rendering. */
   verified: boolean;
 }
 
 export interface AdminContextInjection {
-  /** Signed, versioned context from issueContextToken. The dashboard sends it to the server, never decides from it. */
-  token: string;
   summary: AdminContextSummary;
+  finance: "restricted" | "unavailable";
+  mount: "runtime-pending";
 }
 
 export interface AdminMountProps {

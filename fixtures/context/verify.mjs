@@ -1,4 +1,5 @@
-// Reference verifier for ticketstub.context/1 and /2 tokens. No dependencies: copy this file into a consumer.
+// Reference verifier for ticketstub.context/1 and /2 tokens. The scope projection is shared with
+// src/server/finance-scope.ts; consumers copying this fixture must include that pure module.
 //   node fixtures/context/verify.mjs        checks every fixture in this folder (and v2/) against its expected outcome
 // verifyContext(token, key, { now, state, audience }) -> { ok: true, ctx } | { ok: false, reason }
 // toFinanceScope(ctx) -> versioned adapter result for cost-intelligence's TrustedScope (see its comment).
@@ -116,38 +117,10 @@ export function authorizesFinance(ctx, { tenant, project, capability, expect }) 
   return true;
 }
 
-export const FINANCE_SCOPE_ADAPTER = "ticketstub.finance-scope-adapter/1";
-/** Finance's TrustedScope bounds tenantId, projectId and actorId to 128 characters each (maxLength 128). */
-export const FINANCE_ID_MAX = 128;
-
-/**
- * A PROPOSED adapter from a /2 context to cost-intelligence's TrustedScope. Finance owns its enums and has not
- * accepted this table. It returns a versioned result, never a bare scope:
- *   { ok: true,  schema: "ticketstub.finance-scope-adapter/1", scope, evidenceMode }
- *   { ok: false, schema: "ticketstub.finance-scope-adapter/1", reason, fields? }
- * `scope` has exactly the five fields TrustedScope permits (tenantId, projectId, environment, billingMode,
- * actorId; the consumer schema is additionalProperties:false) and is safe to pass on as is. `evidenceMode`
- * (mocked | sandbox | live) is NOT part of TrustedScope, so it travels beside the scope, with its provenance, and the
- * consumer decides where to record it. Injective: tenantId and actorId keep their kind prefix and projectId is the
- * kind-prefixed ref, so two kinds can never collide. paid_test becomes billingMode "live": it is real money, and
- * stays an actual expense whatever the evidence says.
- * Length policy: the producer accepts raw ids of up to 128 characters, and the kind prefix then adds 5 to 8, so a mapped
- * id can pass 128. The adapter never truncates, drops the kind or invents an id: any mapped id over FINANCE_ID_MAX is
- * refused { reason: "identifier_too_long", fields: [...] }. A context with no honest mapping is refused
- * { reason: "unsupported_context" }. A consumer must treat every refusal as a denial.
- */
-export function toFinanceScope(ctx) {
-  const refuse = (reason, fields) => ({ ok: false, schema: FINANCE_SCOPE_ADAPTER, reason, ...(fields ? { fields } : {}) });
-  if (!isObj(ctx) || ctx.schema !== SCHEMA_V2) return refuse("unsupported_context");
-  const environment = { development: "development", preview: "test", live: "production" }[ctx.environment];
-  const billingMode = { none: "simulated", sandbox: "sandbox", paid_test: "live", live: "live" }[ctx.economicMode];
-  const evidenceMode = { fixture: "mocked", synthetic: "sandbox", live: "live" }[ctx.evidenceMode];
-  if (!environment || !billingMode || !evidenceMode) return refuse("unsupported_context");
-  const scope = { tenantId: ctx.tenant.id, projectId: ctx.project ? ctx.project.ref : "platform", environment, billingMode, actorId: ctx.actor.id };
-  const tooLong = ["tenantId", "projectId", "actorId"].filter((k) => typeof scope[k] !== "string" || scope[k].length < 1 || scope[k].length > FINANCE_ID_MAX);
-  if (tooLong.length > 0) return refuse("identifier_too_long", tooLong);
-  return { ok: true, schema: FINANCE_SCOPE_ADAPTER, scope, evidenceMode };
-}
+// The projection is app-owned and shared with the server; it does not verify or grant authority.
+// Run this reference verifier with the repository's declared Node 22 runtime.
+import { FINANCE_SCOPE_ADAPTER, FINANCE_ID_MAX, toFinanceScope } from "../../src/server/finance-scope.ts";
+export { FINANCE_SCOPE_ADAPTER, FINANCE_ID_MAX, toFinanceScope };
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const here = dirname(fileURLToPath(import.meta.url));
