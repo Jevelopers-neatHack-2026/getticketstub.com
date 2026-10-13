@@ -10,7 +10,7 @@ import type { Fact, Provenance, Stub } from "../types";
 import { failureCopy, planAgent, remixArtNoted } from "../research/client";
 import { MarkLegend, PaperButton, SourceMark, Tag, Tags } from "@/customer/desk/Desk";
 import { haptic, play } from "@/customer/studio/feedback";
-import { activeCorrection, applyCorrection } from "../facts/corrections";
+import { activeCorrection, applyCorrection, isIsoDate } from "../facts/corrections";
 import { artOutcome, clock, errorCode, flow, since } from "@/customer/flows/events";
 import { announce } from "@/customer/a11y/announce";
 import { MESSAGE_CODES } from "@/customer/feedback-messages/messages";
@@ -127,11 +127,17 @@ export function AgentChat(props: {
   };
 
   const pickAlternative = (index: number, alt: string) => {
-    const f = stubRef.current.event.facts[index];
+    const current = stubRef.current;
+    const f = current.event.facts[index];
     if (!f) return;
-    const isDate = /^\d{4}-\d{2}-\d{2}$/.test(alt);
-    commit(applyCorrection(stubRef.current, { factId: f.id, value: alt }));
-    say(`Fixed. ${isDate ? shortDate(alt) : alt} is on your stub.`);
+    const value = alt.trim();
+    const next = applyCorrection(current, { factId: f.id, value });
+    if (next === current) {
+      say(f.id === "date" ? "That date was not changed. Choose a real calendar date." : "That answer was not changed. Choose a non-empty answer.");
+      return;
+    }
+    commit(next);
+    say(`Fixed. ${f.id === "date" && isIsoDate(value) ? shortDate(value) : value} is on your stub.`);
   };
 
   /** Carry out one action through the editor's own edit paths and report what actually happened. */
@@ -332,7 +338,7 @@ export function AgentChat(props: {
                             {f.alternatives?.length ? (
                               <Tags label="Alternatives">
                                 {f.alternatives.map((alt) => {
-                                  const isDate = /^\d{4}-\d{2}-\d{2}$/.test(alt);
+                                  const isDate = f.id === "date" && isIsoDate(alt);
                                   return (
                                     <Tag key={alt} pressed={f.value === alt && !!activeCorrection(stub, f.id)} onClick={() => pickAlternative(i, alt)}>
                                       {isDate ? shortDate(alt) : alt}

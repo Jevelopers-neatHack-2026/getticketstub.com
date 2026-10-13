@@ -89,3 +89,64 @@ test("other facts are not affected by the date check", () => {
   const out = applyCorrection(stub(), { factId: "venue", value: "2026-02-31", now: NOW });
   assert.equal(out.event.venue, "2026-02-31");
 });
+
+test("undo of a newly supplied missing date clears the printed date and preserves prior history", () => {
+  const original = stub();
+  original.event.facts = [];
+  delete original.event.dateISO;
+  const originalBytes = JSON.stringify(original);
+  const corrected = applyCorrection(original, { factId: "date", value: "2026-05-19", now: NOW });
+  const historyBytes = JSON.stringify(corrected.corrections);
+  const undone = undoCorrection(corrected, "date", new Date("2026-10-11T12:01:00Z"));
+  assert.equal(undone.event.facts[0].value, "");
+  assert.equal(Object.hasOwn(undone.event, "dateISO"), false);
+  assert.equal(JSON.stringify(undone.corrections.slice(0, -1)), historyBytes);
+  assert.equal(undone.corrections.at(-1).kind, "undo");
+  assert.equal(JSON.stringify(original), originalBytes);
+});
+
+test("a date without a fact row retains its actual original value through correction and undo", () => {
+  const original = stub();
+  original.event.facts = [];
+  const corrected = applyCorrection(original, { factId: "date", value: "2026-05-19", now: NOW });
+  assert.equal(corrected.corrections[0].original.value, "2026-03-14");
+  const undone = undoCorrection(corrected, "date", new Date("2026-10-11T12:01:00Z"));
+  assert.equal(undone.event.dateISO, original.event.dateISO);
+  assert.equal(undone.event.facts[0].value, original.event.dateISO);
+});
+
+test("successive undo restores the prior date then the missing original", () => {
+  const original = stub();
+  original.event.facts = [];
+  delete original.event.dateISO;
+  const first = applyCorrection(original, { factId: "date", value: "2026-05-19", now: NOW });
+  const second = applyCorrection(first, { factId: "date", value: "2026-05-20", now: new Date("2026-10-11T12:01:00Z") });
+  const secondBytes = JSON.stringify(second.corrections);
+  const oneBack = undoCorrection(second, "date", new Date("2026-10-11T12:02:00Z"));
+  assert.equal(oneBack.event.dateISO, "2026-05-19");
+  assert.equal(JSON.stringify(oneBack.corrections.slice(0, 2)), secondBytes);
+  const allBack = undoCorrection(oneBack, "date", new Date("2026-10-11T12:03:00Z"));
+  assert.equal(Object.hasOwn(allBack.event, "dateISO"), false);
+  assert.equal(allBack.event.facts[0].value, "");
+  assert.equal(JSON.stringify(allBack.corrections.slice(0, 3)), JSON.stringify(oneBack.corrections));
+});
+
+test("a non-calendar date answer replaces a stale date projection and undo restores it", () => {
+  const original = stub();
+  const corrected = applyCorrection(original, { factId: "date", value: "Late spring", now: NOW });
+  assert.equal(corrected.event.facts[0].value, "Late spring");
+  assert.equal(Object.hasOwn(corrected.event, "dateISO"), false);
+  const undone = undoCorrection(corrected, "date", new Date("2026-10-11T12:01:00Z"));
+  assert.equal(undone.event.dateISO, original.event.dateISO);
+  assert.equal(undone.event.facts[0].value, original.event.facts[0].value);
+});
+
+test("a venue without a fact row also retains its actual original value on undo", () => {
+  const original = stub();
+  const corrected = applyCorrection(original, { factId: "venue", value: "Another hall", now: NOW });
+  assert.equal(corrected.corrections[0].original.value, original.event.venue);
+  const undone = undoCorrection(corrected, "venue", new Date("2026-10-11T12:01:00Z"));
+  assert.equal(undone.event.venue, original.event.venue);
+  assert.equal(undone.event.dateISO, original.event.dateISO);
+  assert.deepEqual(undone.event.facts[0], original.event.facts[0]);
+});

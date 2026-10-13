@@ -161,7 +161,10 @@ function withValue(stub: Stub, f: Fact, value: string, label: string, confidence
   const next: Fact = { ...f, value, label, confidence, kept };
   const facts = ev.facts.some((x) => x.id === f.id) ? ev.facts.map((x) => (x.id === f.id ? next : x)) : [...ev.facts, next];
   const event = { ...ev, facts };
-  if (f.id === "date" && isIsoDate(value)) event.dateISO = value;
+  if (f.id === "date") {
+    if (isIsoDate(value)) event.dateISO = value;
+    else delete event.dateISO;
+  }
   if (f.id === "venue") event.venue = value;
   if (f.id === "title") event.title = value;
   return { ...stub, event };
@@ -182,11 +185,14 @@ export function applyCorrection(stub: Stub, input: CorrectionInput): Stub {
   if (input.factId === "date" && ISO_DATE.test(value) && !isIsoDate(value)) return stub;
   const now = input.now ?? new Date();
   const existing = stub.event.facts.find((f) => f.id === input.factId);
+  // Older drafts can carry a printed date or venue without a fact row. Preserve that
+  // current value for undo without inventing a source or marking it verified.
+  const originalValue = input.factId === "date" ? (stub.event.dateISO ?? "") : input.factId === "venue" ? (stub.event.venue ?? "") : "";
   const base: Fact =
     existing ??
     (input.factId === "title"
       ? { id: "title", label: stub.event.title, value: stub.event.title, source: "your ticket", confidence: 0, provenance: "pending" }
-      : { id: input.factId, label: input.factId, value: "", source: "not found", confidence: 0, provenance: "pending" });
+      : { id: input.factId, label: originalValue ? labelFor(input.factId, originalValue) : input.factId, value: originalValue, source: originalValue ? "current stub" : "not found", confidence: 0, provenance: "pending" });
   const label = labelFor(input.factId, value);
   const entry: Correction = {
     id: input.id ?? entryId(stub, now),
