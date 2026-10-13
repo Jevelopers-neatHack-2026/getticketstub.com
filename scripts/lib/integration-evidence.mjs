@@ -99,6 +99,25 @@ export function approvalBindsSnapshot(approval, snapshot, computedBinding) {
     && ["purchase", "payment", "order", "asset_rights"].every((item) => approval.notAuthorizes?.includes(item));
 }
 
+/** The existing app consumer HTTP port uses a string project ref and exactly its four content hashes. */
+export function approvalConsumerRequest(view, binding) {
+  const approval = view?.approval;
+  if (typeof view?.token !== "string" || !view.token.length || view.token.length > 12_000
+    || approval?.project?.kind !== "stub" || !ID.test(approval.project.id ?? "")
+    || !ID.test(approval.tenant?.id ?? "")) throw new Error("invalid_consumer_input");
+  const keys = ["designHash", "artHash", "factsHash", "compositionHash"];
+  if (!keys.every((key) => /^[a-f0-9]{64}$/.test(binding?.[key] ?? ""))) throw new Error("invalid_consumer_input");
+  return { token: view.token, expect: { tenant: approval.tenant.id, project: `stub:${approval.project.id}`,
+    purpose: "print.compose", content: Object.fromEntries(keys.map((key) => [key, binding[key]])) } };
+}
+
+/** A malformed HTTP request or a generic denial is not a successful stale-content check. */
+export function isStaleApprovalRejection(response) {
+  return response?.status === 403 && response.json?.ok === false
+    && ["stale", "content_mismatch"].includes(response.json.reason)
+    && response.json.error?.code === "approval_invalid";
+}
+
 export function nativeFileBindsAction(file, action, bytes) {
   const r = file?.receipt;
   return !!r && action?.settled === true && action.controls === 1 && action.producerIds?.length === 1

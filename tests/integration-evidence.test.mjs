@@ -6,7 +6,7 @@ import { spawnSync } from "node:child_process";
 import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { IntegrationEvidence, INTEGRATION_PLAN, approvalBindsSnapshot, nativeFileBindsAction, integrationFetchProbe, evidenceIsSafe, sha256 } from "../scripts/lib/integration-evidence.mjs";
+import { IntegrationEvidence, INTEGRATION_PLAN, approvalBindsSnapshot, approvalConsumerRequest, isStaleApprovalRejection, nativeFileBindsAction, integrationFetchProbe, evidenceIsSafe, sha256 } from "../scripts/lib/integration-evidence.mjs";
 
 const stub = (id = "fixture-project") => ({ id, currentVersionId: "v2", versions: [{ id: "v1", art: { kind: "procedural", seed: 1 } }, { id: "v2", parentId: "v1", art: { kind: "procedural", seed: 2 } }], event: { facts: [] }, personal: { hiddenFields: [] }, material: "digital", finish: "matte", corrections: [] });
 const passing = (ledger, id) => { ledger.begin(id); ledger.assert(id, "observed", true); ledger.finish(id); };
@@ -79,6 +79,27 @@ test("actual retained file bytes must match the one settled action and its docum
   }
   assert.equal(nativeFileBindsAction({ receipt }, { ...action, producerIds: ["p1", "p2"] }, bytes), false);
   assert.equal(nativeFileBindsAction({ receipt }, action, Buffer.from("not a PNG")), false);
+});
+test("consumer request uses the app HTTP project reference and only independently held content hashes", () => {
+  const view = { token: "transient-fixture-token", approval: { tenant: { id: "acc_fixture" }, project: { kind: "stub", id: "real-project" } } };
+  const binding = { designHash: "a".repeat(64), artHash: "b".repeat(64), factsHash: "c".repeat(64), compositionHash: "d".repeat(64), versionId: "not-a-wire-hash" };
+  const request = approvalConsumerRequest(view, binding);
+  assert.equal(request.expect.project, "stub:real-project"); assert.equal(request.expect.tenant, "acc_fixture");
+  assert.equal(request.expect.purpose, "print.compose"); assert.deepEqual(Object.keys(request.expect.content), ["designHash", "artHash", "factsHash", "compositionHash"]);
+  assert.equal(request.expect.content.factsHash, binding.factsHash);
+  assert.equal(evidenceIsSafe(request), false, "a transient consumer token must never enter retained evidence");
+  for (const changed of [{ ...view, token: "" }, { ...view, approval: { ...view.approval, project: { kind: "other", id: "real-project" } } }]) {
+    assert.throws(() => approvalConsumerRequest(changed, binding), /invalid_consumer_input/);
+  }
+  assert.throws(() => approvalConsumerRequest(view, { ...binding, factsHash: undefined }), /invalid_consumer_input/);
+});
+test("only the actual port's typed 403 stale/content mismatch response qualifies", () => {
+  const denied = { status: 403, json: { ok: false, reason: "stale", error: { code: "approval_invalid" } } };
+  assert.equal(isStaleApprovalRejection(denied), true);
+  assert.equal(isStaleApprovalRejection({ ...denied, json: { ...denied.json, reason: "content_mismatch" } }), true);
+  for (const changed of [{ ...denied, status: 400 }, { ...denied, status: 200 },
+    { ...denied, json: { ...denied.json, ok: true } }, { ...denied, json: { ...denied.json, reason: "forged" } },
+    { ...denied, json: { ...denied.json, error: { code: "bad_request" } } }]) assert.equal(isStaleApprovalRejection(changed), false);
 });
 test("private payloads and unsafe errors are refused before entering evidence", () => {
   for (const value of [{ token: "opaque" }, { email: "fixture@example.com" }, { url: "https://host/?token=opaque" }, { error: "Bearer credential" }, { bytes: "data:image/png;base64,AAAA" }, { x: Infinity }]) {

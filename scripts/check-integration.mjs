@@ -11,7 +11,7 @@ import { bindStub, artRefHash } from "../src/server/approval-token.ts";
 import { DownloadBrowserSessions } from "./lib/download-browser-sessions.mjs";
 import { clickVisibleButton } from "./lib/visible-pointer.mjs";
 import { submitSheetEmail } from "./lib/analytics-sheet-readiness.mjs";
-import { IntegrationEvidence, INTEGRATION_PLAN, approvalBindsSnapshot, nativeFileBindsAction, integrationFetchProbe, evidenceIsSafe, objectHash, sha256 } from "./lib/integration-evidence.mjs";
+import { IntegrationEvidence, INTEGRATION_PLAN, approvalBindsSnapshot, approvalConsumerRequest, isStaleApprovalRejection, nativeFileBindsAction, integrationFetchProbe, evidenceIsSafe, objectHash, sha256 } from "./lib/integration-evidence.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const base = process.argv[2];
@@ -150,8 +150,8 @@ async function synced() {
     && stub.material === local.material && stub.finish === local.finish && objectHash(stub.personal) === objectHash(local.personal), 15_000);
   return remote;
 }
-async function api(method, path, body) {
-  return page.eval(`fetch(${JSON.stringify(path)}, {method:${JSON.stringify(method)}, headers:{"content-type":"application/json"}, ${body === undefined ? "" : `body:JSON.stringify(${JSON.stringify(body)}),`} signal:AbortSignal.timeout(10000)}).then(async r=>({status:r.status,json:await r.json()}))`);
+async function api(method, path, body, credentials = "same-origin") {
+  return page.eval(`fetch(${JSON.stringify(path)}, {method:${JSON.stringify(method)}, credentials:${JSON.stringify(credentials)}, headers:{"content-type":"application/json"}, ${body === undefined ? "" : `body:JSON.stringify(${JSON.stringify(body)}),`} signal:AbortSignal.timeout(10000)}).then(async r=>({status:r.status,json:await r.json()}))`);
 }
 async function observed(route, method = "POST", minimumId = 0) {
   const summary = await until(() => page.eval("__ticketstubIntegrationFixture.summary()"),
@@ -234,8 +234,7 @@ async function approveCurrent(label) {
   return response.response;
 }
 async function verifyToken(view, content) {
-  return api("POST", "/api/approvals/verify", { token: view.token, expect: { tenant: view.approval.tenant.id,
-    project: view.approval.project, purpose: "print.compose", content } });
+  return api("POST", "/api/approvals/verify", approvalConsumerRequest(view, content), "omit");
 }
 function screenshotRecord(name, bytes) {
   const path = join(output, name); writeFileSync(path, bytes, { flag: "wx" });
@@ -379,7 +378,9 @@ try {
     check("prior_approval_is_stale_after_real_edits", history.json.approvals.find((v) => v.approval.id === state.firstApproval.approval.id)?.status === "stale");
     const binding = computedBinding(serverStub());
     const denied = await verifyToken(state.firstApproval, binding);
-    check("consumer_rejects_stale_approval", denied.status === 200 && denied.json.ok === false && ["stale", "content_mismatch"].includes(denied.json.reason));
+    check("consumer_rejects_stale_approval", isStaleApprovalRejection(denied), { httpStatus: denied.status,
+      reason: ["stale", "content_mismatch"].includes(denied.json.reason) ? denied.json.reason : "unrecognized",
+      cookieCredentials: "omitted", contentSource: "independently_bound_current_server_project" });
     check("both_bound_content_groups_changed", changed.factsSha256 !== state.corrected.factsSha256 && binding.factsHash !== state.firstApproval.approval.binding.factsHash && binding.compositionHash !== state.firstApproval.approval.binding.compositionHash);
     state.approval = await approveCurrent("updated_approval");
   });
