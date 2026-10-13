@@ -315,7 +315,8 @@ async function foundation({ base }) {
     // the second GET is a hard reload: a full document request with no client navigation state
     for (const pass of ["entry", "reload"]) {
       const s = await staff.get(path);
-      record(`staff ${path} ${pass} renders the fixture mount`, s.status === 200 && s.text.includes("data-admin-fixture") && s.text.includes(`data-admin-path="${want}"`) && s.text.includes("ts-admin"), `got ${s.status}`);
+      record(`staff ${path} ${pass} renders the guarded unavailable host`, s.status === 200 && s.text.includes("data-admin-fixture") && s.text.includes('data-admin-host="trusted-context/1"') && s.text.includes(`data-admin-path="${want}"`) && s.text.includes("ts-admin") && s.text.includes('data-finance-state="unavailable"'), `got ${s.status}`);
+      record(`staff ${path} ${pass} receives /2 display context without a signed credential`, s.text.includes("ticketstub.context/2") && !s.text.includes("eyJhbGciOiJIUzI1NiI") && !s.text.includes('\\"token\\":'));
     }
   }
   const deep = await staff.get("/admin/x/y");
