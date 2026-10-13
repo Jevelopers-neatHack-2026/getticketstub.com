@@ -41,7 +41,7 @@ No Editor/store, focus-hook, foreign SDK or production authority interface is ch
 
 ## Evidence and review
 
-`integration/integration-evidence.json` contains the fixed case plan and every assertion, exact source/build identity, source/vendor hashes, safe project/version/approval/order references, state commitments, actual request status observations, current native download associations and final process/profile/collector cleanup. Tokens, cookies, raw sign-in URLs, addresses, request/response payloads and private error text are excluded; the transient in-page probe exports only fixed route names/status/counts. The dispatcher separately records the network-guard self-test and actual outbound-attempt count.
+`integration/integration-evidence.json` contains the fixed case plan and every assertion, exact source/build identity, source/vendor hashes, safe project/version/approval/order references, state commitments, actual request status observations, current native download associations and final process/profile/collector cleanup. The issuer's safe status, input binding and drift flags are retained before the required current-approval UI check, so a display failure cannot discard that evidence. Tokens, cookies, raw sign-in URLs, addresses, request/response payloads and private error text are excluded from JSON; the transient in-page probe exports only fixed route names/status/counts. The first screenshot may show the explicitly synthetic, disposable account UI. The dispatcher separately records the network-guard self-test and actual outbound-attempt count.
 
 Focused helper controls are synthetic integrity tests, not application acceptance:
 

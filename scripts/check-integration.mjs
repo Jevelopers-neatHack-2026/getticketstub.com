@@ -213,15 +213,24 @@ async function approveCurrent(label) {
   const review = await page.eval('document.querySelector(\'[role="dialog"]\')?.innerText ?? ""');
   requireCheck(`${label}_review_names_current_version`, !!selectedDisplay && review.includes(`Approving covers version ${selectedDisplay}`) && review.includes("not an order"),
     { displayedVersion: selectedDisplay, selectedVersionId: before.selectedVersionId });
+  const priorRequest = await page.eval('__ticketstubIntegrationFixture.summary().then(s=>s.records.at(-1)?.id ?? 0)');
   await tap("Approve this version", '[role="dialog"]');
-  await wait('!!document.querySelector("[data-approved=true]")');
-  const response = await observed("/api/approvals");
+  const response = await observed("/api/approvals", "POST", priorRequest);
   const binding = computedBinding(remote);
+  // Record safe actual issuer evidence before waiting for its UI. A failed display
+  // must not discard the successful response or make an older POST look current.
+  supplemental.approvalBindings.push({ label, approvalId: response.response.approval?.id ?? null, projectId: state.stubId,
+    actorId: state.accountId, selectedVersionId: before.selectedVersionId, inputBinding: binding,
+    status: ["active", "stale", "expired", "revoked"].includes(response.response.status) ? response.response.status : "unrecognized",
+    mode: response.response.approval?.mode === "sandbox" ? "sandbox" : "unrecognized",
+    actualResponse: { documentOrdinal, requestId: response.row.id, previousRequestId: priorRequest, httpStatus: response.row.status },
+    drift: Object.fromEntries(["version", "art", "design", "facts", "composition"].map((key) => [key, typeof response.response.drift?.[key] === "boolean" ? response.response.drift[key] : null])),
+    exportedPngAuthority: false });
   requireCheck(`${label}_server_input_binding`, response.row.status === 200 && approvalBindsSnapshot(response.response.approval, before, binding)
     && response.response.approval.actor?.kind === "account" && response.response.approval.actor.id === state.accountId);
-  supplemental.approvalBindings.push({ label, approvalId: response.response.approval.id, projectId: state.stubId,
-    actorId: state.accountId, selectedVersionId: before.selectedVersionId, inputBinding: binding, status: response.response.status,
-    mode: response.response.approval.mode, exportedPngAuthority: false });
+  const indicated = await page.waitFor('!!document.querySelector("[data-approved=true]")', 12_000);
+  const ui = await page.eval('({approved:!!document.querySelector("[data-approved=true]"), reviewOpen:!!document.querySelector(\'[role="dialog"]\'), staleCopy:document.querySelector(\'section[aria-label="Selected version"]\')?.innerText.includes("Out of date:") ?? false})');
+  requireCheck(`${label}_approved_indicator_matches_issuer`, indicated && ui.approved && response.response.status === "active", ui);
   return response.response;
 }
 async function verifyToken(view, content) {
