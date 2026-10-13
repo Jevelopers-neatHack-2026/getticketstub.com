@@ -5,6 +5,7 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import ts from "typescript";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const SRC = join(ROOT, "src");
@@ -49,6 +50,45 @@ for (const file of walk(SRC)) {
     for (const m of text.matchAll(/"((?:provider|unsupported|invalid|missing)_[a-z_]+|server_only)"/g)) add(m[1], file);
   }
 }
+// The Creative route forwards typed result/job errors instead of constructing
+// HttpError literals. Read its actual dispatch map and app response type without
+// importing the route or invoking a provider; changes to either must stay covered.
+const creativeRoute = join(SRC, "app", "api", "creative", "route.ts");
+const creativeContract = join(SRC, "customer", "studio", "creative", "contracts.ts");
+const parse = (file) => ts.createSourceFile(file, readFileSync(file, "utf8"), ts.ScriptTarget.Latest, true);
+const routeSource = parse(creativeRoute);
+const status = routeSource.statements.filter(ts.isVariableStatement).flatMap((s) => [...s.declarationList.declarations])
+  .find((d) => ts.isIdentifier(d.name) && d.name.text === "STATUS")?.initializer;
+const routeCodes = status && ts.isObjectLiteralExpression(status) ? status.properties.map((p) =>
+  ts.isPropertyAssignment(p) && (ts.isIdentifier(p.name) || ts.isStringLiteral(p.name)) ? p.name.text : null) : [];
+const errorType = parse(creativeContract).statements.find((s) => ts.isTypeAliasDeclaration(s) && s.name.text === "CreativeErrorCode")?.type;
+const contractCodes = errorType && ts.isUnionTypeNode(errorType) ? errorType.types.map((t) =>
+  ts.isLiteralTypeNode(t) && ts.isStringLiteral(t.literal) ? t.literal.text : null) : [];
+check("the actual Creative response dispatch map is explicit and nonempty", routeCodes.length > 0 && routeCodes.every(Boolean));
+check("the app Creative error type is explicit and nonempty", contractCodes.length > 0 && contractCodes.every(Boolean));
+check("Creative response dispatch and the app error type agree", routeCodes.length === new Set(routeCodes).size
+  && contractCodes.length === new Set(contractCodes).size && routeCodes.length === contractCodes.length
+  && routeCodes.every((code) => contractCodes.includes(code)));
+for (const code of new Set([...routeCodes, ...contractCodes].filter(Boolean))) add(code, creativeRoute);
+// The same route forwards caught CreativeHostError codes from these app-owned
+// modules. Include constructor defaults and the host's fail(code) wrapper;
+// inspecting syntax keeps server-only imports and Finance/providers inactive.
+const hostCodes = new Set();
+for (const name of ["config", "host", "finance"]) {
+  const file = join(SRC, "server", "creative", `${name}.mjs`);
+  const visit = (node) => {
+    let value;
+    if (ts.isNewExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "CreativeHostError") value = node.arguments?.[0];
+    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "fail") value = node.arguments[0];
+    if (ts.isParameter(node) && ts.isIdentifier(node.name) && node.name.text === "code") value = node.initializer;
+    if (value && ts.isStringLiteral(value) && /^creative_[a-z_]+$/.test(value.text)) {
+      hostCodes.add(value.text); add(value.text, file);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(parse(file));
+}
+check("the app Creative host rejection codes were found", hostCodes.size > 0);
 check("found the raised error codes", codes.size >= 25, `only ${codes.size}`);
 for (const [code, file] of [...codes].sort()) {
   check(`code "${code}" (${file}) has a catalog entry`, Object.hasOwn(MESSAGES, code));
@@ -85,6 +125,15 @@ for (const odd of ["totally_new_code", "", undefined, null, 42, {}, "__proto__",
 }
 check("a raw code or stack never reaches the person", !messageForError(Object.assign(new Error("at Object.<anonymous> (/srv/app.js:1:1)"), { code: "ENOENT" })).message.includes("ENOENT"));
 check("an abort is a timeout", messageForError(Object.assign(new Error("x"), { name: "AbortError" })).code === "timeout");
+for (const code of new Set([...contractCodes.filter(Boolean), ...hostCodes])) {
+  const m = messageForError({ error: { code, message: "private-fixture-detail", diagnostic_ref: "private-fixture-reference", retryable: true } });
+  check(`forwarded Creative error "${code}" gets only its safe catalog projection`, m.code === code
+    && !JSON.stringify(m).includes("private-fixture-") && !("diagnostic_ref" in m));
+}
+for (const code of ["budget_unavailable", "cancelled", ...hostCodes]) {
+  const m = messageForError({ error: { code, retryable: true } });
+  check(`uncertain Creative outcome "${code}" cannot grant an immediate retry`, m.code === code && !m.retryable && m.action?.action !== "retry");
+}
 
 // ---- the one error envelope, statically ----
 const api = walk(join(SRC, "app", "api"));
