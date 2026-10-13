@@ -1,7 +1,7 @@
 "use client";
 // Placing an order with honest progress: the local record lands first, then the server is told. `placed` is
 // null while the request is out (see `progress` for sending, "Still working..." and unknown), and carries a
-// `code` when the server didn't take it, in which case `retry` sends the same order again (no second local copy).
+// `code` when the response could not confirm it; `retry` sends the same attempt again (no second local copy).
 import { useRef, useState } from "react";
 import { useProgress } from "@/customer/feedback-messages/progress";
 import { goToCheckout, isPayable, newAttemptId, placeOrder, resendOrder, type Placed } from "./orders";
