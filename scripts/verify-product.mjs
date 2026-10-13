@@ -3,6 +3,8 @@
 // (`accessibility` is an alias of `a11y`: GT-11 names the suite that way.)
 // `all` runs every declared leaf suite serially and retains each fresh result.
 // It does not replace the correlated integration journey or verify:release.
+// `integration` separately executes one new correlated available-app fixture journey;
+// its explicit pending specialist joins are never canonical Assembly acceptance.
 // Every suite runs offline: in fixture mode a preload (scripts/lib/fixture-network-guard.mjs) refuses any host but
 // loopback, and the server started here has no provider keys. A missing build or fixture, an unknown suite and
 // any failed/skipped check or missing positive result exit nonzero, even if a child exits 0.
@@ -67,6 +69,19 @@ const SUITES = {
   "backup-drill": { server: false, needs: [".next/BUILD_ID", "scripts/restore-backup.mjs"], run: backupDrill },
 };
 
+// Deliberately outside the independent leaf catalog: `all` remains every declared
+// leaf, not a recursive alias or a substitute for this correlated journey.
+const INTEGRATION = {
+  server: true,
+  needs: [".next/BUILD_ID", "scripts/check-integration.mjs", "scripts/lib/integration-evidence.mjs", "scripts/lib/download-browser-sessions.mjs"],
+  env: () => ({
+    TICKETSTUB_INTEGRATION_FIXTURE: "1", TICKETSTUB_RUNTIME_MODE: "demo",
+    DODO_PAYMENTS_API_KEY: undefined, DODO_PAYMENTS_WEBHOOK_KEY: undefined, DODO_PAYMENTS_PRODUCT_ID: undefined,
+    STRIPE_SECRET_KEY: undefined, STRIPE_WEBHOOK_SECRET: undefined,
+  }),
+  run: (ctx) => script("scripts/check-integration.mjs", [ctx.base, join(evidenceDir, "integration")], ctx.env),
+};
+
 function parseArgs(argv) {
   const out = {};
   for (let i = 0; i < argv.length; i++) {
@@ -80,14 +95,14 @@ function parseArgs(argv) {
 
 function fail(msg) {
   console.error(`verify:product: ${msg}`);
-  console.error(`usage: npm run verify:product -- --suite <all|${Object.keys(SUITES).join("|")}> --mode fixture --evidence-dir <dir>`);
+  console.error(`usage: npm run verify:product -- --suite <all|integration|${Object.keys(SUITES).join("|")}> --mode fixture --evidence-dir <dir>`);
   process.exit(2);
 }
 
 const args = parseArgs(process.argv.slice(2));
 if (!args.suite) fail("--suite is required");
 if (args.suite === "accessibility") args.suite = "a11y";
-const suite = Object.hasOwn(SUITES, args.suite) ? SUITES[args.suite] : null;
+const suite = args.suite === "integration" ? INTEGRATION : Object.hasOwn(SUITES, args.suite) ? SUITES[args.suite] : null;
 if (!suite && args.suite !== "all") fail(`unknown suite "${args.suite}"`);
 if (args.mode !== "fixture") fail(`unsupported --mode "${args.mode ?? ""}": only "fixture" runs without live services`);
 if (!args["evidence-dir"]) fail("--evidence-dir is required");
