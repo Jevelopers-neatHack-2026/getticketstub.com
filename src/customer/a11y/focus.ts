@@ -36,7 +36,19 @@ if (typeof document !== "undefined") {
 
 /** Layout alone is not focusability: visibility and inherited fieldset disability matter too. */
 function availableForFocus(el: FocusTarget, excludeAriaHidden = true): boolean {
-  if (el.matches(":disabled") || el.closest("[inert]") || (excludeAriaHidden && el.closest('[aria-hidden="true"]')) || !el.getClientRects().length) return false;
+  if (el.matches(":disabled") || el.closest("[inert]") || (excludeAriaHidden && el.closest('[aria-hidden="true"]'))) return false;
+  if (el instanceof HTMLAreaElement) {
+    // An image-map shape belongs to its rendered image, not the map/area CSS box.
+    // A hidden map still supplies shapes; a hidden/inert image does not.
+    const map = el.closest("map");
+    const tree = map?.getRootNode();
+    if (!map?.name || !(tree instanceof Document || tree instanceof ShadowRoot)) return false;
+    const firstMap = [...tree.querySelectorAll("map")].find((item) => item.name === map.name);
+    if (firstMap !== map) return false;
+    return [...tree.querySelectorAll<HTMLImageElement>("img[usemap]")]
+      .some((image) => image.useMap === `#${map.name}` && availableForFocus(image, excludeAriaHidden));
+  }
+  if (!el.getClientRects().length) return false;
   // Descendants of closed details can retain layout boxes but are not native keyboard targets.
   for (let parent = el.parentElement; parent; parent = parent.parentElement) {
     if (parent instanceof HTMLDetailsElement && !parent.open) {
@@ -160,23 +172,36 @@ export function useDialogFocus(ref: RefObject<HTMLElement | null>, active: boole
       restoreHidden = null;
     };
     let nativeTabHeld = false;
-    const clearBoundary = () => { nativeBoundary = null; nativeTabHeld = false; };
+    let boundaryKey: KeyboardEvent | null = null;
+    const clearBoundary = () => { nativeBoundary = null; nativeTabHeld = false; boundaryKey = null; };
     const onKeyUp = () => { nativeTabHeld = false; };
     const onWindowBlur = () => {
       // A native media control at the document edge can Tab directly into browser
       // chrome without dispatching focusin. Contain only the in-flight Tab default,
       // never a later pointer/window change after its keyup or another key event.
-      const boundary = nativeTabHeld ? nativeBoundary : null;
-      clearBoundary();
       // Entering a contained iframe blurs this Window without leaving the dialog.
-      // Do not read its document: cross-origin and sandboxed frames are valid too.
+      // Keep its exit sentinel: child keyboard events cannot bubble to this Window.
+      // Parent pointer/new-key intent and cleanup still discard it. Do not read the
+      // frame document; opaque sandboxed and cross-origin frames use the same path.
       const target = document.activeElement;
-      if (target instanceof HTMLIFrameElement && root.contains(target)) return;
+      if (target instanceof HTMLIFrameElement && root.contains(target)) {
+        nativeTabHeld = false;
+        return;
+      }
+      const boundary = nativeTabHeld && !boundaryKey?.defaultPrevented
+        && boundaryKey?.eventPhase === Event.NONE ? nativeBoundary : null;
+      clearBoundary();
       if (boundary) (boundary.reverse ? boundary.last : boundary.first).focus();
     };
     const onFocusIn = (e: FocusEvent) => {
       const target = e.target;
       if (!nativeBoundary || !isFocusTarget(target) || root.contains(target)) return;
+      // A widget's synchronous focus() is intentional, including a handler that
+      // cancels later in its callback. Native sequential focus runs after dispatch.
+      if (boundaryKey?.defaultPrevented || boundaryKey?.eventPhase !== Event.NONE) {
+        clearBoundary();
+        return;
+      }
       const modal = target.closest('[aria-modal="true"]');
       // Yield to a newly opened modal, not to the ancestor/portal parent whose
       // control native media navigation just reached while this dialog is active.
@@ -187,16 +212,28 @@ export function useDialogFocus(ref: RefObject<HTMLElement | null>, active: boole
       nativeBoundary = null;
       next.focus();
     };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Tab" || e.defaultPrevented) return;
+    const ownsTab = () => {
       const at = document.activeElement;
       const modal = at?.closest('[aria-modal="true"]');
       // A nested or portaled dialog owns its Tab, even when the parent has no usable controls.
-      if (modal && (!at || !root.contains(at) || (modal !== root && root.contains(modal)))) return;
+      return !modal || !!at && root.contains(at) && (modal === root || !root.contains(modal));
+    };
+    const onCaptureKey = (e: KeyboardEvent) => {
+      clearBoundary();
+      if (e.key !== "Tab" || e.defaultPrevented || !ownsTab()) return;
       restore();
+      // Prepare native containment before a widget can stop propagation. Do not
+      // cancel or move focus here; target/document widgets retain first refusal.
       restoreHidden = excludeHiddenForTab(root);
-      // A task, not a microtask: native sequential navigation runs before these masks are restored.
       restoreTimer = setTimeout(restore, 0);
+      const list = boundaryStops(root);
+      boundaryKey = e;
+      nativeBoundary = { first: list[0] ?? root, last: list.at(-1) ?? root, reverse: e.shiftKey };
+      nativeTabHeld = true;
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Tab" || e.defaultPrevented || !ownsTab()) return;
+      const at = document.activeElement;
       const list = boundaryStops(root);
       if (!list.length) {
         e.preventDefault();
@@ -233,7 +270,7 @@ export function useDialogFocus(ref: RefObject<HTMLElement | null>, active: boole
     // Window bubble runs after target and document-delegated widgets, regardless of registration order.
     // Clear the previous keyboard continuation before a widget handles any new input.
     // Native media can finish a focus transition after the keydown task has ended.
-    window.addEventListener("keydown", clearBoundary, true);
+    window.addEventListener("keydown", onCaptureKey, true);
     window.addEventListener("pointerdown", clearBoundary, true);
     window.addEventListener("keyup", onKeyUp);
     window.addEventListener("blur", onWindowBlur);
@@ -242,7 +279,7 @@ export function useDialogFocus(ref: RefObject<HTMLElement | null>, active: boole
     return () => {
       cancelAnimationFrame(raf);
       modalOpeners.delete(root);
-      window.removeEventListener("keydown", clearBoundary, true);
+      window.removeEventListener("keydown", onCaptureKey, true);
       window.removeEventListener("pointerdown", clearBoundary, true);
       window.removeEventListener("keyup", onKeyUp);
       window.removeEventListener("blur", onWindowBlur);

@@ -23,7 +23,7 @@ const report = {
   runId: process.env.GITHUB_RUN_ID ?? null, attempt: process.env.GITHUB_RUN_ATTEMPT ?? null,
   sourceSha256: createHash("sha256").update(source).digest("hex"),
   runnerSha256: createHash("sha256").update(readFileSync(new URL(import.meta.url))).digest("hex"),
-  expectedScenarios: 108, viewports: [{ width: 390, height: 844, mobile: true }, { width: 1280, height: 844, mobile: false }],
+  expectedScenarios: 220, viewports: [{ width: 390, height: 844, mobile: true }, { width: 1280, height: 844, mobile: false }],
   checks: [], errors: [], sequences: {},
 };
 function check(name, actual, expected) {
@@ -180,6 +180,90 @@ try {
       check(`${width}:outside-iframe:contained`, contained, true);
       check(`${width}:outside-iframe:wrap`, wrapped, true);
     });
+    // Review 5512305553: iframe edges, stopped propagation and measured image-map parity.
+    for (const opaque of [false, true]) for (const reverse of [false, true]) {
+      const name = `${width}:iframe-edge:opaque=${opaque}:reverse=${reverse}`;
+      const html = reverse ? `${frame("edge", opaque)}<button id="last">last</button>`
+        : `<button id="first">first</button>${frame("edge", opaque)}`;
+      await withPage(width, shell(html), async page => {
+        if (!await page.waitFor("window.__frameWitness.edge?.ready === true")) throw new Error(`${name}: frame not ready`);
+        await start(page, "dialog", reverse ? "#last" : "#first");
+        for (const [i, id] of (reverse ? ["two", "one"] : ["one", "two"]).entries()) {
+          await page.key("Tab", { shift: reverse });
+          check(`${name}:inner-${i}`, await page.eval("[document.activeElement.id, window.__frameWitness.edge?.active]"), ["edge", id]);
+        }
+        await page.key("Tab", { shift: reverse });
+        check(`${name}:wrap`, await active(page), reverse ? "last" : "first");
+        await page.key("Tab", { shift: reverse });
+        const point = await page.eval("(() => { const r = document.getElementById('outside').getBoundingClientRect(); return {x:r.x+r.width/2,y:r.y+r.height/2}; })()");
+        await page.send("Input.dispatchMouseEvent", { type: "mousePressed", button: "left", clickCount: 1, ...point });
+        await page.send("Input.dispatchMouseEvent", { type: "mouseReleased", button: "left", clickCount: 1, ...point });
+        check(`${name}:pointer-intent`, await active(page), "outside");
+        await page.eval("window.__cleanups.splice(0).reverse().forEach(f => f?.()); true");
+        check(`${name}:cleanup-intent`, await active(page), "outside");
+      });
+    }
+    for (const target of ["target", "document"]) for (const cancel of [false, true]) for (const reverse of [false, true]) {
+      const name = `${width}:stopped-tab:${target}:cancel=${cancel}:reverse=${reverse}`;
+      await withPage(width, shell('<button id="first">first</button><button id="last">last</button>'), async page => {
+        await start(page, "dialog", reverse ? "#first" : "#last");
+        await page.eval(`(() => {
+          const target = ${JSON.stringify(target)} === 'document' ? document : document.activeElement;
+          target.addEventListener('keydown', e => { if (e.key === 'Tab') { e.stopPropagation(); ${cancel ? "e.preventDefault();" : ""} } }); return true;
+        })()`);
+        await page.key("Tab", { shift: reverse });
+        check(`${name}:result`, await active(page), cancel ? reverse ? "first" : "last" : reverse ? "last" : "first");
+        check(`${name}:trusted`, await page.eval("window.__trusted"), [true]);
+      });
+    }
+    for (const target of ["target", "document"]) {
+      await withPage(width, shell('<button id="first">first</button><div aria-hidden="true"><button id="excluded">excluded</button></div><button id="last">last</button>'), async page => {
+        await start(page, "dialog", "#first");
+        await page.eval(`(() => {
+          window.__excludedFocus = [];
+          document.addEventListener('focusin', e => { if (e.target.closest('[aria-hidden="true"]')) window.__excludedFocus.push(e.target.id); }, true);
+          const target = ${JSON.stringify(target)} === 'document' ? document : document.activeElement;
+          target.addEventListener('keydown', e => { if (e.key === 'Tab') e.stopPropagation(); }); return true;
+        })()`);
+        await page.key("Tab");
+        check(`${width}:stopped-hidden:${target}:native-next`, await active(page), "last");
+        check(`${width}:stopped-hidden:${target}:no-transient-hidden-focus`, await page.eval("window.__excludedFocus"), []);
+      });
+    }
+    for (const target of ["target", "document"]) for (const cancelBefore of [false, true]) {
+      await withPage(width, shell('<button id="first">first</button><button id="last">last</button>'), async page => {
+        await start(page, "dialog", "#last");
+        await page.eval(`(() => {
+          const target = ${JSON.stringify(target)} === 'document' ? document : document.activeElement;
+          target.addEventListener('keydown', e => { if (e.key === 'Tab') {
+            e.stopPropagation(); ${cancelBefore ? "e.preventDefault();" : ""}
+            document.getElementById('outside').focus(); ${cancelBefore ? "" : "e.preventDefault();"}
+          } }); return true;
+        })()`);
+        await page.key("Tab");
+        check(`${width}:stopped-intent:${target}:cancel-before=${cancelBefore}`, await active(page), "outside");
+        await page.eval("window.__cleanups.splice(0).reverse().forEach(f => f?.()); true");
+        check(`${width}:stopped-intent:${target}:cleanup:cancel-before=${cancelBefore}`, await active(page), "outside");
+      });
+    }
+    for (const mapStyle of ["default", "map-hidden", "area-hidden", "image-hidden"]) {
+      // A data SVG supplies known local pixels; neither page makes a network request.
+      const picture = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><rect width="100" height="100" fill="white"/></svg>');
+      const html = `<button id="positive" tabindex="1">positive</button><img id="map-image" width="100" height="100" src="${picture}" usemap="#ticket-map" ${mapStyle === "image-hidden" ? 'style="display:none"' : ''}><map name="ticket-map" ${mapStyle === "map-hidden" ? 'style="display:none"' : ''}><area id="area" href="#" shape="rect" coords="0,0,100,100" alt="Mapped link" ${mapStyle === "area-hidden" ? 'style="display:none"' : ''}></map><button id="last">last</button>`;
+      let native;
+      await withPage(width, html, async page => {
+        if (!await page.waitFor("document.getElementById('map-image').complete")) throw new Error('image map not ready');
+        await page.eval("document.getElementById('positive').focus(); true");
+        await page.key("Tab"); native = await active(page);
+        check(`${width}:image-map:${mapStyle}:native-exercised`, native, mapStyle === "image-hidden" ? "last" : "area");
+        report.sequences[`${width}:image-map:${mapStyle}:layout`] = await page.eval("({rects:document.getElementById('area').getClientRects().length, imageRects:document.getElementById('map-image').getClientRects().length, areaTabindex:document.getElementById('area').tabIndex})");
+      });
+      await withPage(width, shell(html), async page => {
+        if (!await page.waitFor("document.getElementById('map-image').complete")) throw new Error('image map not ready');
+        await start(page, "dialog", "#positive"); await page.key("Tab");
+        check(`${width}:image-map:${mapStyle}:native-parity`, await active(page), native);
+      });
+    }
   }
 } catch (error) {
   report.errors.push({ phase: "execution", message: String(error), stack: error.stack ?? null });
