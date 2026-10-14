@@ -1,0 +1,33 @@
+{
+  "fixture": "unknown-no-kid",
+  "description": "A header without a kid (the pre-K4 format). A verifier can't pick a key, so it is not a token it reads.",
+  "verifyAt": "2026-10-10T13:00:00.000Z",
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6InRpY2tldHN0dWIuYXBwcm92YWwifQ.eyJhcHByb3ZhbCI6eyJzY2hlbWEiOiJ0aWNrZXRzdHViLmFwcHJvdmFsLzEiLCJpZCI6ImFwcl9GSVhUVVJFXzAwMDEiLCJpc3N1ZXIiOiJ0aWNrZXRzdHViIiwidGVuYW50Ijp7ImlkIjoiYWNjX0ZJWFRVUkVfb3duZXIxIn0sInByb2plY3QiOnsia2luZCI6InN0dWIiLCJpZCI6InN0dWJfZnhfMSJ9LCJwdXJwb3NlIjoicHJpbnQuY29tcG9zZSIsImFjdG9yIjp7ImtpbmQiOiJhY2NvdW50IiwiaWQiOiJhY2NfRklYVFVSRV9vd25lcjEifSwiYmluZGluZyI6eyJoYXNoQWxnIjoic2hhMjU2IiwidmVyc2lvbklkIjoidl9meF8yIiwiYXJ0U291cmNlIjoiYnl0ZXMiLCJhcnRIYXNoIjoiN2Y2ZDU5NmNlNDg2YzU5ZWQxY2FlZWRmMTc5NGZhMGEwNjMwZDFmNzQxMmY0NzY5ZWEwNTA3MzM2NzA1Nzc5MSIsImRlc2lnbkhhc2giOiIwM2YzMGQ0Mzk5ODU2ZTBhNDUxMjI5NjJlMTZkYzk3YjVjNTk4Zjk0ZGUwN2Q4NWY5NmI3MGI1YzEzZjI1ZTcxIiwiZmFjdHNIYXNoIjoiMmJjYzFlY2JjODBjMWIwMTUxN2NkN2M0YWUyMGZjYWY0ZTVhZTBjYTM0ZWZjNjRiYjcyNzlkZjRjM2I0NGNkMiIsImNvbXBvc2l0aW9uIjp7ImVkaXRpb24iOiJsZXR0ZXJwcmVzcyIsIm1hdGVyaWFsIjoicHJpbnQiLCJmaW5pc2giOiJtYXR0ZSIsInNpemUiOiJjbGFzc2ljIn0sImNvbXBvc2l0aW9uSGFzaCI6ImU2Yzk0ZGNmM2Y1ZTBmOGM4ZmY3ZGZlOTkxYmRlZWFiMTkwZmUwYzM0ODkwYzFjMGUwMTA4NDBjODk5MjZjNzMifSwibWVtYmVyc2hpcFJldmlzaW9uIjozLCJub3RBdXRob3JpemVzIjpbInB1cmNoYXNlIiwicGF5bWVudCIsIm9yZGVyIiwiYXNzZXRfcmlnaHRzIl0sImVudmlyb25tZW50IjoiZGV2ZWxvcG1lbnQiLCJtb2RlIjoiZml4dHVyZSIsImlzc3VlZEF0IjoiMjAyNi0xMC0xMFQxMjowMDowMC4wMDBaIiwiZXhwaXJlc0F0IjoiMjAyNi0xMC0xN1QxMjowMDowMC4wMDBaIn19.f83_yWbtD1ovaScWtRnTSV6iWegJ5VHLuNCCBlwwPmo",
+  "held": {
+    "artBase64": "RklYVFVSRS1BUlQtQllURVMtdjE6IG5vdCBhIHJlYWwgaW1hZ2UsIHN0YW5kcyBpbiBmb3IgdGhlIHN0b3JlZCBQTkc="
+  },
+  "expect": {
+    "tenant": "acc_FIXTURE_owner1",
+    "project": {
+      "kind": "stub",
+      "id": "stub_fx_1"
+    },
+    "purpose": "print.compose"
+  },
+  "state": {
+    "known": true,
+    "revoked": false,
+    "membershipRevision": 3,
+    "current": {
+      "versionId": "v_fx_2",
+      "designHash": "03f30d4399856e0a45122962e16dc97b5c598f94de07d85f96b70b5c13f25e71",
+      "artHash": "7f6d596ce486c59ed1caeedf1794fa0a0630d1f7412f4769ea05073367057791",
+      "factsHash": "2bcc1ecbc80c1b01517cd7c4ae20fcaf4e5ae0ca34efc64bb7279df4c3b44cd2",
+      "compositionHash": "e6c94dcf3f5e0f8c8ff7dfe991bdeeab190fe0c34890c1c0e010840c89926c73"
+    }
+  },
+  "outcome": {
+    "ok": false,
+    "reason": "unknown"
+  }
+}

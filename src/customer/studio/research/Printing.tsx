@@ -16,6 +16,7 @@ import { factGroup, type FactGroup } from "../facts/corrections";
 import { GROUP_TITLE, whenLabel } from "../facts/FactsReview";
 import { clock, errorCode, flow, since } from "@/customer/flows/events";
 import styles from "./Printing.module.css";
+import { useReducedMotion } from "@/customer/landing/MotionContext";
 
 const MIN_MS = 2500;
 const STAGGER_MS = 450;
@@ -23,19 +24,6 @@ const DWELL_MS = 1600;
 const TAP_EXTEND_MS = 1500;
 const SKIP_AFTER_MS = 3000;
 const SETTLE_MS = 750;
-
-function usePrefersReducedMotion(): boolean {
-  const [reduced, setReduced] = useState(false);
-  useEffect(() => {
-    if (typeof window === "undefined" || !window.matchMedia) return;
-    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const update = () => setReduced(mq.matches);
-    update();
-    mq.addEventListener?.("change", update);
-    return () => mq.removeEventListener?.("change", update);
-  }, []);
-  return reduced;
-}
 
 /** Verified first, then what is in doubt, then what we could not find. Nothing is corrected yet while the stub is still printing. */
 const RECEIPT_ORDER: FactGroup[] = ["source", "unsure", "missing"];
@@ -117,7 +105,7 @@ export function Printing(props: {
   const { input } = props;
   const entry = props.entry ?? "new_page";
   const source = input.event ? (props.picked ? "picked" : "demo") : input.url ? "link" : "query";
-  const reduced = usePrefersReducedMotion();
+  const reduced = useReducedMotion();
   const [event, setEvent] = useState<EventData | undefined>(input.event);
   const [staggered, setShown] = useState(0);
   const [kept, setKept] = useState<Record<string, boolean>>(() =>
@@ -165,17 +153,18 @@ export function Printing(props: {
     } catch {
       /* sound is optional */
     }
-    const skipTimer = window.setTimeout(() => setShowSkip(true), SKIP_AFTER_MS);
+    let stopped = false;
+    const skipTimer = window.setTimeout(() => { if (!stopped) setShowSkip(true); }, SKIP_AFTER_MS);
     let doneTimer: number | undefined;
 
     const finish = () => {
       const ev = eventRef.current;
-      if (!ev || finishingRef.current) return;
+      if (stopped || !ev || finishingRef.current) return;
       finishingRef.current = true;
       try {
         stopPrint();
         play("done");
-        haptic([18, 40, 28]);
+        if (!reducedRef.current) haptic([18, 40, 28]);
       } catch {
         /* feedback is optional */
       }
@@ -186,10 +175,11 @@ export function Printing(props: {
       };
       // the reveal runs from when the facts were in hand (research done, or handed in) to the ink settling
       flow("reveal_complete", { entry, skipped: skipRef.current, duration_ms: since(researchedAt.current ?? begunRef.current ?? clock()), fact_count: final.facts.length, kept_count: final.facts.filter((f) => f.kept).length });
-      doneTimer = window.setTimeout(() => onDoneRef.current(final), reducedRef.current ? 0 : SETTLE_MS);
+      doneTimer = window.setTimeout(() => { if (!stopped) onDoneRef.current(final); }, reducedRef.current ? 0 : SETTLE_MS);
     };
 
     const tick = window.setInterval(() => {
+      if (stopped) return;
       const ev = eventRef.current;
       if (!ev || finishingRef.current) return;
       if (skipRef.current) return finish();
@@ -205,9 +195,10 @@ export function Printing(props: {
     }, 100);
 
     return () => {
+      stopped = true;
       window.clearTimeout(skipTimer);
       window.clearInterval(tick);
-      if (doneTimer && !finishingRef.current) window.clearTimeout(doneTimer);
+      if (doneTimer !== undefined) window.clearTimeout(doneTimer);
       try {
         stopPrint();
       } catch {
@@ -290,7 +281,7 @@ export function Printing(props: {
       } catch {
         /* optional */
       }
-    } else haptic(10);
+    } else if (!reduced) haptic(10);
     // Give the person time to finish choosing.
     extendDeadline(deadlineRef);
   };

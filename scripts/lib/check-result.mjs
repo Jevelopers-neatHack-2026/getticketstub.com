@@ -49,3 +49,11 @@ export function summarizeCheckResult(exitCode, output) {
     ok: exitCode === 0 && passed > 0 && failed === 0 && skipped === 0 && !unknownFailureCount,
   };
 }
+
+/** The network guard's self-check has one stdout token; stderr remains diagnostic evidence. */
+export function summarizeNetworkProbe(exitCode, stdout, stderr) {
+  return {
+    exitCode, stdout, stderr,
+    ok: exitCode === 0 && typeof stdout === "string" && stdout.trim() === "ETICKETSTUB_FIXTURE_NETWORK",
+  };
+}

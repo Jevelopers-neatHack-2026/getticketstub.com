@@ -1,6 +1,6 @@
 # Identity, session, and signed-context model (GT-08)
 
-This page explains the identity and authorization behavior implemented in the application source. It is not an acceptance record or a claim that downstream consumers have integrated with the host. The source snapshot audited for this description is `getticketstub.com` main `138e4b9019c0f5a55ad5e3f586d129216b680e4d` (2026-10-12); the app-native landing change did not alter identity routes or shared HTTP helpers. For route-by-route request fields, limits, errors, and response shapes, see the [HTTP API reference](../api/HTTP-API.md). Current host architecture and integration state are in [CURRENT-STATE.md](CURRENT-STATE.md).
+This page explains the identity and authorization behavior implemented in the application source. It is not an acceptance record or a claim that downstream consumers have integrated with the host. The original architecture audit used `getticketstub.com` main `138e4b9019c0f5a55ad5e3f586d129216b680e4d` (2026-10-12); the app-native landing change did not alter identity routes or shared HTTP helpers. The later signing-key integration from [PR #102](https://github.com/Jevelopers-neatHack-2026/getticketstub.com/pull/102) is described in the signing section below. For route-by-route request fields, limits, errors, and response shapes, see the [HTTP API reference](../api/HTTP-API.md). Current host architecture and integration state are in [CURRENT-STATE.md](CURRENT-STATE.md).
 
 The main implementation is in `src/server/context.ts`, `src/server/context-token.ts`, `src/server/context-modes.ts`, `src/server/project.ts`, the route handlers under `src/app/api/`, and shared origin/error helpers in `src/server/http.ts`. The capability matrix is also exercised by `scripts/smoke-server.mjs` and the offline fixtures under `fixtures/context/`.
 
@@ -82,6 +82,58 @@ Version 2 deliberately changes the identifier and mode representation:
 The context verifier recognizes both versions. A version-1 token is not a version-2 token and does not carry finance grants. Version 2 audience, scope, membership revision, expiry, and mode values are checked by its schema/verifier. Tokens that are not checked again by the host can remain usable until their short expiry; downstream consumers must follow their own acceptance and revalidation contract.
 
 `paid_test` in `economicMode` is a key-presence heuristic for configured paid-provider keys. It signals possible spend, not proof that a provider call occurred. The host's `/2` finance grants and `ticketstub.finance-scope-adapter/1` mapping are implemented in producer code and fixtures, but Finance has not accepted the mapping and the current app has no Finance runtime consumer. See [current architecture](CURRENT-STATE.md#cross-repository-integration-state) and the [integration-evals acceptance record](https://github.com/Jevelopers-neatHack-2026/integration-evals/tree/56018576a9450a2bb46aa55ed3b2f9d9ae97e50d) for the authoritative cross-repository state.
+
+Context tokens continue to use `CONTEXT_SECRET` only, with no rotation overlap: replacing it invalidates outstanding context tokens, whose lifetime is at most five minutes. Approval and order-authorization tokens use the separate versioned sets below. `CONTEXT_SECRET`, `APPROVAL_SIGNING_KEYS`, `ORDER_AUTH_SIGNING_KEYS`, `ORDER_AUTH_CONSUMER_KEY` and provider credentials remain server-only; no secret value belongs in a client bundle or evidence record.
+
+## Signing keys (decision 0003 K4)
+
+Each token class has its own key, so one leaked secret can mint only one class ([integration-evals decision 0003](https://github.com/Jevelopers-neatHack-2026/integration-evals/blob/main/planning/decisions/0003-owner-delegated-decisions-2026-10-12.md), row K4).
+
+| Token | Lifetime | Key | `kid` |
+| --- | --- | --- | --- |
+| `ticketstub.context` | 5 minutes | `CONTEXT_SECRET`: one key, 32+ characters | none |
+| `ticketstub.approval` | 7 days | `APPROVAL_SIGNING_KEYS`: versioned key set | in the header |
+| `ticketstub.order-authorization` | 15 minutes | `ORDER_AUTH_SIGNING_KEYS`: versioned key set | in the header |
+
+`ORDER_AUTH_CONSUMER_KEY` is not a token key: it signs consumer requests to the order-authorization port only ([order-authorization.md](order-authorization.md)).
+
+**Format.** A key set is one environment variable holding versioned JSON, the same shape as fulfillment-connectors' `FULFILLMENT_TOMBSTONE_KEYSET` with `kid` as the version name (the example is the approval set; the order-authorization set has the same shape, suggested kids `order-auth-g<generation>`):
+
+```json
+{"v":1,"keys":[
+  {"kid":"approval-g2","state":"active","activatedAt":"2027-01-10T00:00:00Z","key":"<base64url, 32+ random bytes>"},
+  {"kid":"approval-g1","state":"retired","activatedAt":"2026-10-12T00:00:00Z","retiredAt":"2027-01-10T00:00:00Z","key":"<base64url>"}
+]}
+```
+
+- `kid`: 1-64 of `[A-Za-z0-9._-]`. Suggested `approval-g<generation>` and `order-auth-g<generation>`. Kids starting with `fixture` or `sandbox` are reserved and refused.
+- `state`: exactly one `active` key, and it is the newest. `retiredAt` is required on a `retired` key and absent on the active one.
+- `key`: **must be generated**, 32 random bytes as canonical base64url: `node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"`. Never a passphrase, a hand-typed value or another secret. The loader can't measure entropy: it refuses only degenerate keys (under 32 or over 1024 bytes, or fewer than 17 distinct byte values, i.e. a repeated byte or a tiny alphabet), and a passphrase or hex text read as base64url passes that check. It also refuses text containing `FIXTURE-ONLY`, a key repeated in the set, and **reuse of another secret**: each entry is compared in both readings (its decoded bytes and the key string as typed) against both readings (the text and its base64url decoding) of `CONTEXT_SECRET`, `ORDER_AUTH_CONSUMER_KEY` and every key string of the other key set. So the same string pasted into two variables is refused.
+- At most 16 keys. Timestamps may be at most 5 minutes in the future (clock skew).
+
+**Signing and verifying** (`src/server/keyring.ts`, bound to the environment in `src/server/signing-keys.ts`). The server signs with the active key and writes its `kid` and actual signing time into the authenticated header, for example `{"alg":"HS256","typ":"ticketstub.approval","kid":"approval-g2","signedAt":"2027-01-10T00:00:00.000Z"}`. Order authorizations use the same header-time convention with their own `typ` and key. A verifier looks the `kid` up: the active key, or a retired key until `retiredAt` + the class's token lifetime (7 days for approvals, 15 minutes for order authorizations) + 5 minutes. With `signedAt`, a retired key refuses a signature made after `retiredAt` + 5 minutes, including a stale instance re-signing an older stored record. A present malformed time is `unknown` and never receives legacy fallback. The HMAC authenticates the entire header before acceptance; `issuedAt`, `expiresAt`, the stored record and idempotency identity do not change when re-signing.
+
+**Legacy rollout limit.** Existing tokens without `signedAt` keep their bounded routine-rotation compatibility using record `issuedAt`. That is not evidence of actual signing time: an old-code late re-sign can be byte-identical to the original token, so it cannot be distinguished while those original tokens remain accepted. The deployment owner must update all issuers and verifiers to this codec before claiming the late-signing cutoff covers every issuer. This source change performs no deployment or key rotation. A compromised key holder can backdate either timestamp; the key must be **deleted from the set at once** (see incident rotation below), followed by re-fetch/reissue under a new key. For approvals and order authorizations, the issuer's verify ports also reject any token whose record differs from the stored one. A missing or malformed `kid` is `unknown`; an unknown `kid`, or a retired key past retention, is `forged`. The `typ` check and the separate keys mean no token class verifies as another, and a token signed with `CONTEXT_SECRET` or another class's key is `forged`. Canonical shared-contracts records and signatures are not changed by this app-envelope header.
+
+**Failure modes.**
+
+| `APPROVAL_SIGNING_KEYS`, `ORDER_AUTH_SIGNING_KEYS` | Live runtime | Other runtimes |
+| --- | --- | --- |
+| unset or blank | **fail closed**: issuing and listing answer 503 `signing_unavailable`, the verify (and claim, revalidate, lookup) ports answer `forged` | a random per-process key, kid `sandbox`; records say `mode: "sandbox"` (tokens die on restart), like `CONTEXT_SECRET` |
+| set but invalid | fail closed, as above | fail closed, as above (a misconfigured secret is never silently replaced) |
+| set and valid | records say `mode: "live"` | records say `mode: "sandbox"` |
+
+A refused set logs one line per process, `[signing-keys] APPROVAL_SIGNING_KEYS unavailable: <code>`, where the code is a fixed word such as `weak_key` or `active_count`. Errors and logs never carry a key, a kid or the raw value.
+
+**Rotation** (scheduled every 90 days, as K1, or at once on suspected exposure):
+
+1. Generate a new key (the command above). Write the set with the new entry `active` (next generation) and the previous one `retired`. Set **both the new entry's `activatedAt` and the old entry's `retiredAt` to the moment the new set will be live on every instance**, that is, when the GoDaddy restart in step 2 completes, not the moment you write the JSON. The running process keeps signing with the old key until it restarts, and the retention window and the issued-after-retirement check (which catches accidental late signing, not a compromised key) both count from `retiredAt`. The loader accepts timestamps at most 5 minutes in the future, so pick a time within 5 minutes and restart right away. Keep every other retired entry that is still inside its window.
+2. Replace the secret in GoDaddy (Preview and Publish separately; a secret can't be edited in place, so delete, re-add, save, restart). A token the old process signed more than 5 minutes after `retiredAt` is refused, so don't let the restart slip past that.
+3. The retired entry must stay in the set until `retiredAt` + the token lifetime + 5 minutes of clock skew: **7 days + 5 minutes** for approvals, **20 minutes** (15-minute token lifetime + 5 minutes) for order authorizations. After that it verifies nothing and `status().purgeableKids` lists it. Remove it at the next rotation.
+
+**Why 20 minutes for order authorizations.** An authorization is valid for 15 minutes from `issuedAt`. The old process may sign one at any moment up to `retiredAt` (plus at most 5 minutes of tolerated clock difference), and a consumer may present it at verify, claim or dispatch-time revalidate any time before it expires. So the old key has to keep verifying until `retiredAt` + 15 + 5 minutes. Removing the retired entry earlier turns those in-flight authorizations into `forged` before their `expiresAt`, mid-claim; the owner can re-issue (the stored record and any committed claim survive), but the consumer sees a failure. The window counts from `retiredAt`, which is why step 1 sets it to the restart time and not the edit time.
+
+Approval tokens are derived from the stored record on demand, with a fresh authenticated `signedAt`, so after a rotation the owner's approval list hands out tokens under the new `kid`, and tokens already handed out keep verifying under the old one until they expire. Re-fetching does not extend record expiry or replace its identity. On an incident, retiring the exposed key still lets it verify for 7 days, and the signing-time check does not help against a key holder who can backdate it. To cut it off, delete its entry at once: every outstanding approval token under it then reads `forged`, and owners re-fetch theirs from the list (the approvals themselves are records and survive). The same holds for order authorizations: a deleted key makes its in-flight tokens `forged`, and the owner re-issues (the stored record and any committed claim survive).
 
 ## Public projections, revocation, and side effects
 

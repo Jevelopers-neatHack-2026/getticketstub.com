@@ -28,6 +28,9 @@ async function renderUntilBoundary(pauseAt = null) {
   const env = {
     disposed: false,
     disposers: [],
+    listen: () => {},
+    release3D: () => {},
+    idles: new Set(),
     byId: () => ({ addEventListener() {} }),
     devicePixelRatio: 1,
     innerWidth: 390,
@@ -79,5 +82,47 @@ for (const name of MODULES) {
 test("landing: a mounted initializer allocates a renderer and registers working cleanup", async () => {
   assert.deepEqual(await renderUntilBoundary(), {
     result: "mounted renderer reached scene setup", created: 1, disposed: 1, lateDisposers: 1,
+  });
+});
+
+async function assetBoundary({ failFlight = false } = {}) {
+  const counts = { renderer: 0, lost: 0, pmrem: 0, room: 0, environment: 0, geometry: 0, material: 0, aborted: 0 };
+  let gltfDone;
+  const vec = { set() {}, setScalar() {} };
+  class Light { constructor() { this.position = vec; this.target = {}; this.shadow = { mapSize: vec, camera: {} }; } }
+  const environment = { dispose() { counts.environment++; } };
+  const modules = {
+    three: {
+      WebGLRenderer: class { constructor() { this.shadowMap = {}; } setPixelRatio() {} dispose() { counts.renderer++; } forceContextLoss() { counts.lost++; } },
+      Scene: class { add() {} traverse() {} },
+      PMREMGenerator: class { fromScene() { return { texture: environment }; } dispose() { counts.pmrem++; } },
+      DirectionalLight: Light, HemisphereLight: Light,
+      PerspectiveCamera: class { constructor() { this.position = vec; } },
+    },
+    [MODULES[1]]: { GLTFLoader: class { load(_, success) { gltfDone = success; } } },
+    [MODULES[2]]: { RoomEnvironment: class { dispose() { counts.room++; } } },
+  };
+  const env = {
+    disposed: false, disposers: [], release3D: () => {}, idles: new Set(),
+    byId: () => ({}), listen() {}, devicePixelRatio: 1, innerWidth: 390, innerHeight: 844,
+    window: { cancelIdleCallback() {} }, AbortController, setTimeout() {}, setProgress() {},
+    fetch(_, { signal }) {
+      signal.addEventListener('abort', () => { counts.aborted++; });
+      return failFlight ? Promise.reject(new Error('asset failed')) : Promise.resolve({ ok: true, json: async () => ({}) });
+    },
+  };
+  const pending = initialize(env, async name => modules[name]).catch(err => { env.release3D(); return err.message; });
+  await nextTurn();
+  assert.equal(typeof gltfDone, 'function', 'initializer reached both pending asset loads');
+  if (!failFlight) { env.disposed = true; env.disposers.splice(0).reverse().forEach(stop => stop()); }
+  assert.equal(await pending, failFlight ? 'asset failed' : 'unmounted', 'cancellation settles without waiting for GLTF');
+  gltfDone({ scenes: [{ traverse(cb) { cb({ geometry: { dispose() { counts.geometry++; } }, material: { dispose() { counts.material++; } } }); } }] });
+  await nextTurn();
+  env.release3D();
+  return counts;
+}
+for (const failFlight of [false, true]) test(`landing: ${failFlight ? 'failed asset' : 'unmount during assets'} releases early 3D resources and late GLTF exactly once`, async () => {
+  assert.deepEqual(await assetBoundary({ failFlight }), {
+    renderer: 1, lost: 1, pmrem: 1, room: 1, environment: 1, geometry: 1, material: 1, aborted: 1,
   });
 });

@@ -36,6 +36,7 @@ const API_ROUTE_LABELS = [
   ["auth/signout", "auth_signout"],
   ["context", "context"],
   ["context/verify", "context_verify"],
+  ["creative", "creative"],
   ["dev/email-preview", "dev_email_preview"],
   ["events", "events"],
   ["gift", "gift"],

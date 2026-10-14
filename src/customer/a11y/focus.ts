@@ -5,18 +5,30 @@ import { useEffect, type RefObject } from "react";
 
 // What had focus before a dialog took it. A dialog's own autoFocus runs before our effect does, so reading
 // document.activeElement when the effect starts would already be inside the dialog. This remembers the last
-// control focused outside any modal, which is the one that opened it.
+// control focused outside any modal and the first entry into each modal, including a portaled child.
 type FocusTarget = HTMLElement | SVGElement;
 const isFocusTarget = (el: unknown): el is FocusTarget => el instanceof HTMLElement || el instanceof SVGElement;
 const isEditingHost = (el: FocusTarget) => el instanceof HTMLElement && !el.hasAttribute("tabindex")
   && el.isContentEditable && !el.parentElement?.isContentEditable;
 let lastOutside: FocusTarget | null = null;
+let lastFocused: FocusTarget | null = null;
+const modalOpeners = new WeakMap<Element, FocusTarget>();
 if (typeof document !== "undefined") {
+  const current = document.activeElement;
+  if (isFocusTarget(current) && current !== document.body) lastFocused = current;
   document.addEventListener(
     "focusin",
     (e) => {
       const t = e.target;
-      if (isFocusTarget(t) && t !== document.body && !t.closest('[aria-modal="true"]')) lastOutside = t;
+      if (!isFocusTarget(t) || t === document.body) return;
+      const modal = t.closest('[aria-modal="true"]');
+      // Capture the transition before an autofocus target hides its opener from
+      // the passive effect. Do not replace a parent's opener when a child returns.
+      if (modal && lastFocused?.isConnected && !modal.contains(lastFocused) && !modalOpeners.has(modal)) {
+        modalOpeners.set(modal, lastFocused);
+      }
+      if (!modal) lastOutside = t;
+      lastFocused = t;
     },
     true,
   );
@@ -104,10 +116,14 @@ function boundaryStops(root: HTMLElement): FocusTarget[] {
     // unchecked interior member when its checked peer is still keyboard-focusable.
     return !checked || checked === el || checked.tabIndex < 0 || !availableForFocus(checked, false);
   }).sort((a, b) => {
-    if (a.tabIndex === b.tabIndex) return 0;
-    if (a.tabIndex === 0) return 1;
-    if (b.tabIndex === 0) return -1;
-    return a.tabIndex - b.tabIndex;
+    // Implicit editing hosts participate in the native zero-tabindex phase,
+    // despite exposing -1 through the tabIndex property.
+    const ai = isEditingHost(a) ? 0 : a.tabIndex;
+    const bi = isEditingHost(b) ? 0 : b.tabIndex;
+    if (ai === bi) return 0;
+    if (ai === 0) return 1;
+    if (bi === 0) return -1;
+    return ai - bi;
   });
 }
 
@@ -120,7 +136,9 @@ export function useDialogFocus(ref: RefObject<HTMLElement | null>, active: boole
     const root = ref.current;
     if (!active || !root) return;
     const here = isFocusTarget(document.activeElement) ? document.activeElement : null;
-    const opener = here && !root.contains(here) ? here : lastOutside;
+    const enteredFrom = modalOpeners.get(root);
+    const opener = here && !root.contains(here) ? here : enteredFrom?.isConnected ? enteredFrom : lastOutside;
+    if (opener) modalOpeners.set(root, opener);
     const parentModal = opener?.closest('[aria-modal="true"]') ?? null;
     if (!root.hasAttribute("tabindex")) root.setAttribute("tabindex", "-1");
     // after paint, so the entering animation never moves focus off the target
@@ -150,6 +168,10 @@ export function useDialogFocus(ref: RefObject<HTMLElement | null>, active: boole
       // never a later pointer/window change after its keyup or another key event.
       const boundary = nativeTabHeld ? nativeBoundary : null;
       clearBoundary();
+      // Entering a contained iframe blurs this Window without leaving the dialog.
+      // Do not read its document: cross-origin and sandboxed frames are valid too.
+      const target = document.activeElement;
+      if (target instanceof HTMLIFrameElement && root.contains(target)) return;
       if (boundary) (boundary.reverse ? boundary.last : boundary.first).focus();
     };
     const onFocusIn = (e: FocusEvent) => {
@@ -219,6 +241,7 @@ export function useDialogFocus(ref: RefObject<HTMLElement | null>, active: boole
     window.addEventListener("focusin", onFocusIn);
     return () => {
       cancelAnimationFrame(raf);
+      modalOpeners.delete(root);
       window.removeEventListener("keydown", clearBoundary, true);
       window.removeEventListener("pointerdown", clearBoundary, true);
       window.removeEventListener("keyup", onKeyUp);

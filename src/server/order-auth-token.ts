@@ -170,11 +170,28 @@ const unb64 = (s: string) => Buffer.from(s, "base64url");
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 const isIso = (v: unknown) => typeof v === "string" && !Number.isNaN(Date.parse(v));
 
-/** Signs a record. The token is derived, never stored: the same record and key always give the same token. */
-export function signOrderAuthorization(record: OrderAuthRecord, key: string | Buffer): string {
-  const head = b64(JSON.stringify(HEADER));
+/** The key that signs: its `kid` goes in the header. On the server it is the active key of ORDER_AUTH_SIGNING_KEYS. */
+export interface OrderAuthSigningKey {
+  kid: string;
+  key: string | Buffer;
+}
+/** The keys a verifier accepts, by kid: a lookup function (the server's keyring) or a plain { kid: key } map. An unknown kid verifies nothing. */
+export type OrderAuthKeys = ((kid: string, keyTimeMs: number) => string | Buffer | null | undefined) | Readonly<Record<string, string | Buffer>>;
+const KID = /^[A-Za-z0-9._-]{1,64}$/;
+
+/** Claimed signing time, authenticated before acceptance. Legacy tokens fall back to record issue time. */
+function keyFor(keys: OrderAuthKeys, kid: string, keyTimeMs: number): string | Buffer | null {
+  const k = typeof keys === "function" ? keys(kid, keyTimeMs) : Object.hasOwn(keys, kid) ? keys[kid] : null;
+  return (typeof k === "string" && k.length > 0) || (Buffer.isBuffer(k) && k.length > 0) ? k : null;
+}
+
+/** Signs the unchanged record with the actual signing time. An explicit clock is for deterministic fixtures. */
+export function signOrderAuthorization(record: OrderAuthRecord, signer: OrderAuthSigningKey, signedAtMs = Date.now()): string {
+  if (!KID.test(signer.kid)) throw new Error("order authorization signing key has an invalid kid");
+  if (!Number.isFinite(signedAtMs) || signedAtMs <= 0) throw new Error("order authorization signing clock is invalid");
+  const head = b64(JSON.stringify({ ...HEADER, kid: signer.kid, signedAt: new Date(signedAtMs).toISOString() }));
   const body = b64(JSON.stringify({ authorization: record }));
-  const sig = createHmac("sha256", key).update(`${head}.${body}`).digest("base64url");
+  const sig = createHmac("sha256", signer.key).update(`${head}.${body}`).digest("base64url");
   return `${head}.${body}.${sig}`;
 }
 
@@ -205,7 +222,7 @@ export function orderAuthIdOf(token: string): string | null {
 /**
  * Checks in this order, first failure wins:
  *   invalid_clock (`now` is not a finite number > 0: the verifier's own clock is bad, nothing can be judged; checked first of all)
- *   -> unknown (not a token, or the issuer has no such record) -> forged (HMAC, constant time) -> unsupported_version
+ *   -> unknown (not a token, no or malformed kid, or the issuer has no such record) -> forged (unknown kid, or HMAC, constant time) -> unsupported_version
  *   -> wrong_scope (tenant, project, audience, action or provider differs from the consumer's)
  *   -> changed_terms (any term the consumer holds differs from the bound one: SKU, options, quote, amount, currency, destination, design, approval, capability version)
  *   -> revoked -> expired -> stale_approval (the referenced approval is not active now) -> stale (renewed, membership or capability version moved)
@@ -215,7 +232,7 @@ export function orderAuthIdOf(token: string): string | null {
  */
 export function verifyOrderAuthorization(
   token: string,
-  key: string | Buffer,
+  keys: OrderAuthKeys,
   expect: OrderAuthExpectation,
   now = Date.now(),
   state?: OrderAuthState,
@@ -234,7 +251,14 @@ export function verifyOrderAuthorization(
   } catch {
     return no("unknown");
   }
-  if (!isObj(head) || head.alg !== HEADER.alg || head.typ !== HEADER.typ || !isObj(body)) return no("unknown");
+  if (!isObj(head) || head.alg !== HEADER.alg || head.typ !== HEADER.typ || typeof head.kid !== "string" || !KID.test(head.kid) || !isObj(body)) return no("unknown");
+  const claimedSigned = typeof head.signedAt === "string" ? Date.parse(head.signedAt) : Number.NaN;
+  const stamped = Object.hasOwn(head, "signedAt");
+  if (stamped && (!Number.isFinite(claimedSigned) || claimedSigned <= 0 || new Date(claimedSigned).toISOString() !== head.signedAt)) return no("unknown");
+  // Retain bounded rotation compatibility for old tokens. Their record time cannot identify an old-code late re-sign.
+  const keyTime = stamped ? claimedSigned : isObj(body.authorization) && typeof body.authorization.issuedAt === "string" ? Date.parse(body.authorization.issuedAt) : Number.NaN;
+  const key = keyFor(keys, head.kid, keyTime);
+  if (!key) return no("forged"); // an unknown kid, or a retired key past retention: no key we hold signed it
   const want = createHmac("sha256", key).update(`${parts[0]}.${parts[1]}`).digest();
   const got = unb64(parts[2]);
   if (got.length !== want.length || !timingSafeEqual(got, want)) return no("forged");

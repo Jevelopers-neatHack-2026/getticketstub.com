@@ -166,6 +166,7 @@
 :where(.lp-host) .nav{--navc:var(--ink);position:fixed;top:0;left:0;right:0;z-index:30;display:flex;align-items:center;justify-content:space-between;color:var(--navc);
   padding:calc(14px + env(safe-area-inset-top,0px)) var(--gutter) 14px;pointer-events:none;transition:transform .45s cubic-bezier(.3,.7,.2,1),color .35s}
 :where(.lp-host) .nav.hide{transform:translateY(-110%)}
+:where(.lp-host) .nav.hide:focus-within{transform:translateY(0);transition:none}
 :where(.lp-host) .nav.solid{-webkit-backdrop-filter:blur(12px) saturate(1.2);backdrop-filter:blur(12px) saturate(1.2);background:color-mix(in srgb,var(--navbg,#f4ecdd) 62%,transparent)}
 :where(.lp-host) .nav>*{pointer-events:auto}
 :where(.lp-host) .logo{font-family:var(--display);font-weight:900;font-stretch:125%;font-size:20px;letter-spacing:-.02em;text-decoration:none;display:flex;align-items:center;gap:8px}
@@ -173,11 +174,28 @@
 :where(.lp-host) .logo i:after{content:"";position:absolute;right:4px;top:-1px;bottom:-1px;border-left:2px dotted currentColor}
 :where(.lp-host) .logo small{font-family:var(--mono);font-weight:500;font-size:11px;letter-spacing:.06em;opacity:.8}
 :where(.lp-host) .nav ul{display:flex;gap:26px;list-style:none;margin:0;padding:0;font-family:var(--mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase}
-:where(.lp-host) .nav ul a{text-decoration:none}
+:where(.lp-host) .nav ul a{text-decoration:none;white-space:nowrap}
 :where(.lp-host) .nav ul a:hover{text-decoration:underline}
 :where(.lp-host) .navcta{border:2px solid currentColor;border-radius:999px;padding:9px 16px 8px;text-decoration:none;font-family:var(--mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;transition:background .2s,color .2s}
 :where(.lp-host) .navcta:hover{background:var(--navc);color:var(--navbg,#fff)}
-@media (max-width:760px){:where(.lp-host) .nav ul{display:none}}
+@media (max-width:1100px){:where(.lp-host) .nav ul{display:none}}
+/* the Motion switch: a pressed "Reduce motion" turns off every animation and the 3D (see motion.ts) */
+:where(.lp-host) .motion-toggle{display:inline-flex;align-items:center;gap:8px;min-height:44px;margin-left:auto;margin-right:14px;padding:0 6px;border:0;background:none;color:inherit;cursor:pointer;
+  font-family:var(--mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase}
+:where(.lp-host) .motion-toggle i{width:14px;height:14px;border:2px solid currentColor;border-radius:50%;display:grid;place-items:center}
+:where(.lp-host) .motion-toggle[aria-pressed="true"] i:after{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+:where(.lp-host) .motion-toggle:hover .mt-label{text-decoration:underline}
+:where(.lp-host) .motion-toggle:focus-visible{outline:2px solid currentColor;outline-offset:2px;border-radius:4px}
+@media (min-width:1101px){:where(.lp-host) .nav ul{margin-left:auto}}
+@media (max-width:760px){:where(.lp-host) .motion-toggle{min-width:44px;justify-content:center;margin-right:6px}
+  :where(.lp-host) .motion-toggle .mt-label{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}}
+/* phones: the wordmark, the switch and the CTA don't fit on one line, so the logo is the stamp alone (the word stays its name) */
+:where(.lp-host) .nav .logo{flex-shrink:0;white-space:nowrap;min-height:44px;min-width:44px}
+@media (max-width:520px){:where(.lp-host) .nav .logo{font-size:0;gap:0;min-height:44px;min-width:44px}:where(.lp-host) .nav .logo small{display:none}}
+/* motion off: nothing on the landing animates or transitions; reveals land in their final state */
+:where(.lp).still *,:where(.lp).still *::before,:where(.lp).still *::after{
+  animation:none!important;transition-duration:0s!important;transition-delay:0s!important;scroll-behavior:auto!important}
+:where(.lp).still :where(.lp-host) .loop-stubs.on{display:none}
 
 /* ---------- buttons ---------- */
 :where(.lp-host) .lp-btn{display:inline-flex;align-items:center;gap:12px;border-radius:999px;padding:16px 26px 15px;font-family:var(--display);font-weight:800;font-stretch:112%;
@@ -187,7 +205,7 @@
 :where(.lp-host) .maker button{position:relative;overflow:hidden;isolation:isolate;transition:transform 160ms var(--ease-std),background-color 160ms var(--ease-std)}
 :where(.lp-host) .maker button .lbl{display:inline-flex;align-items:center;gap:12px}
 :where(.lp-host) .maker button:after{content:"";position:absolute;inset:0;z-index:-1;background:linear-gradient(105deg,transparent 30%,rgba(255,255,255,.55) 46%,rgba(124,198,210,.5) 54%,transparent 70%) 0 0/250% 100%;background-position:130% 0;opacity:0}
-:where(.lp-host) .maker button.gleam:after{animation:gleam 1.1s var(--ease-enter) .2s 1 both}
+:where(.lp-host) .maker button.gleam:after{animation:lp-gleam 1.1s var(--ease-enter) .2s 1 both}
 @keyframes lp-gleam{0%{opacity:1;background-position:130% 0}100%{opacity:1;background-position:-40% 0}}
 :where(.lp-host) .hero h1.m-split .l>span{transform:none;transition:none}
 :where(.lp-host) .hero h1.m-split .l{overflow:visible}
@@ -222,7 +240,7 @@
   transition:transform 1.3s cubic-bezier(.2,1.2,.3,1) .2s,opacity .6s .2s}
 :where(.lp).ready :where(.lp-host) .disc{transform:translateY(-46%);opacity:1}
 :where(.lp-host) .disc:before{content:"";position:absolute;inset:7%;border-radius:50%;border:2px dashed rgba(255,240,220,.55)}
-:where(.lp-host) .disc svg{position:absolute;inset:-9%;width:118%;height:118%;animation:spin 26s linear infinite}
+:where(.lp-host) .disc svg{position:absolute;inset:-9%;width:118%;height:118%;animation:lp-spin 26s linear infinite}
 :where(.lp-host) .disc text{font-family:var(--mono);font-size:6.2px;letter-spacing:.42em;fill:var(--ink)}
 :where(.lp-host) .disc .contact{position:absolute;left:18%;right:14%;top:52%;height:16%;border-radius:50%;background:radial-gradient(closest-side,rgba(70,8,0,.45),transparent);filter:blur(6px);transform:rotate(-10deg)}
 :where(.lp-host) .stub2d{display:none}
@@ -243,7 +261,7 @@
 
 /* ---------- marquee ---------- */
 :where(.lp-host) .marquee{background:var(--ink);color:var(--stock);overflow:hidden;transform:rotate(-2deg) scale(1.04);margin:-34px 0 -10px;position:relative;z-index:3;border-block:2px solid var(--foil)}
-:where(.lp-host) .marquee .track{display:flex;width:max-content;animation:mq 34s linear infinite}
+:where(.lp-host) .marquee .track{display:flex;width:max-content;animation:lp-mq 34s linear infinite}
 :where(.lp-host) .marquee span{font-family:var(--display);font-weight:900;font-stretch:125%;font-size:clamp(26px,3.6vw,52px);text-transform:uppercase;padding:14px 0;white-space:nowrap;display:flex;align-items:center}
 :where(.lp-host) .marquee span:after{content:"";width:.45em;height:.45em;border-radius:50%;background:var(--foil);margin:0 .7em;display:inline-block}
 :where(.lp-host) .marquee span:nth-child(even){color:transparent;-webkit-text-stroke:1.5px var(--stock)}
@@ -359,7 +377,7 @@
 :where(.lp-host) .step p{margin:0;max-width:34ch;font-size:17px}
 :where(.lp-host) .viz{height:150px;position:relative;margin-bottom:6px}
 :where(.lp-host) .search{position:absolute;left:0;right:8%;top:28px;background:var(--stock);border:2px solid var(--ink);border-radius:999px;padding:14px 20px;font-family:var(--mono);font-size:14px;display:flex;gap:10px;align-items:center;box-shadow:6px 6px 0 var(--ink)}
-:where(.lp-host) .search .caret{width:2px;height:18px;background:var(--ink);animation:blink 1s steps(1) infinite}
+:where(.lp-host) .search .caret{width:2px;height:18px;background:var(--ink);animation:lp-blink 1s steps(1) infinite}
 :where(.lp-host) .search+.mono{position:absolute;left:20px;top:100px;opacity:.7}
 @keyframes lp-blink{50%{opacity:0}}
 :where(.lp-host) .styles canvas{position:absolute;width:62%;border-radius:4px;box-shadow:0 10px 18px rgba(60,30,0,.25)}
@@ -425,13 +443,13 @@
 :where(.lp-host) .fin-card{position:relative;padding:20px 10px}
 :where(.lp-host) .fin-card .ts-stub{--w:clamp(210px,17vw,270px);--rot:5deg;transform:rotate(var(--rot)) scale(var(--fsc,.86));opacity:var(--fo,0);transition:transform .9s cubic-bezier(.2,1.3,.3,1) .15s,opacity .5s .15s}
 :where(.lp-host) .finale.on .fin-card .ts-stub{--fsc:1;--fo:1}
-:where(.lp-host) .fin-card .ts-stub.inked .ts-face{animation:ink .45s ease-out}
+:where(.lp-host) .fin-card .ts-stub.inked .ts-face{animation:lp-ink .45s ease-out}
 :where(.lp-host) .ts-stub .ts-sweep{position:absolute;inset:0;z-index:6;pointer-events:none;opacity:0;border-radius:3.2cqw;background:linear-gradient(100deg,transparent 30%,rgba(180,105,62,.0) 34%,rgba(228,87,46,.35) 44%,rgba(244,236,221,.7) 50%,rgba(124,198,210,.45) 56%,transparent 66%) 0 0/300% 100%;mix-blend-mode:screen}
-:where(.lp-host) .ts-stub.printing .ts-sweep{opacity:1;animation:sweep var(--dur-sweep) linear infinite}
+:where(.lp-host) .ts-stub.printing .ts-sweep{opacity:1;animation:lp-sweep var(--dur-sweep) linear infinite}
 @keyframes lp-sweep{from{background-position:120% 0}to{background-position:-120% 0}}
 :where(.lp-host) .fin-status{display:inline-flex;align-items:center;gap:8px;font:500 11px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--foil);min-height:14px}
 :where(.lp-host) .fin-status i{width:7px;height:7px;border-radius:50%;background:currentColor;opacity:0}
-:where(.lp-host) .fin-status.on i{opacity:1;animation:blink 1s steps(1) infinite}
+:where(.lp-host) .fin-status.on i{opacity:1;animation:lp-blink 1s steps(1) infinite}
 @keyframes lp-ink{0%{filter:brightness(1.25) saturate(.6)}100%{filter:none}}
 :where(.lp-host) .finale h2{margin:0;font-family:var(--display);font-weight:900;font-stretch:125%;font-size:clamp(60px,9.4vw,172px);line-height:.82;letter-spacing:-.045em;text-transform:uppercase;color:var(--stock);transform-origin:left center;
   transform:scale(var(--fs,1.2)) rotate(-3deg);transition:transform .9s cubic-bezier(.2,1.4,.3,1)}
@@ -544,7 +562,7 @@
 :where(.lp-host) .ts-hint{margin:14px 0 0;text-align:center;font:500 12px/1.4 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:#8f8571}
 @media (max-width:900px){:where(.lp-host) .studio-in{grid-template-columns:1fr}:where(.lp-host) .studio-wall{order:-1}}
 @media (max-width:560px){:where(.lp-host) .ts-cork{gap:6px;padding:40px 8px 30px;border-radius:16px}:where(.lp-host) .ts-stub{--w:calc((100vw - 2 * var(--gutter) - 50px) / 3)}:where(.lp-host) .ts-stub:nth-of-type(2){--dy:-4px}:where(.lp-host) .ts-brand-name{font-size:21px}:where(.lp-host) .ts-reads li{grid-template-columns:34px 1fr}:where(.lp-host) .ts-reads i{grid-column:2;text-align:left}}
-@media (prefers-reduced-motion:reduce){:where(.lp-host) .ts-stub,:where(.lp-host) .ts-tilt,:where(.lp-host) .ts-flip,:where(.lp-host) .ts-tear-l,:where(.lp-host) .ts-tear-r{transition:none}}
+@media (prefers-reduced-motion:reduce){:where(.lp):not([data-motion]) :where(.lp-host) .ts-stub,:where(.lp):not([data-motion]) :where(.lp-host) .ts-tilt,:where(.lp):not([data-motion]) :where(.lp-host) .ts-flip,:where(.lp):not([data-motion]) :where(.lp-host) .ts-tear-l,:where(.lp):not([data-motion]) :where(.lp-host) .ts-tear-r{transition:none}}
 
 
 /* the studio's three proofs sit on a print bed (the corkboard is saved for the finale) */
@@ -619,7 +637,7 @@
 :where(.lp-host) .cta-end{align-self:stretch;display:grid;place-items:center;width:var(--endw,40px);margin-left:4px;border-left:2px dotted color-mix(in srgb,var(--cta-ink) 45%,transparent);transform-origin:left center}
 :where(.lp-host) .cta-end i{font-style:normal;font-size:1.25em;line-height:1;transition:transform 200ms cubic-bezier(.23,1,.32,1)}
 /* the tear-off end flaps every few seconds */
-:where(.lp-host) .cta-end{animation:ctaFlap 5.6s cubic-bezier(.45,0,.55,1) 2.4s infinite}
+:where(.lp-host) .cta-end{animation:lp-ctaFlap 5.6s cubic-bezier(.45,0,.55,1) 2.4s infinite}
 @keyframes lp-ctaFlap{0%,70%{rotate:0deg}75%{rotate:9deg}81%{rotate:-3deg}87%,100%{rotate:0deg}}
 /* bigger stub for the hero and footer */
 :where(.lp-host) .cta-lg .cta-body{--endw:52px;padding:17px 0 16px 20px;font-size:15px;gap:12px}
@@ -627,7 +645,7 @@
 :where(.lp-host) .cta-lg{border-radius:10px}:where(.lp-host) .cta-lg .cta-body{border-radius:10px}
 :where(.lp-host) .cta-foot{margin:0 0 50px}
 /* the stub punches in once the page is ready (starts near full size, short spring) */
-:where(.lp).ready :where(.lp-host) .cta-in{animation:ctaIn 640ms var(--spring) 1.15s both}
+:where(.lp).ready :where(.lp-host) .cta-in{animation:lp-ctaIn 640ms var(--spring) 1.15s both}
 :where(.lp).ready :where(.lp-host) .cta-in.cta-late{animation-delay:1.5s}
 @keyframes lp-ctaIn{from{opacity:0;scale:.9;rotate:-6deg}to{opacity:1;scale:1;rotate:0deg}}
 /* hover (mouse only): lift and tilt, the arrow leans out, the end starts to tear */
@@ -643,7 +661,7 @@
 :where(.lp-host) .navcta.cta:hover{background:none;color:var(--cta-ink)}
 @media (max-width:440px){:where(.lp-host) .logo small{display:none}}
 @media (max-width:760px){:where(.lp-host) .navcta.cta .cta-body{padding:10px 0 9px 12px;font-size:11.5px;--endw:34px}}
-@media (prefers-reduced-motion:reduce){:where(.lp-host) .cta,:where(.lp-host) .cta-end i{transition:none}:where(.lp-host) .cta-body,:where(.lp-host) .cta-body:after,:where(.lp-host) .cta-end,:where(.lp).ready :where(.lp-host) .cta-in{animation:none}}
+@media (prefers-reduced-motion:reduce){:where(.lp):not([data-motion]) :where(.lp-host) .cta,:where(.lp):not([data-motion]) :where(.lp-host) .cta-end i{transition:none}:where(.lp):not([data-motion]) :where(.lp-host) .cta-body,:where(.lp):not([data-motion]) :where(.lp-host) .cta-body:after,:where(.lp):not([data-motion]) :where(.lp-host) .cta-end,:where(.lp).ready:not([data-motion]) :where(.lp-host) .cta-in{animation:none}}
 
 /* ---------- the loop back to the top ---------- */
 :where(.lp-host) .loopzone{position:relative;height:80vh;overflow:hidden;background:linear-gradient(var(--ink) 0%,#211a14 26%,#6e5d48 58%,#d9cbb0 84%,var(--stock) 100%)}
@@ -651,7 +669,7 @@
 :where(.lp-host) .loop-stubs.on{display:block}
 :where(.lp-host) .loop-stub{position:absolute;left:0;top:0;height:auto;border-radius:4px;box-shadow:0 18px 30px rgba(0,0,0,.35);will-change:transform;transform-origin:50% 50%}
 @media (max-width:760px){:where(.lp-host) .loopzone{height:70vh}}
-@media (prefers-reduced-motion:reduce){:where(.lp-host) .loop-stubs.on{display:none}}
+@media (prefers-reduced-motion:reduce){:where(.lp):not([data-motion]) :where(.lp-host) .loop-stubs.on{display:none}}
 
 /* ---------- footer ---------- */
 :where(.lp-host) footer{background:var(--ink);color:var(--stock);padding:clamp(40px,5vw,70px) var(--gutter) 40px;position:relative;z-index:7}
@@ -671,7 +689,7 @@
   :where(.lp-host) .finale:before{background:radial-gradient(90% 46% at 50% 50%,rgba(23,20,15,.9),rgba(23,20,15,.6) 70%,rgba(23,20,15,.2))}
   :where(.lp-host) .finale h2{font-size:15vw;transform-origin:center}:where(.lp-host) .finale .in{grid-template-columns:1fr;gap:0;text-align:center;justify-items:center}:where(.lp-host) .fin-copy{justify-items:center;gap:12px}:where(.lp-host) .maker{justify-content:center}:where(.lp-host) .fin-card{order:-1;padding:0 0 14px;margin-top:-6px}:where(.lp-host) .fin-card .ts-stub{--w:104px;--rot:-6deg}:where(.lp-host) .finale.typing .fin-copy>p{display:none}:where(.lp-host) .finale .fin-copy>p{font-size:15px}:where(.lp-host) .fin-try>span{display:none}:where(.lp-host) .fin-try{justify-content:center}:where(.lp-host) .fin-try button{padding:8px 10px 7px;font-size:10px}:where(.lp-host) .fin-note{display:none}
 }
-@media (prefers-reduced-motion:reduce){:where(.lp-host) .marquee .track,:where(.lp-host) .disc svg,:where(.lp-host) .search .caret{animation:none}}
+@media (prefers-reduced-motion:reduce){:where(.lp):not([data-motion]) :where(.lp-host) .marquee .track,:where(.lp):not([data-motion]) :where(.lp-host) .disc svg,:where(.lp):not([data-motion]) :where(.lp-host) .search .caret{animation:none}}
 
 /* ---------- studio port ---------- */
 /* the landing root clips sideways overflow (the tilted marquee) without becoming a scroll container, so the sticky scenes keep working */
@@ -680,3 +698,15 @@
 /* "Studio preview — nothing is charged or shipped." under the form */
 :where(.lp-host) .fin-preview{display:block;margin-top:-6px;font:500 11px/1.4 var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--foil)}
 @media (max-width:760px){:where(.lp-host) .fin-preview{font-size:10px;margin-top:-2px}}
+
+
+/* An explicit Motion-off choice also keeps pointer feedback at rest. */
+:where(.lp).still :where(.lp-host) .lp-btn:hover,:where(.lp).still :where(.lp-host) .lp-btn:active,
+:where(.lp).still :where(.lp-host) .cta:hover,:where(.lp).still :where(.lp-host) .cta:active,
+:where(.lp).still :where(.lp-host) .lp-btn:hover .arr,:where(.lp).still :where(.lp-host) .ts-next:hover .arr,
+:where(.lp).still :where(.lp-host) .cta:hover .cta-end i{transform:none!important}
+:where(.lp).still :where(.lp-host) .cta:hover .cta-end{rotate:0deg!important}
+:where(.lp).still :where(.lp-host) .ts-stub:hover{transform:rotate(var(--rot,0deg)) translateY(var(--dy,0px))!important}
+:where(.lp).still :where(.lp-host) .ribbon canvas:nth-child(odd):hover{transform:rotate(-2.5deg) translateZ(30px)!important}
+:where(.lp).still :where(.lp-host) .ribbon canvas:nth-child(even):hover{transform:rotate(2deg) translateY(16px) translateZ(-40px)!important}
+:where(.lp).still :where(.lp-host) #loopzone{display:none}

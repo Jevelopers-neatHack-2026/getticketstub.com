@@ -9,6 +9,12 @@ import ts from "typescript";
 registerHooks({
   resolve(specifier, context, nextResolve) {
     if (specifier.endsWith(".module.css")) return { url: "data:text/javascript,export default new Proxy({},{get:(_,k)=>String(k)})", shortCircuit: true };
+    if (specifier.startsWith("@/")) {
+      for (const ext of [".ts", ".tsx"]) {
+        const url = new URL(`../src/${specifier.slice(2)}${ext}`, import.meta.url);
+        if (existsSync(fileURLToPath(url))) return { url: url.href, shortCircuit: true };
+      }
+    }
     if (specifier.startsWith(".") && context.parentURL) {
       for (const ext of [".ts", ".tsx"]) {
         const url = new URL(`${specifier}${ext}`, context.parentURL);

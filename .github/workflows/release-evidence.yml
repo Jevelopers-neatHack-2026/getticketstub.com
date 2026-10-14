@@ -1,0 +1,78 @@
+name: Canonical release evidence gate
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/release-evidence.yml'
+      - 'scripts/verify-release.mjs'
+      - 'scripts/lib/verify_release.py'
+      - 'scripts/lib/release-evaluator-pin.json'
+      - 'tests/release-verifier*'
+      - 'docs/integration/release-verifier.md'
+      - 'package.json'
+      - '.nvmrc'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/release-evidence.yml'
+      - 'scripts/verify-release.mjs'
+      - 'scripts/lib/verify_release.py'
+      - 'scripts/lib/release-evaluator-pin.json'
+      - 'tests/release-verifier*'
+      - 'docs/integration/release-verifier.md'
+      - 'package.json'
+      - '.nvmrc'
+permissions:
+  contents: read
+jobs:
+  canonical-controls:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          path: getticketstub.com
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: Jevelopers-neatHack-2026/integration-evals
+          ref: 13bde39399a09d4a14cc97d72cd769b51da83e00
+          path: integration-evals
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version-file: getticketstub.com/.nvmrc
+      - name: Install the exact canonical interpreter independently of uv's download catalog
+        id: canonical-python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.13.16'
+          architecture: x64
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78
+        with:
+          version: 0.10.4
+          enable-cache: false
+      - name: Install exact canonical validator dependencies outside source checkouts
+        working-directory: integration-evals
+        env:
+          UV_PROJECT_ENVIRONMENT: ${{ runner.temp }}/release-validator
+          UV_PYTHON_DOWNLOADS: never
+          CANONICAL_PYTHON: ${{ steps.canonical-python.outputs.python-path }}
+          PYTHONDONTWRITEBYTECODE: '1'
+        run: |
+          "$CANONICAL_PYTHON" -I -B -c 'import sys; assert sys.version_info[:3] == (3, 13, 16), "unexpected_python_version"; print(sys.version)'
+          uv sync --frozen --no-dev --no-install-project --python "$CANONICAL_PYTHON"
+      - name: Run actual CLI and canonical schema/history controls (constructed mock records)
+        working-directory: getticketstub.com
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p "$RUNNER_TEMP/release-evidence-controls"
+          node --test tests/release-verifier.test.mjs 2>&1 | tee "$RUNNER_TEMP/release-evidence-controls/cli.log"
+          "$RUNNER_TEMP/release-validator/bin/python" -I -B tests/release-verifier-canonical.py "$GITHUB_WORKSPACE/integration-evals" 2>&1 | tee "$RUNNER_TEMP/release-evidence-controls/canonical.log"
+      - name: Retain every completed control result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: canonical-release-controls
+          path: ${{ runner.temp }}/release-evidence-controls
+          if-no-files-found: warn

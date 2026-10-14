@@ -216,7 +216,7 @@ function Facts({ c, className, sep = " · ", upper }: { c: Ctx; className?: stri
 
 function ArtLayers({ art, edition }: { art: ArtLayer; edition: Edition }) {
   if (art.kind === "image" && art.src) {
-    const img = <img className={s.artImg} src={art.src} alt="" draggable={false} decoding="async" />;
+    const img = <img className={s.artImg} src={art.src} alt="" draggable={false} decoding="sync" />;
     if (edition === "risograph")
       return (
         <>

@@ -54,7 +54,7 @@ test("dynamic route values never enter storage-failure telemetry", async () => {
 });
 
 test("unknown and extended paths have one constant label", async () => {
-  for (const path of ["/api/canary_ab12", "/api/auth/canary_ab12", "/api/share/canary_ab12/extra", "/api/files/canary_ab12/extra", "/api//share/canary_ab12", "/api/SHARE/canary_ab12", "/elsewhere/canary_ab12", "/api"]) {
+  for (const path of ["/api/canary_ab12", "/api/auth/canary_ab12", "/api/creative/canary_ab12", "/api/%63reative", "/api/share/canary_ab12/extra", "/api/files/canary_ab12/extra", "/api//share/canary_ab12", "/api/SHARE/canary_ab12", "/elsewhere/canary_ab12", "/api"]) {
     assert.equal(await label(path), "unknown", path);
   }
 });
@@ -65,13 +65,15 @@ test("known static routes retain useful categorical labels after the real event 
     ["admin/backup", "admin_backup"], ["admin/harness", "admin_harness"], ["agent", "agent"],
     ["approvals", "approvals"], ["approvals/revoke", "approvals_revoke"], ["approvals/verify", "approvals_verify"], ["art", "art"],
     ["auth/callback", "auth_callback"], ["auth/confirm", "auth_confirm"], ["auth/link", "auth_link"], ["auth/me", "auth_me"], ["auth/signout", "auth_signout"],
-    ["context", "context"], ["context/verify", "context_verify"], ["dev/email-preview", "dev_email_preview"], ["events", "events"], ["gift", "gift"], ["health", "health"],
+    ["context", "context"], ["context/verify", "context_verify"], ["creative", "creative"], ["dev/email-preview", "dev_email_preview"], ["events", "events"], ["gift", "gift"], ["health", "health"],
     ["order-authorizations", "order_authorizations"], ["order-authorizations/claim", "order_auth_claim"], ["order-authorizations/claims/lookup", "order_auth_claim_lookup"],
     ["order-authorizations/revalidate", "order_auth_revalidate"], ["order-authorizations/revoke", "order_auth_revoke"], ["order-authorizations/verify", "order_auth_verify"],
     ["orders", "orders"], ["organizer/events", "organizer_events"], ["payments/dodo/webhook", "payments_dodo_webhook"], ["payments/stripe/webhook", "payments_stripe_webhook"],
     ["research", "research"], ["share", "share"], ["share/revoke", "share_revoke"], ["wall/public", "wall_public"], ["wall/sync", "wall_sync"],
   ]) assert.equal(await label(`/api/${path}`), expected, path);
   assert.equal(await label("/api/auth/link/?canary=fixture_query"), "auth_link");
+  assert.equal(await label("/api/creative/?canary=fixture_query"), "creative");
+  assert.ok(!JSON.stringify(ringEvents()).includes("fixture_query"));
 });
 
 test("responses without storage failure produce no storage event", async () => {

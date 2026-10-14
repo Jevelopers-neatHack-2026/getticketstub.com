@@ -1,6 +1,10 @@
 // One entry point for the product checks, with evidence.
 //   npm run verify:product -- --suite <foundation|access|approval|order-auth|finance-context|research|creative|review|capabilities|messages|a11y|pay-signin|agent|download|production|degraded|mail-off|backup-drill> --mode fixture --evidence-dir <dir>
 // (`accessibility` is an alias of `a11y`: GT-11 names the suite that way.)
+// `all` runs every declared leaf suite serially and retains each fresh result.
+// It does not replace the correlated integration journey or verify:release.
+// `integration` separately executes one new correlated available-app fixture journey;
+// its explicit pending specialist joins are never canonical Assembly acceptance.
 // Every suite runs offline: in fixture mode a preload (scripts/lib/fixture-network-guard.mjs) refuses any host but
 // loopback, and the server started here has no provider keys. A missing build or fixture, an unknown suite and
 // any failed/skipped check or missing positive result exit nonzero, even if a child exits 0.
@@ -13,7 +17,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, 
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { summarizeCheckResult } from "./lib/check-result.mjs";
+import { summarizeCheckResult, summarizeNetworkProbe } from "./lib/check-result.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const guard = join(root, "scripts/lib/fixture-network-guard.mjs");
@@ -29,10 +33,15 @@ const SUITES = {
   // GT-06B: the artwork approval and its verifier (two accounts, stale, revoke, 404 parity, Origin, fixtures), against the production build.
   approval: { server: true, needs: [".next/BUILD_ID", "scripts/check-approval.mjs", "fixtures/approval/index.json", "fixtures/approval/verify.mjs"], run: (ctx) => script("scripts/check-approval.mjs", [ctx.base]) },
   // GT-07: the order authorization (issuer, verifier, atomic claim, lookup, dispatch-time revalidate), against the production build.
-  // The server and the script share a random per-run CONTEXT_SECRET (to mint an expired row) and ORDER_AUTH_CONSUMER_KEY (to sign consumer requests); neither is the published fixture key.
+  // The server and the script share a random per-run ORDER_AUTH_SIGNING_KEYS (to mint an expired row), CONTEXT_SECRET (to show it never verifies
+  // an authorization) and ORDER_AUTH_CONSUMER_KEY (to sign consumer requests); none is a published fixture key.
   "order-auth": {
     server: true,
-    env: () => ({ CONTEXT_SECRET: randomBytes(24).toString("hex"), ORDER_AUTH_CONSUMER_KEY: randomBytes(24).toString("hex") }),
+    env: () => ({
+      CONTEXT_SECRET: randomBytes(24).toString("hex"),
+      ORDER_AUTH_CONSUMER_KEY: randomBytes(24).toString("hex"),
+      ORDER_AUTH_SIGNING_KEYS: JSON.stringify({ v: 1, keys: [{ kid: `order-auth-g${randomBytes(2).readUInt16BE()}`, state: "active", activatedAt: new Date(Date.now() - 60_000).toISOString(), key: randomBytes(32).toString("base64url") }] }),
+    }),
     needs: [".next/BUILD_ID", "scripts/check-order-auth.mjs", "fixtures/order-authorization/index.json", "fixtures/order-authorization/verify.mjs"],
     run: (ctx) => script("scripts/check-order-auth.mjs", [ctx.base], ctx.env),
   },
@@ -60,6 +69,19 @@ const SUITES = {
   "backup-drill": { server: false, needs: [".next/BUILD_ID", "scripts/restore-backup.mjs"], run: backupDrill },
 };
 
+// Deliberately outside the independent leaf catalog: `all` remains every declared
+// leaf, not a recursive alias or a substitute for this correlated journey.
+const INTEGRATION = {
+  server: true,
+  needs: [".next/BUILD_ID", "scripts/check-integration.mjs", "scripts/lib/integration-evidence.mjs", "scripts/lib/download-browser-sessions.mjs"],
+  env: () => ({
+    TICKETSTUB_INTEGRATION_FIXTURE: "1", TICKETSTUB_RUNTIME_MODE: "demo",
+    DODO_PAYMENTS_API_KEY: undefined, DODO_PAYMENTS_WEBHOOK_KEY: undefined, DODO_PAYMENTS_PRODUCT_ID: undefined,
+    STRIPE_SECRET_KEY: undefined, STRIPE_WEBHOOK_SECRET: undefined,
+  }),
+  run: (ctx) => script("scripts/check-integration.mjs", [ctx.base, join(evidenceDir, "integration")], ctx.env),
+};
+
 function parseArgs(argv) {
   const out = {};
   for (let i = 0; i < argv.length; i++) {
@@ -73,18 +95,24 @@ function parseArgs(argv) {
 
 function fail(msg) {
   console.error(`verify:product: ${msg}`);
-  console.error(`usage: npm run verify:product -- --suite <${Object.keys(SUITES).join("|")}> --mode fixture --evidence-dir <dir>`);
+  console.error(`usage: npm run verify:product -- --suite <all|integration|${Object.keys(SUITES).join("|")}> --mode fixture --evidence-dir <dir>`);
   process.exit(2);
 }
 
 const args = parseArgs(process.argv.slice(2));
 if (!args.suite) fail("--suite is required");
 if (args.suite === "accessibility") args.suite = "a11y";
-const suite = Object.hasOwn(SUITES, args.suite) ? SUITES[args.suite] : null;
-if (!suite) fail(`unknown suite "${args.suite}"`);
+const suite = args.suite === "integration" ? INTEGRATION : Object.hasOwn(SUITES, args.suite) ? SUITES[args.suite] : null;
+if (!suite && args.suite !== "all") fail(`unknown suite "${args.suite}"`);
 if (args.mode !== "fixture") fail(`unsupported --mode "${args.mode ?? ""}": only "fixture" runs without live services`);
 if (!args["evidence-dir"]) fail("--evidence-dir is required");
 const evidenceDir = resolve(args["evidence-dir"]);
+
+if (args.suite === "all") {
+  const { runAllProductSuites } = await import("./lib/product-suite-all.mjs");
+  const result = await runAllProductSuites({ root, dispatcher: fileURLToPath(import.meta.url), suites: Object.keys(SUITES), evidenceDir });
+  process.exit(result.exitCode);
+}
 
 // ---- bookkeeping ----
 const steps = [];
@@ -115,7 +143,7 @@ const gitDirty = git("status", "--porcelain") === null ? null : git("status", "-
 /** The child environment: no provider keys, no mail key, a throwaway database. */
 function childEnv(extra = {}) {
   const env = { ...process.env };
-  for (const k of ["OPENAI_API_KEY", "ANTHROPIC_API_KEY", "TICKETMASTER_API_KEY", "RESEND_API_KEY", "TICKETSTUB_RUNTIME_MODE", "APP_URL"]) delete env[k];
+  for (const k of ["OPENAI_API_KEY", "ANTHROPIC_API_KEY", "TICKETMASTER_API_KEY", "RESEND_API_KEY", "TICKETSTUB_RUNTIME_MODE", "APP_URL", "APPROVAL_SIGNING_KEYS", "ORDER_AUTH_SIGNING_KEYS"]) delete env[k];
   return {
     ...env,
     NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ""} --import ${guardUrl}`.trim(),
@@ -131,10 +159,10 @@ function childEnv(extra = {}) {
 function runNode(nodeArgs, env) {
   return new Promise((done) => {
     const child = spawn(process.execPath, nodeArgs, { cwd: root, env, stdio: ["ignore", "pipe", "pipe"] });
-    let out = "";
-    child.stdout.on("data", (d) => (out += d));
-    child.stderr.on("data", (d) => (out += d));
-    child.on("close", (code) => done({ code: code ?? 1, out }));
+    let out = "", stdout = "", stderr = "";
+    child.stdout.on("data", (d) => { stdout += d; out += d; });
+    child.stderr.on("data", (d) => { stderr += d; out += d; });
+    child.on("close", (code) => done({ code: code ?? 1, out, stdout, stderr }));
   });
 }
 
@@ -287,7 +315,8 @@ async function foundation({ base }) {
     // the second GET is a hard reload: a full document request with no client navigation state
     for (const pass of ["entry", "reload"]) {
       const s = await staff.get(path);
-      record(`staff ${path} ${pass} renders the fixture mount`, s.status === 200 && s.text.includes("data-admin-fixture") && s.text.includes(`data-admin-path="${want}"`) && s.text.includes("ts-admin"), `got ${s.status}`);
+      record(`staff ${path} ${pass} renders the guarded unavailable host`, s.status === 200 && s.text.includes("data-admin-fixture") && s.text.includes('data-admin-host="trusted-context/1"') && s.text.includes(`data-admin-path="${want}"`) && s.text.includes("ts-admin") && s.text.includes('data-finance-state="unavailable"'), `got ${s.status}`);
+      record(`staff ${path} ${pass} receives /2 display context without a signed credential`, s.text.includes("ticketstub.context/2") && !s.text.includes("eyJhbGciOiJIUzI1NiI") && !s.text.includes('\\"token\\":'));
     }
   }
   const deep = await staff.get("/admin/x/y");
@@ -688,7 +717,10 @@ try {
   } else {
     // the guard has to work before anything is trusted to it
     const probe = await runNode(["--import", guardUrl, "--input-type=module", "-e", "try { await fetch('https://example.com/'); console.log('REACHED'); } catch (e) { console.log(e.code); }"], { ...process.env, VERIFY_NET_LOG: join(tmp, "selftest.log") });
-    record("fixture mode refuses outbound network", probe.out.trim() === "ETICKETSTUB_FIXTURE_NETWORK", probe.out.trim());
+    const probeResult = summarizeNetworkProbe(probe.code, probe.stdout, probe.stderr);
+    process.stderr.write(probe.stderr);
+    record("fixture mode refuses outbound network", probeResult.ok, `exit ${probe.code}: ${probe.stdout.trim()}`);
+    Object.assign(steps.at(-1), probeResult);
     const ctx = {};
     if (suite.server) {
       let extra = { ...(suite.serverEnv ?? {}) };

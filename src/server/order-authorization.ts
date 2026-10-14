@@ -4,7 +4,9 @@ import { CAPABILITY_VERSION, authorizationGate, quoteIdFor, runtimeMode, variant
 import type { Finish, Material, Stub } from "@/customer/studio/types";
 import { bindingNow } from "./approval";
 import { canonicalJson as approvalJson, hashesOf, type ApprovalRecord } from "./approval-token";
-import { tokenSigningKey, contextEnvironment, signingMode, type RequestContext } from "./context";
+import { contextEnvironment, type RequestContext } from "./context";
+import { secretsCollide, type Keyring } from "./keyring";
+import { orderAuthKeyring, requireOrderAuthKeyring } from "./signing-keys";
 import { HttpError } from "./http";
 import { getStorage } from "./index";
 import {
@@ -27,6 +29,7 @@ import {
   type OrderAuthExpectation,
   type OrderAuthFailure,
   type OrderAuthIntent,
+  type OrderAuthKeys,
   type OrderAuthProvider,
   type OrderAuthRecord,
   type OrderAuthState,
@@ -98,15 +101,15 @@ function stateOf(snap: OrderAuthSnapshot, rec: OrderAuthRecord, who: { consumer:
 /** The consumer's expectation if it held exactly what the record binds. For the issuer's own status and lookup answers. */
 const selfExpect = (rec: OrderAuthRecord): OrderAuthExpectation => ({ tenant: rec.tenant.id, project: rec.project, action: rec.action, provider: rec.provider, terms: rec.terms });
 
-async function viewOf(row: OrderAuthRow, key: string, now: number): Promise<OrderAuthView> {
+async function viewOf(row: OrderAuthRow, keys: Keyring, now: number): Promise<OrderAuthView> {
   const rec = parseRecord(row);
-  const token = signOrderAuthorization(rec, key);
+  const token = signOrderAuthorization(rec, keys.signer()); // re-signed on demand with the active key
   const snap = await getStorage().getOrderAuthSnapshot(row.id);
   let status: OrderAuthStatus;
   if (row.revokedAt !== null) status = "revoked";
   else if (snap.claim) status = "claimed";
   else {
-    const r = verifyOrderAuthorization(token, key, selfExpect(rec), now, stateOf(snap, rec, null, now), "verify");
+    const r = verifyOrderAuthorization(token, (kid, keyTime) => keys.lookup(kid, now, keyTime), selfExpect(rec), now, stateOf(snap, rec, null, now), "verify");
     status = r.ok ? "active" : r.reason === "expired" ? "expired" : r.reason === "revoked" ? "revoked" : "stale";
   }
   return { authorization: rec, status, revokedAt: row.revokedAt === null ? null : iso(row.revokedAt), claimedAt: snap.claim ? iso(snap.claim.claimedAt) : null, token };
@@ -135,7 +138,7 @@ export interface IssueInput {
  */
 export async function issueOrderAuthorization(ctx: RequestContext, input: IssueInput): Promise<{ view: OrderAuthView; created: boolean }> {
   if (ctx.actor.kind !== "account") throw new HttpError(401, "unauthorized", "Sign in with an emailed link to do that.");
-  const key = tokenSigningKey(); // 503 in live mode without CONTEXT_SECRET, before anything is written
+  const keys = requireOrderAuthKeyring(); // 503 in live mode without ORDER_AUTH_SIGNING_KEYS (or with an invalid set), before anything is written
   const actorId = ctx.actor.id;
   const now = Date.now();
   const reqHash = hashJson({ stubId: input.stubId, approvalId: input.approvalId, orderRef: input.orderRef, quantity: input.quantity, provider: input.provider, quote: input.quote, destination: input.destination });
@@ -182,7 +185,7 @@ export async function issueOrderAuthorization(ctx: RequestContext, input: IssueI
       membershipRevision: ctx.membershipRevision,
       notAuthorizes: ORDER_AUTH_NOT_AUTHORIZED,
       environment: contextEnvironment(),
-      mode: signingMode(),
+      mode: keys.mode,
       issuedAt: iso(now),
       expiresAt: iso(now + ORDER_AUTH_TTL_MS),
     };
@@ -190,15 +193,15 @@ export async function issueOrderAuthorization(ctx: RequestContext, input: IssueI
   });
   if (res === null) throw new HttpError(404, "not_found", "We couldn't find that.");
   if (res === "conflict") throw conflict("That idempotency key was used for a different request.");
-  return { view: await viewOf(res.row, key, now), created: res.created };
+  return { view: await viewOf(res.row, keys, now), created: res.created };
 }
 
 /** Every authorization for the owner's stub, newest first, each with its current status. */
 export async function listOrderAuthorizations(tenant: string, stubId: string): Promise<OrderAuthView[]> {
-  const key = tokenSigningKey();
+  const keys = requireOrderAuthKeyring();
   const now = Date.now();
   const rows = await getStorage().listOrderAuthorizations(tenant, stubId);
-  return Promise.all(rows.map((r) => viewOf(r, key, now)));
+  return Promise.all(rows.map((r) => viewOf(r, keys, now)));
 }
 
 /** Adds the revocation row. The record and any claim stay: only its authority ends, and a dispatch-time revalidate sees it. */
@@ -210,12 +213,14 @@ export async function revokeOrderAuthorization(tenant: string, stubId: string, i
 // Consumer side. Authentication is a stopgap: one shared HMAC key, request signing, one consumer id.
 // ---------------------------------------------------------------------------------------------
 
-/** ORDER_AUTH_CONSUMER_KEY, at least 32 characters. Never the published fixture key, never CONTEXT_SECRET. Null means the consumer port is off. */
+/** ORDER_AUTH_CONSUMER_KEY, at least 32 characters. Never the published fixture key, never CONTEXT_SECRET (raw or decoded). Null means the consumer port is off. */
 function consumerKey(): string | null {
   const k = process.env.ORDER_AUTH_CONSUMER_KEY?.trim();
   if (!k || k.length < 32 || k.includes("FIXTURE-ONLY")) return null;
   const ctx = process.env.CONTEXT_SECRET?.trim();
-  return ctx && k === ctx ? null : k;
+  // Refused when it is CONTEXT_SECRET in either reading (the same string, or one is the other's base64url), so one pasted
+  // value never covers both context tokens and consumer requests.
+  return ctx && (k === ctx || secretsCollide(k, ctx)) ? null : k;
 }
 
 /**
@@ -324,13 +329,10 @@ export const LOGGED_REFUSALS: ReadonlySet<string> = new Set(["changed_terms", "r
 export const ORDER_AUTH_REASON_STATUS: Record<string, number> = { already_claimed: 409, idempotency_conflict: 409 };
 
 /** Signature, shape, scope and terms from the token alone, then the issuer's record of the id. A failure here needs no storage state to be final. */
-async function preflight(token: string, expect: OrderAuthExpectation, now: number, intent: OrderAuthIntent): Promise<{ key: string; id: string } | { fail: OrderAuthVerifyResult & { ok: false } }> {
-  let key: string;
-  try {
-    key = tokenSigningKey();
-  } catch {
-    return { fail: { ok: false, reason: "forged" } }; // no key, nothing can be valid
-  }
+async function preflight(token: string, expect: OrderAuthExpectation, now: number, intent: OrderAuthIntent): Promise<{ key: OrderAuthKeys; id: string } | { fail: OrderAuthVerifyResult & { ok: false } }> {
+  const keyring = orderAuthKeyring();
+  if (!keyring) return { fail: { ok: false, reason: "forged" } }; // no usable key set, nothing can be valid
+  const key: OrderAuthKeys = (kid, keyTime) => keyring.lookup(kid, now, keyTime);
   const first = verifyOrderAuthorization(token, key, expect, now, undefined, intent);
   if (!first.ok && (first.reason === "invalid_clock" || first.reason === "unknown" || first.reason === "forged" || first.reason === "unsupported_version")) return { fail: first };
   const id = orderAuthIdOf(token);
@@ -415,13 +417,9 @@ export async function lookupOrderClaim(tenant: string, stubId: string, idemKey: 
   if (hit && hit.claim.tenant === tenant && hit.project === stubId) {
     const snap = await storage.getOrderAuthSnapshot(hit.claim.authorizationId, CONSUMER_ID, idemKey);
     const rec = parseRecord(snap.auth as OrderAuthRow);
-    let key: string;
-    try {
-      key = tokenSigningKey();
-    } catch {
-      return { found: true, claim: claimResult(hit.claim), authority: { ok: false, reason: "forged" } };
-    }
-    const r = verifyOrderAuthorization(signOrderAuthorization(rec, key), key, { ...selfExpect(rec), claimReference: hit.claim.claimRef }, now, stateOf(snap, rec, { consumer: CONSUMER_ID, idemKey }, now), "revalidate");
+    const keyring = orderAuthKeyring();
+    if (!keyring) return { found: true, claim: claimResult(hit.claim), authority: { ok: false, reason: "forged" } };
+    const r = verifyOrderAuthorization(signOrderAuthorization(rec, keyring.signer()), (kid, keyTime) => keyring.lookup(kid, now, keyTime), { ...selfExpect(rec), claimReference: hit.claim.claimRef }, now, stateOf(snap, rec, { consumer: CONSUMER_ID, idemKey }, now), "revalidate");
     return { found: true, claim: claimResult(hit.claim), authority: r.ok ? { ok: true } : { ok: false, reason: r.reason } };
   }
   if (authorizationId) {

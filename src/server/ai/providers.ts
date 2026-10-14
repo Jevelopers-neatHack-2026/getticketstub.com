@@ -46,6 +46,31 @@ type Json = Record<string, unknown>;
 const object = (value: unknown): Json => value !== null && typeof value === "object" && !Array.isArray(value) ? value as Json : {};
 const identifier = (value: unknown): string | undefined => typeof value === "string" && !/(?:sk-|bearer|secret|token|api[_-]?key)/i.test(value) && /^[a-zA-Z0-9][a-zA-Z0-9_./:-]{0,159}$/.test(value) ? value : undefined;
 
+// Images API inventory checked 2026-10-12:
+// https://developers.openai.com/api/reference/resources/images/methods/generate
+// These compatible IDs are not account eligibility or an approved production selection.
+// Older IDs remain explicit compatibility choices; never select or upgrade a model implicitly.
+const directImageModels = new Set([
+  "gpt-image-1", "gpt-image-1-mini", "gpt-image-1.5",
+  "gpt-image-2", "gpt-image-2-2026-04-21",
+  "gpt-image-2.5-sunburst", "gpt-image-2.5-sunburst-2026-09-08",
+  "gpt-image-2.5-flare", "gpt-image-2.5-flare-2026-09-08", "chatgpt-image-latest",
+]);
+
+function directImageModel(): string {
+  // The studio owns TICKETSTUB_ART_MODEL for deployed execution. GPT_IMAGE_MODEL
+  // remains a direct-OpenAI compatibility alias, never a subscription-access grant.
+  const selected = process.env.TICKETSTUB_ART_MODEL?.trim();
+  const legacy = process.env.GPT_IMAGE_MODEL?.trim();
+  if (selected === "" || legacy === "" || (selected !== undefined && legacy !== undefined && selected !== legacy)) {
+    throw new ProviderError("invalid_model_configuration", 503);
+  }
+  const model = identifier(selected ?? legacy);
+  if (!model || !/^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(model)) throw new ProviderError("invalid_model_configuration", 503);
+  if (!directImageModels.has(model)) throw new ProviderError("unsupported_image_model", 422);
+  return model;
+}
+
 function config(capability: Capability): Config | undefined {
   if (typeof window !== "undefined") throw new ProviderError("server_only", 500);
   if (process.env.TICKETSTUB_RUNTIME_MODE !== "live") return undefined;
@@ -56,10 +81,10 @@ function config(capability: Capability): Config | undefined {
   }
   const key = process.env[provider === "openrouter" ? `${prefix}_OPENROUTER_API_KEY` : provider === "openai" ? "OPENAI_API_KEY" : "ANTHROPIC_API_KEY"]?.trim();
   if (!key) {
-    if (provider === "openrouter") throw new ProviderError("missing_provider_key", 503);
-    return undefined; // Retain the optional direct-provider prototype behavior.
+    if (provider === "openrouter" || capability === "art") throw new ProviderError("missing_provider_key", 503);
+    return undefined; // Retain the optional direct text-provider prototype behavior.
   }
-  const model = provider === "openrouter" ? process.env[`${prefix}_MODEL`] : capability === "art" ? "gpt-image-1" : "claude-sonnet-5-5";
+  const model = provider === "openrouter" ? process.env[`${prefix}_MODEL`] : capability === "art" ? directImageModel() : "claude-sonnet-5-5";
   if (typeof model !== "string" || !identifier(model) || (provider === "openrouter" && !/^(openai|anthropic)\/[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(model))) {
     throw new ProviderError("invalid_model_configuration", 503);
   }
@@ -67,6 +92,11 @@ function config(capability: Capability): Config | undefined {
     throw new ProviderError("unsupported_image_model", 422);
   }
   return { capability, provider, model, key };
+}
+
+/** Validate local server image configuration before quota admission; account access remains a provider check. */
+export function imageProviderConfigured(): boolean {
+  return config("art") !== undefined;
 }
 
 function metadata(c: Config, data: Json): ProviderMetadata {

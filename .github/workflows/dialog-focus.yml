@@ -5,6 +5,7 @@ on:
     paths:
       - 'src/customer/a11y/**'
       - 'scripts/check-dialog-focus.mjs'
+      - 'scripts/check-dialog-focus-regressions.mjs'
       - 'scripts/lib/cdp.mjs'
       - '.github/workflows/dialog-focus.yml'
       - 'package.json'
@@ -15,6 +16,7 @@ on:
     paths:
       - 'src/customer/a11y/**'
       - 'scripts/check-dialog-focus.mjs'
+      - 'scripts/check-dialog-focus-regressions.mjs'
       - 'scripts/lib/cdp.mjs'
       - '.github/workflows/dialog-focus.yml'
       - 'package.json'
@@ -45,6 +47,11 @@ jobs:
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/dialog-focus-evidence"
           node scripts/check-dialog-focus.mjs "$RUNNER_TEMP/dialog-focus-evidence" 2>&1 | tee "$RUNNER_TEMP/dialog-focus-evidence/native.log"
+      - name: Autofocus, editing-host and iframe review regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/check-dialog-focus-regressions.mjs "$RUNNER_TEMP/dialog-focus-evidence" 2>&1 | tee "$RUNNER_TEMP/dialog-focus-evidence/native-regressions.log"
       - run: npm run build
       - name: Existing production React accessibility suite (offline fixtures)
         shell: bash

@@ -167,11 +167,12 @@ button {
 
 /* Reduced motion (GT-11.3): nothing loops, nothing travels. Every animation is one instant step to its end state, so
    no shimmer, pulse or drift keeps going and nothing can flash. Script-driven motion asks the same question itself
-   (matchMedia in the printing feed, the tilt, the tear, both cameras and the cart flight). */
+   (matchMedia in the printing feed, the tilt, the tear, both cameras and the cart flight). The landing hosts
+   follow their effective Motion switch mode after mount; the embedded studio still follows this OS preference. */
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
+  *:not(:where(.lp[data-motion="2d"] .lp-host *, .lp[data-motion="3d"] .lp-host *)),
+  *:not(:where(.lp[data-motion="2d"] .lp-host *, .lp[data-motion="3d"] .lp-host *))::before,
+  *:not(:where(.lp[data-motion="2d"] .lp-host *, .lp[data-motion="3d"] .lp-host *))::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     animation-delay: 0s !important;

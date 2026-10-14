@@ -29,6 +29,15 @@ export interface Composition {
   size: string;
 }
 
+/** The server canonicalizes object keys; equality depends on the four bound
+ * composition values, never their insertion order in a JSON response. */
+export function sameComposition(value: unknown, current: Composition): boolean {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const bound = value as Record<string, unknown>;
+  return (["edition", "material", "finish", "size"] as const).every((key) =>
+    Object.hasOwn(bound, key) && typeof bound[key] === "string" && bound[key] === current[key]);
+}
+
 const EVENT_LINES: [keyof Stub["event"], string][] = [
   ["type", "Kind of event"],
   ["title", "Title"],

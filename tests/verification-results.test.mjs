@@ -4,14 +4,15 @@ import { spawnSync } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { summarizeNetworkProbe } from "../scripts/lib/check-result.mjs";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 
 // Run the actual dispatcher and network guard, unchanged, in a throwaway tree.
 // Only the check process is synthetic: it lets the real CLI consume contradictory,
 // missing and skipped reports without weakening any application check.
-function runDispatcher(t, { output = "", errorOutput = "", exitCode = 0, suite = "creative", missingFixture = false } = {}) {
+function runDispatcher(t, { output = "", errorOutput = "", exitCode = 0, suite = "creative", missingFixture = false, probeWarning = false } = {}) {
   const root = mkdtempSync(join(tmpdir(), "ticketstub-verification-result-"));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   for (const file of ["scripts/verify-product.mjs", "scripts/lib/fixture-network-guard.mjs", "scripts/lib/check-result.mjs"]) {
@@ -26,11 +27,15 @@ function runDispatcher(t, { output = "", errorOutput = "", exitCode = 0, suite =
     `process.exitCode = ${exitCode};`,
   ].join("\n"));
   const evidenceDir = join(root, "evidence");
+  const env = { ...process.env };
+  if (probeWarning) {
+    const warning = join(root, "probe-warning.mjs");
+    writeFileSync(warning, "process.emitWarning(\"probe warning retained\", { code: \"ETICKETSTUB_TEST_WARNING\" });\n");
+    env.NODE_OPTIONS = `${env.NODE_OPTIONS ?? ""} --import ${pathToFileURL(warning).href}`.trim();
+  }
   const run = spawnSync(process.execPath, [join(root, "scripts/verify-product.mjs"), "--suite", suite, "--mode", "fixture", "--evidence-dir", evidenceDir], {
     cwd: root,
-    // Native experimental warnings otherwise contaminate the guard's exact-output
-    // self-check on some Node environments; synthetic stdout/stderr stay intact.
-    env: { ...process.env, NODE_OPTIONS: "", NODE_NO_WARNINGS: "1" },
+    env,
     encoding: "utf8",
     timeout: 15000,
   });
@@ -116,4 +121,30 @@ test("missing required fixtures fail without running a successful child", (t) =>
   assert.equal(run.step, undefined);
   assert.ok(run.evidence.steps.some((s) => s.ok === false && /missing/.test(s.detail)));
   assert.ok(!run.stdout.includes("PASS should not execute"));
+});
+
+test("network probe accepts its exact stdout token with stderr warnings and retains both streams", () => {
+  const stdout = "ETICKETSTUB_FIXTURE_NETWORK\n", stderr = "(node:12) [UNDICI-EHPA] Warning: EnvHttpProxyAgent is experimental\n";
+  assert.deepEqual(summarizeNetworkProbe(0, stdout, stderr), { exitCode: 0, stdout, stderr, ok: true });
+});
+for (const scenario of [
+  { name: "nonzero exit with valid token", code: 7, stdout: "ETICKETSTUB_FIXTURE_NETWORK\n" },
+  { name: "missing exit status", code: null, stdout: "ETICKETSTUB_FIXTURE_NETWORK\n" },
+  { name: "unexpected token", code: 0, stdout: "REACHED\n" },
+  { name: "missing token", code: 0, stdout: "" },
+  { name: "additional stdout", code: 0, stdout: "ETICKETSTUB_FIXTURE_NETWORK\nREACHED\n" },
+  { name: "token only on stderr", code: 0, stdout: "", stderr: "ETICKETSTUB_FIXTURE_NETWORK\n" },
+]) test(`network probe rejects ${scenario.name}`, () => {
+  assert.equal(summarizeNetworkProbe(scenario.code, scenario.stdout, scenario.stderr ?? "").ok, false);
+});
+
+test("actual dispatcher passes the real offline guard with inherited preload warnings and preserves diagnostics", (t) => {
+  const run = runDispatcher(t, { output: "PASS synthetic fixture assertion\n", probeWarning: true });
+  assert.equal(run.status, 0, detail(run));
+  const probe = run.evidence.steps.find(s => s.name === "fixture mode refuses outbound network");
+  assert.equal(probe.ok, true);
+  assert.equal(probe.exitCode, 0);
+  assert.equal(probe.stdout, "ETICKETSTUB_FIXTURE_NETWORK\n");
+  assert.match(probe.stderr, /ETICKETSTUB_TEST_WARNING.*probe warning retained/);
+  assert.match(run.stderr, /ETICKETSTUB_TEST_WARNING.*probe warning retained/);
 });

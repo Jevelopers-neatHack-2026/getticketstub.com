@@ -45,8 +45,13 @@ test("tear has a slider with keys and a button, and a tear strip button", () => 
   assert.match(read("customer/studio/editor/TearStrip.tsx"), /<button\s+type="button"[\s\S]*onClick=\{\(\) => \{[\s\S]*onTear\(\);/);
 });
 
-test("scripted motion checks prefers-reduced-motion", () => {
-  for (const p of ["customer/studio/stub/TearGesture.tsx", "customer/studio/stub/useTilt.ts", "app/wall/useBoardCamera.ts", "app/organizer/PrintRun.tsx"]) {
+test("scripted motion checks prefers-reduced-motion directly or through its shared hook", () => {
+  for (const p of ["customer/studio/stub/TearGesture.tsx", "app/wall/useBoardCamera.ts", "app/organizer/PrintRun.tsx"]) {
     assert.match(read(p), /prefers-reduced-motion: reduce/, p);
   }
+  const tilt = read("customer/studio/stub/useTilt.ts");
+  assert.match(tilt, /import \{ useReducedMotion \} from "@\/customer\/landing\/MotionContext"/);
+  assert.match(tilt, /const reduced = useReducedMotion\(\)/);
+  assert.match(tilt, /if \(reduced\)/, "tilt uses the shared preference to select its static pose");
+  assert.match(read("customer/landing/MotionContext.tsx"), /prefers-reduced-motion: reduce/, "the shared hook still reads the OS preference");
 });

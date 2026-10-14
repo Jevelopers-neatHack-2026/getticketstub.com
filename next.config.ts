@@ -15,6 +15,9 @@ function buildCommit(): string {
 // request; Cache Components prerendering adds nothing here yet.
 const nextConfig: NextConfig = {
   env: { TICKETSTUB_BUILD_COMMIT: buildCommit() },
+  // Owned runtimes load their pinned contract catalogs/native codecs from
+  // package resources. Preserve those server package boundaries in builds.
+  serverExternalPackages: ["creative-engine", "@jevelopers/cost-intelligence", "pg", "sharp"],
   // One canonical origin: localStorage is per-origin, so stubs made on www would not show on the
   // apex (and vice versa).
   async redirects() {
