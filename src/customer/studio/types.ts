@@ -34,6 +34,8 @@ export interface ReviewAsset {
 
 /** One entry in a stub's correction history. Entries are never edited or removed; an undo is a new entry (GT-05). */
 export interface Correction {
+  /** Legacy duplicate IDs made this history entry's target unknowable. Retained for audit only. */
+  unresolvedIdentity?: true;
   id: string;
   factId: string;
   kind: "correct" | "confirm" | "undo";

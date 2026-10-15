@@ -33,7 +33,7 @@ export function isIsoDate(v: string): boolean {
 
 export function entries(stub: History, factId?: string): Correction[] {
   const all = stub.corrections ?? [];
-  return factId ? all.filter((c) => c.factId === factId) : all;
+  return factId ? all.filter((c) => c.factId === factId && !c.unresolvedIdentity) : all;
 }
 
 /** The entry that currently decides a fact: corrections and confirmations not yet undone, latest first. Undefined when there is none. */

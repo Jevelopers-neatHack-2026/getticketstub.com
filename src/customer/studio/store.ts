@@ -3,6 +3,7 @@
 // Old share links carry the stub itself (see encodeStub),
 // so memory pages work without a backend. Storage can throw (private mode): every access is guarded.
 import type { Correction, Stub } from "./types";
+import { normalizeStubFacts } from "./facts/identity";
 import { releasable, releaseOldest, retainArt } from "./versions/retention";
 import { applyCorrection, entries, undoCorrection, type CorrectionInput } from "./facts/corrections";
 import { storageFailure, storageReason } from "@/customer/flows/events";
@@ -46,7 +47,7 @@ export function saveDeleted(ids: string[]): boolean {
 export function loadWall(): Stub[] {
   try {
     const raw = localStorage.getItem(KEY);
-    return raw ? (JSON.parse(raw) as Stub[]) : [];
+    return raw ? (JSON.parse(raw) as Stub[]).map(normalizeStubFacts) : [];
   } catch (e) {
     storageFailure("wall", "read", e);
     return [];
@@ -65,6 +66,7 @@ export function writeWall(stubs: Stub[]): boolean {
 
 /** As writeWall, plus how many older pictures had to be released to fit (0 when everything was kept). */
 export function writeWallDetailed(stubs: Stub[]): { ok: boolean; released: number } {
+  stubs = stubs.map(normalizeStubFacts);
   const total = releasable(stubs).length;
   const attempt = (n: number): unknown => {
     try {

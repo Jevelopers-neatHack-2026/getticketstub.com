@@ -1,6 +1,7 @@
 // Browser-side calls to the research, art and agent routes. Errors carry user-facing copy.
 import type { ArtLayer, EventData, Stub } from "../types";
 import { currentVersion } from "../types";
+import { normalizeEventFacts } from "../facts/identity";
 import { codeOf, messageFor } from "@/customer/feedback-messages/messages";
 import { track, type EventParams } from "@/customer/analytics/track";
 import { AGENT_SCHEMA, parsePlan, type AgentRequest, type AgentResponse } from "../agent/protocol";
@@ -136,7 +137,7 @@ export function pickEvent(data: EventData): EventData {
       },
     ];
   }
-  return event;
+  return normalizeEventFacts(event);
 }
 
 /** Research one event from a link (or a demo keyword). Throws Error(message) on failure. */

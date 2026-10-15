@@ -73,8 +73,14 @@ export function setFactValue(stub: Stub, factId: string, value: string, reason?:
 }
 
 export function toggleKept(stub: Stub, factId: string): Stub {
+  if (stub.event.facts.filter((f) => f.id === factId).length !== 1) return stub;
   const facts = stub.event.facts.map((f) => (f.id === factId ? { ...f, kept: !f.kept } : f));
   return { ...stub, event: { ...stub.event, facts } };
+}
+
+/** Resolve queued UI actions against the current project, rather than a rendered snapshot. */
+export function toggleProjectFact(current: Stub, projectId: string, factId: string): Stub {
+  return current.id === projectId ? toggleKept(current, factId) : current;
 }
 
 export function setHidden(stub: Stub, field: string, hidden: boolean): Stub {

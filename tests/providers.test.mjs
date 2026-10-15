@@ -242,6 +242,21 @@ test("research rejects malformed enrichment with a safe provider error", async (
   assert.equal(result.status, 502); assert.equal((await result.json()).error.code, "invalid_provider_response");
 });
 
+test("research enrichment and browser ingestion keep repeated categories independently addressable", async () => {
+  configure("research");
+  const items = ["other", "other", "run", "run"].map((id, i) => ({ id, label: `Extra ${i}`, value: `Value ${i}`, evidence: "offline evidence", confidence: .9 }));
+  globalThis.fetch = async url => url === "https://example.com/test-event"
+    ? new Response('<script type="application/ld+json">{"@type":"MusicEvent","name":"Offline Test"}</script><p>offline evidence</p>')
+    : response(textResponse(JSON.stringify(items)));
+  const result = await research.POST(req({ url: "https://example.com/test-event" }));
+  assert.equal(result.status, 200);
+  const event = client.pickEvent(await result.json());
+  const extras = event.facts.filter((f) => f.label.startsWith("Extra "));
+  assert.equal(extras.length, 4);
+  assert.equal(new Set(event.facts.map((f) => f.id)).size, event.facts.length);
+  assert.deepEqual(extras.map((f) => f.label), items.map((f) => f.label));
+});
+
 test("optional direct text simulates but live art requires server API credentials", async () => {
   process.env.TICKETSTUB_RUNTIME_MODE = "live";
   delete process.env.TICKETSTUB_AGENT_PROVIDER; delete process.env.TICKETSTUB_ART_PROVIDER;

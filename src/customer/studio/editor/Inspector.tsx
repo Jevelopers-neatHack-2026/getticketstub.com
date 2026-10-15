@@ -55,11 +55,12 @@ interface Props {
   stub: Stub;
   selected: Selectable | null;
   onChange: (s: Stub) => void;
+  onToggleFact: (projectId: string, factId: string) => void;
   onDeselect: () => void;
   onRemix: () => void;
 }
 
-export function Inspector({ stub, selected: sel, onChange, onDeselect, onRemix }: Props) {
+export function Inspector({ stub, selected: sel, onChange, onToggleFact, onDeselect, onRemix }: Props) {
   const meta = EDITION_META[currentVersion(stub).edition];
   const ev = stub.event;
   const fonts = (meta?.fontPairs ?? []).map((stack, i) => ({ value: String(i), label: fontName(stack, `Font ${i + 1}`), stack }));
@@ -152,7 +153,7 @@ export function Inspector({ stub, selected: sel, onChange, onDeselect, onRemix }
           </span>
         }
       >
-        <FactsReview stub={stub} onChange={onChange} />
+        <FactsReview stub={stub} onChange={onChange} onToggleFact={onToggleFact} />
       </DeskPanel>
 
       <DeskPanel title="Versions" meta={<span className={`${styles.num} ${styles.plain}`}>{stub.versions.filter((v) => !v.id.startsWith("preview-")).length} made</span>} defaultOpen={false}>

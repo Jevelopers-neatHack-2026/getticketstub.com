@@ -7,7 +7,7 @@ import { useId, useState } from "react";
 import type { Correction, Fact, Stub } from "../types";
 import { haptic, play } from "@/customer/studio/feedback";
 import { MarkLegend, PaperButton, SourceMark, Tag, Tags, TearLink } from "@/customer/desk/Desk";
-import { altLabel, toggleKept } from "../editor/ops";
+import { altLabel } from "../editor/ops";
 import {
   ASSET_WORDS,
   activeCorrection,
@@ -151,7 +151,7 @@ function History({ c }: { c: Correction }) {
   );
 }
 
-function FactRow({ stub, f, group, onChange, onAsk }: { stub: Stub; f: Fact; group: FactGroup; onChange: (s: Stub) => void; onAsk: () => void }) {
+function FactRow({ stub, f, group, onChange, onToggleFact, onAsk }: { stub: Stub; f: Fact; group: FactGroup; onChange: (s: Stub) => void; onToggleFact: (projectId: string, factId: string) => void; onAsk: () => void }) {
   const [showOriginal, setShowOriginal] = useState(false);
   const id = useId();
   const active = activeCorrection(stub, f.id);
@@ -194,7 +194,7 @@ function FactRow({ stub, f, group, onChange, onAsk }: { stub: Stub; f: Fact; gro
             </Tag>
           )}
           {group !== "missing" && (
-            <Tag pressed={!!f.kept} aria-label={`${f.kept ? "On stub" : "Keep"}: ${f.label}`} onClick={() => onChange(toggleKept(stub, f.id))}>
+            <Tag pressed={!!f.kept} aria-label={`${f.kept ? "On stub" : "Keep"}: ${f.label}`} onClick={() => onToggleFact(stub.id, f.id)}>
               {f.kept ? "On stub" : "Keep"}
             </Tag>
           )}
@@ -225,7 +225,7 @@ function FactRow({ stub, f, group, onChange, onAsk }: { stub: Stub; f: Fact; gro
 }
 
 /** The whole review: open questions, then the facts in four groups, then any images we can't use. */
-export function FactsReview({ stub, onChange }: { stub: Stub; onChange: (s: Stub) => void }) {
+export function FactsReview({ stub, onChange, onToggleFact }: { stub: Stub; onChange: (s: Stub) => void; onToggleFact: (projectId: string, factId: string) => void }) {
   const [asking, setAsking] = useState<string | null>(null);
   const questions = openQuestions(stub);
   const groups = groupFacts(stub.event.facts, stub);
@@ -246,6 +246,9 @@ export function FactsReview({ stub, onChange }: { stub: Stub; onChange: (s: Stub
 
   return (
     <div className={styles.review}>
+      {stub.corrections?.some((c) => c.unresolvedIdentity) && (
+        <p className={styles.notice} role="status">Some older corrections referred to duplicate fact IDs. Their history is retained, but cannot be assigned to a particular row. Review those facts again.</p>
+      )}
       {shown.length > 0 && (
         <div className={styles.questions} role="group" aria-label="Questions about your facts">
           {shown.map((q) => (
@@ -263,7 +266,7 @@ export function FactsReview({ stub, onChange }: { stub: Stub; onChange: (s: Stub
             <p className={styles.groupNote}>{GROUP_NOTE[g]}</p>
             <ul className={styles.facts}>
               {groups[g].map((f) => (
-                <FactRow key={f.id} stub={stub} f={f} group={g} onChange={onChange} onAsk={() => setAsking(f.id)} />
+                <FactRow key={f.id} stub={stub} f={f} group={g} onChange={onChange} onToggleFact={onToggleFact} onAsk={() => setAsking(f.id)} />
               ))}
             </ul>
           </section>

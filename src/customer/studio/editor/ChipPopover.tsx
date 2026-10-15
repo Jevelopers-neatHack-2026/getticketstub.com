@@ -3,18 +3,18 @@ import type { Stub } from "../types";
 import { PaperSheet, SourceMark, Tag, Tags } from "@/customer/desk/Desk";
 import { FactQuestion, SourceLine } from "../facts/FactsReview";
 import { activeCorrection, openQuestions } from "../facts/corrections";
-import { toggleKept } from "./ops";
 import styles from "./overlays.module.css";
 
 interface Props {
   stub: Stub;
   factId: string | null;
   onChange: (s: Stub) => void;
+  onToggleFact: (projectId: string, factId: string) => void;
   onClose: () => void;
 }
 
 /** Tapping a chip on the stub: where the fact came from, and the short question when it needs an answer. The same question the Facts panel asks. */
-export function ChipPopover({ stub, factId, onChange, onClose }: Props) {
+export function ChipPopover({ stub, factId, onChange, onToggleFact, onClose }: Props) {
   const fact = factId ? stub.event.facts.find((f) => f.id === factId) : undefined;
   const question = fact ? openQuestions(stub).find((q) => q.factId === fact.id) : undefined;
   const mine = fact ? activeCorrection(stub, fact.id) : undefined;
@@ -29,7 +29,7 @@ export function ChipPopover({ stub, factId, onChange, onClose }: Props) {
           </p>
           {question && <FactQuestion stub={stub} q={question} onChange={onChange} onDone={onClose} />}
           <Tags>
-            <Tag pressed={!!fact.kept} onClick={() => onChange(toggleKept(stub, fact.id))}>
+            <Tag pressed={!!fact.kept} onClick={() => onToggleFact(stub.id, fact.id)}>
               {fact.kept ? "On the stub" : "Keep on stub"}
             </Tag>
           </Tags>
