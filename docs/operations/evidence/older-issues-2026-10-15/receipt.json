@@ -1,0 +1,370 @@
+{
+  "repository": "Jevelopers-neatHack-2026/getticketstub.com",
+  "cutoffInclusive": "2026-10-13T05:38:56Z",
+  "baseline": "3ded8581283ba0890b77659c996c1cee107c6cf9",
+  "implementationHead": "701fa67b4077679d1451627e1dcd67960609173e",
+  "providerMode": "offline synthetic fixtures; no paid provider calls",
+  "acceptance": "not_recorded",
+  "canonicalAssembly": false,
+  "deployments": 0,
+  "localEvidenceDirectory": "/tmp/ticketstub-older-issues",
+  "toolchain": {
+    "node": "22.23.3",
+    "npm": "11.16.0",
+    "initialNpm": "11.12.1",
+    "initialNode": "24.15.0"
+  },
+  "results": {
+    "fullUnits": {
+      "passed": 1029,
+      "failed": 0,
+      "skipped": 1
+    },
+    "separateRequiredPostgres": {
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0
+    },
+    "factsFinalHead": {
+      "childPassed": 78,
+      "wrapperPassed": 80,
+      "failed": 0,
+      "skipped": 0
+    },
+    "downloadFitBuild": {
+      "wrapperPassed": 242,
+      "failed": 0,
+      "skipped": 0
+    },
+    "a11yFitBuild": {
+      "wrapperPassed": 177,
+      "failed": 0,
+      "skipped": 0
+    },
+    "messages": {
+      "wrapperPassed": 218,
+      "failed": 0,
+      "skipped": 0
+    },
+    "dispatcher": {
+      "passed": 38,
+      "failed": 0
+    },
+    "focusedFinalFactUnits": {
+      "passed": 46,
+      "failed": 0
+    },
+    "build": {
+      "exitCode": 0
+    },
+    "typecheck": {
+      "exitCode": 0
+    },
+    "lint": {
+      "exitCode": 0,
+      "existingWarnings": 1
+    }
+  },
+  "limits": [
+    "Full-unit, download and a11y runs precede final status-text and screenshot/dispatcher-only follow-ups; final head was rebuilt and its facts dispatcher rerun.",
+    "Default PostgreSQL skip remains retained separately from the actual required five-test PostgreSQL pass.",
+    "No supported screen reader, physical-print acceptance, canonical real Assembly, provider acceptance, merge, hosted analytics or deployment acceptance.",
+    "Local fit detects text clipping; physical readability and all overlap conditions still need Product/print-layout review."
+  ],
+  "retainedLogs": [
+    {
+      "file": "sync-test.log",
+      "sha256": "0b4ba8289a6e6f71ef3fbdf3b076a58990a1c839a13b2ae9e078142cb0ce7230"
+    },
+    {
+      "file": "npm-ci.log",
+      "sha256": "e123bf6defad41c235f1ac386ae0a136edb5c213db9ee7a2806d9aadf9e92670"
+    },
+    {
+      "file": "sync-test-22.log",
+      "sha256": "37a838edb2801e5aeedfaf33c1cd9553d804d8f285552d521a4ac79162a8e9b2"
+    },
+    {
+      "file": "providers.log",
+      "sha256": "18224e3883a4d0505f6717d447257ffed3d25cba824b741736889d0fe4a8b0e8"
+    },
+    {
+      "file": "identity-regression.log",
+      "sha256": "f670ab85d47ae5773ac0f8d7c5208eb433f59be8e6d13add499344634b09ef97"
+    },
+    {
+      "file": "inclusion.log",
+      "sha256": "0165cd0af234cd9eeb7d468a5fb4544c92b6e2e9a0f286939e5298ec1af11332"
+    },
+    {
+      "file": "inclusion2.log",
+      "sha256": "0f6d6c3e664a3db4dba390d32a5352e6646476c87cd8bf206c63070c9dd1bb91"
+    },
+    {
+      "file": "full-tests.log",
+      "sha256": "d056364c5ddc7d616d496599a8f06dcf1836bb91c596f7ff2cbae12668880a7a"
+    },
+    {
+      "file": "full-tests-browser.log",
+      "sha256": "d2570bc3f30a49f065dea663d5c7cf909aebaabdc7cf16c08d4a1d202dd03162"
+    },
+    {
+      "file": "final-units.log",
+      "sha256": "4e126633f663cfe718823d5506428c678b649abe1b2878281f583856324a3714"
+    },
+    {
+      "file": "postgres-final.log",
+      "sha256": "ec288293c35b6479d646c6ff9b425bedd20ec25e7f1dff476607371b637f90b4"
+    },
+    {
+      "file": "head-build.log",
+      "sha256": "1bdada9692630bb31dd7c64649c2d8cb0589f6920ffdbbcd27a6831a811ebeb6"
+    },
+    {
+      "file": "head-types.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "head-lint.log",
+      "sha256": "a92af6458c2427a60d96ed488483f7ae6ef1370a7162332c22dcba5f8669894d"
+    },
+    {
+      "file": "head-dispatcher.log",
+      "sha256": "6d7acd4e41d3e784cce20da1e92c16daf29b4eb0d3c1e4b6943da57f36543174"
+    },
+    {
+      "file": "messages.log",
+      "sha256": "efec566eac33f8145155037677d7feb6f338c52d002bc66a8fb77acbb8bb0f17"
+    },
+    {
+      "file": "messages-final.log",
+      "sha256": "5ad9d4fc286c3d3f7c587e8f60ede7281fc343ddb6d26b377983252cfaf5a9f7"
+    },
+    {
+      "file": "a11y-final.log",
+      "sha256": "d27456bb7ba8e58097709445257a3eafd060720e22a9ef5a421b70c337ed0eed"
+    },
+    {
+      "file": "download-final.log",
+      "sha256": "45e943df7919fc64fbbb11267fa606c543e8b0b6e09b8acfed996a7257aaf406"
+    },
+    {
+      "file": "facts-browser3.log",
+      "sha256": "763bf04000a1a9e4cd4021963a17b04c561cf758ebf239d42193430a576cfaed"
+    },
+    {
+      "file": "facts-browser6.log",
+      "sha256": "8e8d6762d97f24bfe6a4ab25e4d1b565e5861dded1d3a63b8206105d99a35fa7"
+    },
+    {
+      "file": "facts-browser7.log",
+      "sha256": "670746e32a16741ded97d04dc6785996fa0ce580d1fda0adcf4f92fd8cb943da"
+    },
+    {
+      "file": "facts-head.log",
+      "sha256": "3d8c04b6573c402741acf1f86a3c5f1cfc5aabad7c4bc8bc4c57d74910d76d15"
+    },
+    {
+      "file": "final-fact-units.log",
+      "sha256": "93570ae4e0a7906879eebd4a736f098e1c570b75089e816d0359dccc6476bfe3"
+    }
+  ],
+  "screenshots": [
+    {
+      "file": "facts-head/facts/facts-1280.png",
+      "sha256": "b276ee4d7ada85bcc894d8f2fd5e3b7f1293c354e9aa48e0f576998918adf84b"
+    },
+    {
+      "file": "facts-head/facts/facts-320.png",
+      "sha256": "4b376bcad9ebad6a67559712be921ea1a6b0913124168144d21cd7e42d20145c"
+    },
+    {
+      "file": "facts-head/facts/facts-375.png",
+      "sha256": "d34abc3825e04a9d5bd1d71e86d390e429f96b784d4a1631710faecf1035e7c2"
+    },
+    {
+      "file": "facts-head/facts/facts-640.png",
+      "sha256": "04a71f70373e7bf6a3998fbad7f311d9e210a626ab7782cc6c02ca03e6c04695"
+    },
+    {
+      "file": "facts-head/facts/overflow-refused.png",
+      "sha256": "a4f279820f99fbef05267a903312cfd9a366be6a4797187c5f95f0947081ba59"
+    }
+  ],
+  "issues": [
+    {
+      "number": 1,
+      "createdAt": "2026-10-10T06:52:18Z",
+      "url": "https://github.com/Jevelopers-neatHack-2026/getticketstub.com/issues/1",
+      "snapshotSha256": "fa4297263dc57e1b6f218a208e3230699441fc4dc001f63cf2937e500335febf"
+    },
+    {
+      "number": 6,
+      "createdAt": "2026-10-10T20:01:04Z",
+      "url": "https://github.com/Jevelopers-neatHack-2026/getticketstub.com/issues/6",
+      "snapshotSha256": "00f0badf68cafb467619b3df25549a31280587f25fc9b357da09f31be9072f6c"
+    },
+    {
+      "number": 7,
+      "createdAt": "2026-10-10T20:02:02Z",
+      "url": "https://github.com/Jevelopers-neatHack-2026/getticketstub.com/issues/7",
+      "snapshotSha256": "6c3ccfd433992dcaa3f6ae166e0b715ebba871c9dbf2c69860eeddc2eefb0051"
+    },
+    {
+      "number": 8,
+      "createdAt": "2026-10-10T20:02:05Z",
+      "url": "https://github.com/Jevelopers-neatHack-2026/getticketstub.com/issues/8",
+      "snapshotSha256": "d0ed914196f26acf783492dcc29d09896dc7c0b16f2798ed0080f4684eb03090"
+    },
+    {
+      "number": 9,
+      "createdAt": "2026-10-10T20:03:05Z",
+      "url": "https://github.com/Jevelopers-neatHack-2026/getticketstub.com/issues/9",
+      "snapshotSha256": "6e97d6474b15deb3f4c1c2f81424519c6c8a5925b16aa017e8792bac13ea1d86"
+    },
+    {
+      "number": 10,
+      "createdAt": "2026-10-10T20:03:08Z",
+      "url": "https://github.com/Jevelopers-neatHack-2026/getticketstub.com/issues/10",
+      "snapshotSha256": "cf5899cb494d94f127fce52e71e5d9440ade7d7464fc2505bcb9434214e043c9"
+    },
+    {
+      "number": 12,
+      "createdAt": "2026-10-10T20:04:09Z",
+      "url": "https://github.com/Jevelopers-neatHack-2026/getticketstub.com/issues/12",
+      "snapshotSha256": "07e745b2ed3242a420049697f8fa8c3fa19d70a2b7316968b53d9a5e051b24a5"
+    },
+    {
+      "number": 13,
+      "createdAt": "2026-10-10T20:05:15Z",
+      "url": "https://github.com/Jevelopers-neatHack-2026/getticketstub.com/issues/13",
+      "snapshotSha256": "85b52526a604221dc913b16d7bdf348c27ed6c610afa50fd567186a086208a0a"
+    },
+    {
+      "number": 14,
+      "createdAt": "2026-10-10T20:05:19Z",
+      "url": "https://github.com/Jevelopers-neatHack-2026/getticketstub.com/issues/14",
+      "snapshotSha256": "8aaac1f7eb13ce2544e82d8cdf24a9de22374f047e2f09cd3a8badece97499ec"
+    },
+    {
+      "number": 16,
+      "createdAt": "2026-10-10T20:06:43Z",
+      "url": "https://github.com/Jevelopers-neatHack-2026/getticketstub.com/issues/16",
+      "snapshotSha256": "c0c7c9663475349eb37ce27bcd8112b09ef5411628a4a38ed3742513ee2e1f8f"
+    },
+    {
+      "number": 17,
+      "createdAt": "2026-10-10T20:07:36Z",
+      "url": "https://github.com/Jevelopers-neatHack-2026/getticketstub.com/issues/17",
+      "snapshotSha256": "b88e27feeda5a9626cdddc0f0286d6cfd13119a37f5d3d4428000c26785ecc46"
+    },
+    {
+      "number": 18,
+      "createdAt": "2026-10-10T20:07:38Z",
+      "url": "https://github.com/Jevelopers-neatHack-2026/getticketstub.com/issues/18",
+      "snapshotSha256": "8de9cf78440279d110fb90c3e38d21e6f8009315b47801851b8f9e7bdb024271"
+    },
+    {
+      "number": 19,
+      "createdAt": "2026-10-10T20:07:41Z",
+      "url": "https://github.com/Jevelopers-neatHack-2026/getticketstub.com/issues/19",
+      "snapshotSha256": "06aa450a6547a9a9ed473dc6ef1231b23a26e4927aedb1b16dd29e3915f4cc1d"
+    },
+    {
+      "number": 23,
+      "createdAt": "2026-10-11T01:27:29Z",
+      "url": "https://github.com/Jevelopers-neatHack-2026/getticketstub.com/issues/23",
+      "snapshotSha256": "05843291ee0152b7f401d0a702a41f19696dfac0e732a5ff89896d6c1757325b"
+    },
+    {
+      "number": 27,
+      "createdAt": "2026-10-11T02:25:43Z",
+      "url": "https://github.com/Jevelopers-neatHack-2026/getticketstub.com/issues/27",
+      "snapshotSha256": "2ca75ca7d4ada449538bedcf0921b84722695fb78a1569d74ed6640612a8ec5a"
+    },
+    {
+      "number": 59,
+      "createdAt": "2026-10-11T23:37:03Z",
+      "url": "https://github.com/Jevelopers-neatHack-2026/getticketstub.com/issues/59",
+      "snapshotSha256": "0c6e87777d68f17010e894715ffb66198ef00f4ff687042664c8d64629b28f82"
+    },
+    {
+      "number": 60,
+      "createdAt": "2026-10-11T23:37:54Z",
+      "url": "https://github.com/Jevelopers-neatHack-2026/getticketstub.com/issues/60",
+      "snapshotSha256": "e2b69bcbb6475c58c5b2c11454535d43f75d95def79a1e5b7bbecc6e2a0fce52"
+    },
+    {
+      "number": 67,
+      "createdAt": "2026-10-12T02:21:29Z",
+      "url": "https://github.com/Jevelopers-neatHack-2026/getticketstub.com/issues/67",
+      "snapshotSha256": "fdf0b9d3d875fff46268fa9b29fb10237c6e8a837ae0bfa809a13666b39c4843"
+    },
+    {
+      "number": 68,
+      "createdAt": "2026-10-12T02:22:23Z",
+      "url": "https://github.com/Jevelopers-neatHack-2026/getticketstub.com/issues/68",
+      "snapshotSha256": "6664c6d74f15b2dfcc9474e9dbc4ee4ab94b5e9a4415d0e5e6dee6d3e3a5843d"
+    },
+    {
+      "number": 69,
+      "createdAt": "2026-10-12T02:23:32Z",
+      "url": "https://github.com/Jevelopers-neatHack-2026/getticketstub.com/issues/69",
+      "snapshotSha256": "071fa33d06c1d67e027cd774c3e604d91065d1f1f38811e03d5b1fe12bc25093"
+    },
+    {
+      "number": 70,
+      "createdAt": "2026-10-12T02:24:36Z",
+      "url": "https://github.com/Jevelopers-neatHack-2026/getticketstub.com/issues/70",
+      "snapshotSha256": "38aa38272037e00638edccbe7b0d185cea5927ce10ac3a0f177ea9f074730517"
+    },
+    {
+      "number": 91,
+      "createdAt": "2026-10-12T06:57:48Z",
+      "url": "https://github.com/Jevelopers-neatHack-2026/getticketstub.com/issues/91",
+      "snapshotSha256": "a950e3659e04710421dcd74c8639852327cbc64ee7e13f10c3e27dec1b4f5d8b"
+    },
+    {
+      "number": 92,
+      "createdAt": "2026-10-12T06:58:30Z",
+      "url": "https://github.com/Jevelopers-neatHack-2026/getticketstub.com/issues/92",
+      "snapshotSha256": "6e4502bd0d8454f98770f259c8f7223208e2b509acd2817a86e0823953a03536"
+    },
+    {
+      "number": 93,
+      "createdAt": "2026-10-12T07:05:28Z",
+      "url": "https://github.com/Jevelopers-neatHack-2026/getticketstub.com/issues/93",
+      "snapshotSha256": "8456c484a0b373b3462bcdae49760ce1ac4399aa08296ae2d7274d472d7ee4b1"
+    },
+    {
+      "number": 94,
+      "createdAt": "2026-10-12T07:07:46Z",
+      "url": "https://github.com/Jevelopers-neatHack-2026/getticketstub.com/issues/94",
+      "snapshotSha256": "70d8326eb028710a0b51d4ab868c7be88465908cfc0f89be11fb86dbb72828b9"
+    },
+    {
+      "number": 95,
+      "createdAt": "2026-10-12T07:09:16Z",
+      "url": "https://github.com/Jevelopers-neatHack-2026/getticketstub.com/issues/95",
+      "snapshotSha256": "3a16c5cbf4dc6046d3b3d2310656e3567a9430ae7c52658232c640d55bc0d98f"
+    },
+    {
+      "number": 97,
+      "createdAt": "2026-10-12T08:23:00Z",
+      "url": "https://github.com/Jevelopers-neatHack-2026/getticketstub.com/issues/97",
+      "snapshotSha256": "728ed727c23d257cbd595ed56a2c7914fae579385870e8e69315637fd4b4191c"
+    },
+    {
+      "number": 98,
+      "createdAt": "2026-10-12T08:23:19Z",
+      "url": "https://github.com/Jevelopers-neatHack-2026/getticketstub.com/issues/98",
+      "snapshotSha256": "1ddd91370a141f28a644a8b8b90628d122988fc21c3c8f35725114f032421c29"
+    },
+    {
+      "number": 128,
+      "createdAt": "2026-10-12T22:16:23Z",
+      "url": "https://github.com/Jevelopers-neatHack-2026/getticketstub.com/issues/128",
+      "snapshotSha256": "d2bf0c2998e49f4c8d47be4468577a58b5acb2d963d5ab228ca9c3488ac6980e"
+    }
+  ]
+}

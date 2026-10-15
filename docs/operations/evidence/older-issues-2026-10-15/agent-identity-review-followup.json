@@ -1,0 +1,285 @@
+{
+  "finding": "APP-REVIEW-003 remaining manufactured agent identity",
+  "reviewedHead": "3a190d8be84a5bdf05b228f427d1537957e8fd27",
+  "implementationHead": "41a72d1db66f854247dc2023184f412cbdad35d7",
+  "base": "3ded8581283ba0890b77659c996c1cee107c6cf9",
+  "createdAt": "2026-10-15T06:57:35.298251+00:00",
+  "actualLocation": "src/customer/studio/agent/protocol.ts; src/customer/studio/agent/apply.ts",
+  "behavior": "Summary and apply share sourceFactForAgent: admit only original string source IDs matching the existing agent ID grammar, without local prefix, with exactly one source occurrence. Summary omits unusable/ambiguous IDs before its cap and never substitutes fact. Apply resolves only source identity, never a local targeting key. Omitted facts remain present in local review and clientEntityKey controls; no new wire fields or canonical mappings.",
+  "regressions": {
+    "reviewedSourceWithNewTests": {
+      "passed": 10,
+      "failed": 2,
+      "log": "/tmp/app003-agent-before.log"
+    },
+    "targeted": {
+      "passed": 115,
+      "failed": 0,
+      "skipped": 0
+    },
+    "cases": [
+      "Empty plus literal fact ID, both row orders, summary -> request validation -> describeAction -> apply -> describeDone consistency.",
+      "Whitespace, punctuation, markup, overlong/local-looking and non-string IDs omitted without mutation or fabricated aliases.",
+      "Duplicate source IDs and absent placeholder targets fail closed; invalid rows do not consume the summary cap.",
+      "Omitted rows remain discoverable as local questions and independently controllable by persisted clientEntityKey.",
+      "Existing APP001 storage recovery, APP002 mixed-confidence order and APP003 identity/correction/wire cases remain in targeted/full tests."
+    ]
+  },
+  "checks": {
+    "fullUnits": {
+      "passed": 1039,
+      "failed": 0,
+      "skipped": 1,
+      "skipReason": "Default SQL host skip; separate pinned PostgreSQL host evidence remains historical in identity-review-followup.json, not rerun for this source-only agent change."
+    },
+    "build": "exit 0",
+    "typecheck": "exit 0",
+    "changedFileLint": "exit 0, no warnings",
+    "fullLint": "exit 0, one pre-existing fixture $comment warning",
+    "agentBrowser": {
+      "childPassed": 114,
+      "wrapperCounts": {
+        "passed": 116,
+        "failed": 0,
+        "skipped": 0
+      },
+      "outboundAttempts": [],
+      "receiptPath": "/tmp/app003-agent-boundary-browser/agent-2026-10-15T06-55-46-001Z.json",
+      "sha256": "4e53d0949828ced8e4c5b2a366e6d4d12c0aa12a08826978b30108ff24d90788",
+      "gitMetadataSha": "3a190d8be84a5bdf05b228f427d1537957e8fd27",
+      "gitMetadataDirty": true
+    }
+  },
+  "sourceDigests": [
+    {
+      "path": "scripts/check-facts.mjs",
+      "sha256": "bd3a90c62f84d375e9175aaf6330af52e4855288b3c6e5c885a0f9fb9a63217b"
+    },
+    {
+      "path": "src/app/api/art/route.ts",
+      "sha256": "c71d8d45dc159651f89022d26287263326e8191793100a7ca1f89c536ebca547"
+    },
+    {
+      "path": "src/customer/account/AccountRoot.tsx",
+      "sha256": "565efb25abf161f5051f6ef9770e7ec98fe4daff30fc63c98f2c4c61846fc5b1"
+    },
+    {
+      "path": "src/customer/account/account.module.css",
+      "sha256": "324ece6248a3233726e6f50855f674c23610c2530bccd59ac1cf30564921b1c1"
+    },
+    {
+      "path": "src/customer/account/sync.ts",
+      "sha256": "c7f346e10c48a07ec06ad4644c31217d6616b8ccdc42e57e790d862b92280d20"
+    },
+    {
+      "path": "src/customer/studio/agent/AgentChat.tsx",
+      "sha256": "29bdc872507a4714b8b1ed39408fd4b3932d3578f83d085f34fdb6a75ededf3c"
+    },
+    {
+      "path": "src/customer/studio/agent/AgentNotes.tsx",
+      "sha256": "69aa184b4ff2c1d8cb97b9cdf45316d5e1bdd79c26ba0119da1c4b151793515d"
+    },
+    {
+      "path": "src/customer/studio/agent/apply.ts",
+      "sha256": "f961c98186cca0ae7f2e60bdd605e55ade7d85024667f66fc0e17b2c3f4a8a61"
+    },
+    {
+      "path": "src/customer/studio/agent/protocol.ts",
+      "sha256": "048111d558bffe9162aa81716060cc2ecbd38ac80ae3a2f92b4811975bcf1709"
+    },
+    {
+      "path": "src/customer/studio/approval/ApproveSheet.tsx",
+      "sha256": "97f1a63b703aea787db6f2babbbb8f2f289313b37c3054f50090c2520187d07a"
+    },
+    {
+      "path": "src/customer/studio/approval/printed.ts",
+      "sha256": "0496bc0a04c8bb8773b293819d58ba8afd4b9d96696519778537fc54d7c6f7f5"
+    },
+    {
+      "path": "src/customer/studio/creative/adapter.ts",
+      "sha256": "a3d2204f76dd85ceda542a00efb5e0de7e7dda9c3b9bcabd76f57f17de8e27cd"
+    },
+    {
+      "path": "src/customer/studio/creative/controls.ts",
+      "sha256": "2253c1dd57de6c4d26e1cfb8b1c0cbb78d357ccb2747f4f473947153d6dd71f0"
+    },
+    {
+      "path": "src/customer/studio/editor/ChipPopover.tsx",
+      "sha256": "a024236c9f826d67b3f5aca827d124ddb37f4ff67e00e0bdfba6899eb72074cf"
+    },
+    {
+      "path": "src/customer/studio/editor/ops.ts",
+      "sha256": "9db6b1a878d648245684a2e3d77486efa01f188c32944c5d883983d804bcd8d3"
+    },
+    {
+      "path": "src/customer/studio/facts/FactsReview.tsx",
+      "sha256": "61c2a2fe86a00894802de98aecec96c10c11df5a10838098e4d0ba8f94e9cbbd"
+    },
+    {
+      "path": "src/customer/studio/facts/corrections.ts",
+      "sha256": "0d42f8b0e0f45acbfb84728e79652c167531d4fe3eb034e2c43d328e37e738ff"
+    },
+    {
+      "path": "src/customer/studio/facts/fit.ts",
+      "sha256": "9d9336acea3633c28359d3302a6fa50f7e2d136a845b3799988c64e5134b82b5"
+    },
+    {
+      "path": "src/customer/studio/facts/fitProof.tsx",
+      "sha256": "c20bf2689fa4b725636fdc8bdac5d2aedaaf0280b2d1c543fcd9f4209584aafe"
+    },
+    {
+      "path": "src/customer/studio/facts/identity.ts",
+      "sha256": "1129aa69bf720d09ff1cf907550d40d66ec5a2902cfd91a534b15bf0f6dcc524"
+    },
+    {
+      "path": "src/customer/studio/facts/inclusion.ts",
+      "sha256": "36fe805dcc1dbe80689d99ea2650d9135d3f38feeccaefd5e426656aeb19cbe2"
+    },
+    {
+      "path": "src/customer/studio/research/Printing.tsx",
+      "sha256": "f206bc3b40536d8c7c4aba487f178eebc469c9edf3742981b350c2ac1042ccd1"
+    },
+    {
+      "path": "src/customer/studio/research/client.ts",
+      "sha256": "5422094ff85c97e9ba60ca2f5f5f89620169291d79713d506c10579a66f5dda6"
+    },
+    {
+      "path": "src/customer/studio/store.ts",
+      "sha256": "06bd0833ea384e49fe9400746253a7b25bb5256a63f0d593905051b550686f45"
+    },
+    {
+      "path": "src/customer/studio/stub/StubView.tsx",
+      "sha256": "517b760fc520ba62dd70feff1fe48a8beb66cbae9bb594e4b2f0cc5f47919c9f"
+    },
+    {
+      "path": "src/customer/studio/types.ts",
+      "sha256": "bc1978e175c8044228cf0c11aaa61a447a034e0ebf26055697e87f71e833e454"
+    },
+    {
+      "path": "src/server/approval-token.ts",
+      "sha256": "f5c8d72dc2fcac49c1059bdb44868b1ce39ea7016b8579cf6415491cee5820b4"
+    },
+    {
+      "path": "src/server/project.ts",
+      "sha256": "03858a4da6a122925118ef909abb0a79068554fee30ba046bfd59a83636403b8"
+    },
+    {
+      "path": "tests/analytics-flows.test.mjs",
+      "sha256": "8bb9288a497eccbd57fc24eb988958817e2b6e3e6fdbeef56286a984ad43ef1b"
+    },
+    {
+      "path": "tests/providers.test.mjs",
+      "sha256": "f7479afc722effd6d140ab316267254fdeb2781743a2fe4c5ff8d2e373db6122"
+    },
+    {
+      "path": "tests/stub-weather-credit.test.mjs",
+      "sha256": "c5f41f83750b9b37a224864268a91612cbcf6b8e2a02950c7676f651fbe8801b"
+    },
+    {
+      "path": "tests/studio-fact-identity.test.mjs",
+      "sha256": "f9483392e44dabe7df7b97057faaef327d130cdf4421a48be4e0cd383fa2d289"
+    }
+  ],
+  "sourceDigestsVerifiedAgainstImplementationCommit": true,
+  "changedExecutablePaths": [
+    "src/customer/studio/agent/apply.ts",
+    "src/customer/studio/agent/protocol.ts",
+    "tests/studio-fact-identity.test.mjs"
+  ],
+  "unchangedPriorExecutablePaths": [
+    "scripts/check-facts.mjs",
+    "src/app/api/art/route.ts",
+    "src/customer/account/AccountRoot.tsx",
+    "src/customer/account/account.module.css",
+    "src/customer/account/sync.ts",
+    "src/customer/studio/agent/AgentChat.tsx",
+    "src/customer/studio/agent/AgentNotes.tsx",
+    "src/customer/studio/approval/ApproveSheet.tsx",
+    "src/customer/studio/approval/printed.ts",
+    "src/customer/studio/creative/adapter.ts",
+    "src/customer/studio/creative/controls.ts",
+    "src/customer/studio/editor/ChipPopover.tsx",
+    "src/customer/studio/editor/ops.ts",
+    "src/customer/studio/facts/FactsReview.tsx",
+    "src/customer/studio/facts/corrections.ts",
+    "src/customer/studio/facts/fit.ts",
+    "src/customer/studio/facts/fitProof.tsx",
+    "src/customer/studio/facts/identity.ts",
+    "src/customer/studio/facts/inclusion.ts",
+    "src/customer/studio/research/Printing.tsx",
+    "src/customer/studio/research/client.ts",
+    "src/customer/studio/store.ts",
+    "src/customer/studio/stub/StubView.tsx",
+    "src/customer/studio/types.ts",
+    "src/server/approval-token.ts",
+    "src/server/project.ts",
+    "tests/analytics-flows.test.mjs",
+    "tests/providers.test.mjs",
+    "tests/stub-weather-credit.test.mjs"
+  ],
+  "historicalEvidence": {
+    "path": "docs/operations/evidence/older-issues-2026-10-15/identity-review-followup.json",
+    "sha256": "6893be8ad143803baad5a31499bac3897ed57ea6f237ec7f436884cb9f66cedf",
+    "unchangedFromReviewedHead": true
+  },
+  "logs": [
+    {
+      "path": "/tmp/app003-agent-before.log",
+      "sha256": "2e630df81f22fbb6bd1a3f1f759f8226f4a7be63420c631c37be93925e5ec079"
+    },
+    {
+      "path": "/tmp/app003-agent-target.log",
+      "sha256": "a0c457a0ca340e922805138426def93f1ef813fca987d43250e4c377229b1f74"
+    },
+    {
+      "path": "/tmp/app003-agent-units.log",
+      "sha256": "0646331babd6952299ff6074949f020ea7ba1ecdd478e493ea4ba6ebb92b50a4"
+    },
+    {
+      "path": "/tmp/app003-agent-build.log",
+      "sha256": "8b391b801a5b6718705c0ebbd55b6f7c34f6f3a53239ac6d3d4e8feed93416c6"
+    },
+    {
+      "path": "/tmp/app003-agent-typecheck.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/tmp/app003-agent-lint.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/tmp/app003-agent-full-lint.log",
+      "sha256": "6a756bb8c63a2bc602e165a4356205bf6667774ced48bd3a895feba913894c62"
+    },
+    {
+      "path": "/tmp/app003-agent-boundary-browser.log",
+      "sha256": "c1137aedb8fe7a980b46948eec68897b95a3e18c256101ba77fa808569c41921"
+    }
+  ],
+  "commands": [
+    "node --test tests/studio-fact-identity.test.mjs (red on reviewed source with new regressions)",
+    "node --test tests/agent.test.mjs tests/studio-fact-identity.test.mjs tests/studio-fact-corrections.test.mjs tests/stub-weather-credit.test.mjs tests/analytics-flows.test.mjs",
+    "node --test tests/*.test.mjs",
+    "npm run build",
+    "tsc --noEmit",
+    "eslint src/customer/studio/agent/protocol.ts src/customer/studio/agent/apply.ts tests/studio-fact-identity.test.mjs",
+    "eslint",
+    "npm run verify:product -- --suite agent --mode fixture --evidence-dir /tmp/app003-agent-boundary-browser"
+  ],
+  "runtime": {
+    "node": "v22.23.3",
+    "npm": "11.16.0",
+    "agentModelProfile": "Not exposed; existing runtime/provider/profile configuration preserved."
+  },
+  "executionProvenance": "Final executable/test bytes were checked before committing. Build/browser Git metadata may identify reviewed predecessor with dirty=true; source hashes match the implementation commit. Evidence-only follow-up changes no executable bytes.",
+  "notRerun": [
+    "Unaffected PNG/fact-layout matrix",
+    "PostgreSQL creative-host suite",
+    "Other unrelated product suites; prior receipts preserved, not presented as new execution"
+  ],
+  "scope": "Only own app checkout; no focus continuation pulled/edited/merged; no deployment, merge or issue closure.",
+  "canonicalAssembly": false,
+  "acceptance": "not_recorded",
+  "independentExactHeadReview": "pending",
+  "limits": "Offline synthetic/unit/browser evidence, not canonical product acceptance or real provider/host acceptance. Existing producer mapping, human/rights/provider/host decisions and real app-owned pinned assembly plus exact owner-run evidence remain open under their owners. GoDaddy manual Preview restore/isolation gate remains required after any separately authorized publication."
+}

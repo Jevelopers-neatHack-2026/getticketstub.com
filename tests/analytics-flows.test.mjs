@@ -421,6 +421,70 @@ describe("account outcomes", () => {
     ]);
   });
 
+  test("sync retains the local wall and deletion queue after failed persistence, then recovers", async () => {
+    const local = privateStub();
+    store.upsertStub(local);
+    store.saveDeleted(["deleted-stub"]);
+    const remote = { ...local, id: "remote-stub" };
+    reply = () => ({ status: 200, body: { stubs: [remote], deleted: ["deleted-stub"], now: 3 } });
+    const notices = [];
+    const onSync = (e) => notices.push(e.detail);
+    window.addEventListener(sync.WALL_SYNCED, onSync);
+    try {
+      localStorage.mode = "quota";
+      const failed = await sync.syncNow();
+      assert.equal(failed.ok, false);
+      assert.equal(failed.localPersistenceFailed, true);
+      assert.deepEqual(store.loadWall().map((s) => s.id), [local.id]);
+      assert.deepEqual(store.loadDeleted(), ["deleted-stub"]);
+      assert.deepEqual(notices, []);
+      assert.equal(sync.isOnServer(local.id), true);
+      localStorage.mode = "ok";
+      assert.equal((await sync.syncNow()).ok, true);
+      assert.deepEqual(store.loadWall().map((s) => s.id), [remote.id, local.id]);
+      assert.deepEqual(store.loadDeleted(), []);
+      assert.deepEqual(notices, [{ count: 2 }]);
+    } finally {
+      localStorage.mode = "ok";
+      window.removeEventListener(sync.WALL_SYNCED, onSync);
+    }
+  });
+
+  test("signed-in focus/change schedules publish persistence failures and successful recovery", async (t) => {
+    const previousDocument = globalThis.document;
+    globalThis.document = Object.assign(new EventTarget(), { visibilityState: "visible" });
+    store.upsertStub(privateStub());
+    reply = () => ({ status: 200, body: { stubs: [], deleted: [], now: 4 } });
+    const results = [];
+    const onResult = (e) => results.push(e.detail);
+    window.addEventListener(sync.WALL_SYNC_RESULT, onResult);
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const stop = sync.startSync();
+    try {
+      for (const [event, delay] of [["focus", 300], [store.WALL_CHANGED, 1500]]) {
+        localStorage.mode = "quota";
+        window.dispatchEvent(new Event(event));
+        t.mock.timers.tick(delay);
+        await flush();
+        assert.equal(results.at(-1).localPersistenceFailed, true, event);
+        assert.equal(results.at(-1).ok, false, event);
+        localStorage.mode = "ok";
+        window.dispatchEvent(new Event("focus"));
+        t.mock.timers.tick(300);
+        await flush();
+        assert.equal(results.at(-1).ok, true, `${event} recovery`);
+      }
+      assert.equal(results.length, 4);
+    } finally {
+      stop();
+      t.mock.timers.reset();
+      localStorage.mode = "ok";
+      window.removeEventListener(sync.WALL_SYNC_RESULT, onResult);
+      if (previousDocument === undefined) delete globalThis.document;
+      else globalThis.document = previousDocument;
+    }
+  });
+
   test("opening the sign-in sheet is a choice, once per opening; 'not now' is a skip; neither is a login", () => {
     signin.openSignIn({ reason: "claim", email: SEEDS.email, returnTo: `/claim/g/${SEEDS.token}` });
     signin.updateSignIn({ sent: { email: SEEDS.email } });
@@ -485,7 +549,9 @@ describe("editor edit diff", () => {
   });
 
   test("facts: keep, correct, confirm and undo; the note, photos and friends are left to their own events", () => {
-    assert.deepEqual(ops.editChanges(base, ops.toggleKept(base, "venue")), ["fact_kept"]);
+    const optional = { ...base, event: { ...base.event, facts: [...base.event.facts, { id: "extra", label: "Extra", value: "Extra", source: "fixture", provenance: "simulated", confidence: .9 }] } };
+    assert.deepEqual(ops.editChanges(optional, ops.toggleKept(optional, "extra")), ["fact_kept"]);
+    assert.equal(ops.toggleKept(base, "venue"), base, "core venue is included by default");
     const corrected = corrections.applyCorrection(base, { factId: "date", value: "2026-05-02", reason: SEEDS.message });
     assert.deepEqual(ops.editChanges(base, corrected), ["fact_correct"]);
     assert.deepEqual(ops.editChanges(base, corrections.applyCorrection(base, { factId: "date", value: "2026-05-01" })), ["fact_confirm"]);

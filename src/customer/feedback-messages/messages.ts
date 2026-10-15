@@ -41,6 +41,7 @@ export const MESSAGES = {
   invalid_request: { message: "Something in that wasn't quite right. Reload the page and check what you entered.", action: RELOAD },
   bad_json: { message: "That didn't send properly. Reload the page and try again.", action: RELOAD },
   bad_image: { message: "We couldn't read that picture. Try a PNG or JPG.", action: RETRY, retryable: true },
+  fact_layout_overflow: { message: "Some selected facts do not fit completely. Open Facts to see which ones, then remove some facts or choose another style before approving or downloading.", action: WALL },
   message_too_long: { message: "That message is a little long for a gift. Trim it and send again.", action: RETRY, retryable: true },
   same_email: { message: "That's the email you already use. Enter a different one to change it.", action: RETRY, retryable: true },
   disposable_email: { message: "That email looks like a throwaway inbox, so we can't send a link there. Use an address you keep.", action: RETRY, retryable: true },

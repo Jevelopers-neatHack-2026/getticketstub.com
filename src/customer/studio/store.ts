@@ -3,6 +3,7 @@
 // Old share links carry the stub itself (see encodeStub),
 // so memory pages work without a backend. Storage can throw (private mode): every access is guarded.
 import type { Correction, Stub } from "./types";
+import { normalizeStubFacts } from "./facts/identity";
 import { releasable, releaseOldest, retainArt } from "./versions/retention";
 import { applyCorrection, entries, undoCorrection, type CorrectionInput } from "./facts/corrections";
 import { storageFailure, storageReason } from "@/customer/flows/events";
@@ -43,10 +44,17 @@ export function saveDeleted(ids: string[]): boolean {
   }
 }
 
+// Keep newly allocated keys stable in this session even when storage refuses migration.
+let cachedRaw: string | null | undefined;
+let cachedWall: Stub[] = [];
 export function loadWall(): Stub[] {
   try {
     const raw = localStorage.getItem(KEY);
-    return raw ? (JSON.parse(raw) as Stub[]) : [];
+    if (raw !== cachedRaw) {
+      cachedWall = raw ? (JSON.parse(raw) as Stub[]).map(normalizeStubFacts) : [];
+      cachedRaw = raw;
+    }
+    return structuredClone(cachedWall);
   } catch (e) {
     storageFailure("wall", "read", e);
     return [];
@@ -65,6 +73,7 @@ export function writeWall(stubs: Stub[]): boolean {
 
 /** As writeWall, plus how many older pictures had to be released to fit (0 when everything was kept). */
 export function writeWallDetailed(stubs: Stub[]): { ok: boolean; released: number } {
+  stubs = stubs.map(normalizeStubFacts);
   const total = releasable(stubs).length;
   const attempt = (n: number): unknown => {
     try {
@@ -159,7 +168,7 @@ export function decodeStub(token: string): Stub | undefined {
   try {
     const b64 = token.replace(/-/g, "+").replace(/_/g, "/");
     const json = typeof window === "undefined" ? Buffer.from(b64, "base64").toString("utf-8") : decodeURIComponent(escape(atob(b64)));
-    return JSON.parse(json) as Stub;
+    return normalizeStubFacts(JSON.parse(json) as Stub);
   } catch {
     return undefined;
   }

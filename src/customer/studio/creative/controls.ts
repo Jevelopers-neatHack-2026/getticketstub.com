@@ -1,3 +1,4 @@
+import { requireSourceIdentity, sourceHiddenFields } from "../facts/identity";
 // The studio's allowlisted controls, declared in creative-engine's creative-controls/1.1 shape.
 // Ids, ranges and enums mirror the real editor (ops.ts, editions.ts, RemixSheet.tsx, Memories.tsx).
 // Upstream's producer only knows four fixed selects today (name_size, layout, logo_position, style), so every
@@ -41,6 +42,7 @@ export const CONTROL_UPSTREAM = {
 
 /** Control definitions. Fact lists are dynamic, so pass the stub (or omit it for the static shape). */
 export function studioControls(stub?: Stub): Control[] {
+  if (stub) requireSourceIdentity(stub);
   const cur = stub ? currentVersion(stub) : undefined;
   const factOptions = (stub?.event.facts ?? []).map((f) => ({ value: f.id, label: f.label }));
   const p = stub?.personal;
@@ -60,7 +62,7 @@ export function studioControls(stub?: Stub): Control[] {
       default_value: (stub?.event.facts ?? []).filter((f) => f.kept).map((f) => f.id), locked: false },
     { id: "hidden_facts", label: "Hidden from the stub", kind: "multi_select", value_type: "string[]", field: "hidden_fields",
       route: "composition.update", options: [{ value: "subtitle", label: "Subtitle" }, ...factOptions],
-      default_value: p?.hiddenFields ?? [], locked: false },
+      default_value: stub ? sourceHiddenFields(stub) : [], locked: false },
     { id: "note", label: "Note on the back", kind: "text", value_type: "string", field: "note", route: "composition.update",
       max_length: NOTE_MAX_LENGTH, default_value: p?.note ?? "", locked: false },
     { id: "art_vibe", label: "Art vibe", kind: "select", value_type: "string", field: "vibe", route: "artwork.edit",
