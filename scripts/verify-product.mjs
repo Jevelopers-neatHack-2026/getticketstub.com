@@ -28,6 +28,7 @@ const FINANCE_CONTEXT_SECRET = randomBytes(32).toString("hex");
 
 // ---- arguments ----
 const SUITES = {
+  "wall-integrity": { server: true, needs: [".next/BUILD_ID", "scripts/check-wall-write-integrity.mjs", "scripts/lib/cdp.mjs"], run: ctx => script("scripts/check-wall-write-integrity.mjs", [ctx.base]) },
   foundation: { server: true, needs: [".next/BUILD_ID"], run: foundation },
   access: { server: true, needs: [".next/BUILD_ID", "scripts/smoke-server.mjs"], run: (ctx) => script("scripts/smoke-server.mjs", [ctx.base], { SMOKE_ADMIN_EMAIL: STAFF_EMAIL }) },
   // GT-06B: the artwork approval and its verifier (two accounts, stale, revoke, 404 parity, Origin, fixtures), against the production build.

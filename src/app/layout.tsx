@@ -1,24 +1,10 @@
 import type { Metadata, Viewport } from "next";
-import { Fraunces, Inter_Tight } from "next/font/google";
 import { Analytics } from "@/customer/analytics/Analytics";
 import { analyticsConfigFromEnv } from "@/customer/analytics/config";
 import { DemoPill } from "@/customer/nav/DemoPill";
 import { NavFrame } from "@/customer/nav/NavFrame";
 import { configuredOrigin } from "@/server/http";
 import "./globals.css";
-
-const fraunces = Fraunces({
-  subsets: ["latin"],
-  axes: ["SOFT", "WONK", "opsz"],
-  variable: "--font-display",
-  display: "swap",
-});
-
-const interTight = Inter_Tight({
-  subsets: ["latin"],
-  variable: "--font-ui",
-  display: "swap",
-});
 
 // TICKETSTUB_RUNTIME_MODE is a runtime secret on the host, so render per request instead of
 // baking the demo banner into the build. Analytics settings are read the same way: one build can run
@@ -59,7 +45,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" data-theme="light" data-runtime-mode={process.env.TICKETSTUB_RUNTIME_MODE === "live" ? "live" : "demo"} className={`${fraunces.variable} ${interTight.variable}`}>
+    <html lang="en" data-theme="light" data-runtime-mode={process.env.TICKETSTUB_RUNTIME_MODE === "live" ? "live" : "demo"}>
       <body>
         <NavFrame notice={process.env.TICKETSTUB_RUNTIME_MODE !== "live" ? <DemoPill /> : null}>
           {children}

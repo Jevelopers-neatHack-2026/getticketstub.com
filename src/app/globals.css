@@ -11,6 +11,10 @@
 /* the left edge the nav takes: set by NavFrame (0 on the landing page and the parts board) */
 :root {
   --nav-w: 0px;
+  /* The fonts come from the brand tokens' external Google CSS import (src/brand/tokens.css) and their family stacks; there is no
+     build-time font fetch. The stacks below are what body, headings and the stub editions read through --font-ui/--font-display. */
+  --font-ui: var(--ts-font-ui);
+  --font-display: var(--ts-font-display);
 }
 
 html,

@@ -1,0 +1,64 @@
+/* The persistent art-generation status beside the artwork: plain text first, never hover-only, never blocking the editor. */
+.status {
+  display: grid;
+  gap: 8px;
+  box-sizing: border-box;
+  width: min(420px, calc(100% - 24px));
+  margin: 10px auto 0;
+  padding: 10px 12px;
+  border: 1px solid var(--desk-rule-strong);
+  border-radius: 10px;
+  background: var(--desk-paper-raised);
+  color: var(--desk-ink);
+  font: var(--type-label);
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.status[data-phase="failed"],
+.status[data-phase="interrupted"] {
+  border-color: var(--desk-error);
+}
+.title {
+  margin: 0;
+  font-weight: 600;
+}
+.text {
+  margin: 0;
+  color: var(--desk-ink-soft);
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+/* Indeterminate: a sliding bar says "working" and nothing about how far along. */
+.bar {
+  position: relative;
+  height: 3px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: var(--desk-rule);
+}
+.bar::after {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 35%;
+  background: var(--desk-ink);
+  animation: slide 1.4s ease-in-out infinite;
+}
+@keyframes slide {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(300%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bar::after {
+    animation: none;
+    width: 100%;
+    opacity: 0.35;
+  }
+}
