@@ -1,7 +1,9 @@
 # Material, size and finish capabilities
 
-Capability map version `2026-10-12.1`, supplier pages reviewed `2026-10-10` (the sandbox validation product below: `2026-10-12`) (GitHub issue GT-07A, getticketstub.com #23).
+Capability map version `2026-10-11.1`, supplier pages reviewed `2026-10-10` (GitHub issue GT-07A, getticketstub.com #23).
 The map is `src/customer/pages/capabilities.ts`. This page is its reviewed matrix. If the two disagree, one of them is stale: the check does not compare this page with the code, so update both together.
+
+**When to bump `CAPABILITY_VERSION`:** only when what a quote or cart line means changes: a `VARIANTS` row, its SKU, dims, status, finish or finish note, a price, or `SIZE_COPY`. A saved cart line made under another version is sent to "Choose again" and holds payment (`resolveSelection`, the cart), and quote ids embed the version, so every bump resets every customer's cart lines and quotes. Do not bump it for anything a customer cannot see, such as the sandbox validation product below, which has its own revision.
 
 No authenticated supplier lookup, quote or order was made. Nothing below is a supplier quote. Retail prices in the studio ($9 / $29 / $49 / $89, foil +$6, shipping $6) are local sandbox fixtures.
 
@@ -72,20 +74,20 @@ Geometry fixture (Prodigi's own example, not a launch SKU): 18 × 24 in glazing 
 
 ## Sandbox validation product (not customer-facing)
 
-`SANDBOX_VALIDATION_PRODUCTS` in the map names the one supplier product used to validate the Prodigi sandbox. The owner-delegated decision is integration-evals [`planning/decisions/0003-owner-delegated-decisions-2026-10-12.md`](https://github.com/Jevelopers-neatHack-2026/integration-evals/blob/main/planning/decisions/0003-owner-delegated-decisions-2026-10-12.md), rows R1-R3. Version `2026-10-12.1` adds it.
+`SANDBOX_VALIDATION_PRODUCTS` in `src/server/fulfillment/sandbox-products.ts` names the one supplier product used to validate the Prodigi sandbox. The owner-delegated decision is integration-evals [`planning/decisions/0003-owner-delegated-decisions-2026-10-12.md`](https://github.com/Jevelopers-neatHack-2026/integration-evals/blob/main/planning/decisions/0003-owner-delegated-decisions-2026-10-12.md), rows R1-R3. It is kept outside the customer capability map on purpose and carries its own revision, `SANDBOX_PRODUCTS_REVISION` (`2026-10-12.1`, supplier pages reviewed `2026-10-12`). Changing it does not change `CAPABILITY_VERSION`.
 
 | Field | Value |
 | --- | --- |
 | Supplier, SKU | Prodigi `GLOBAL-PHO-4X6` |
 | Product | 4 × 6 in (102 × 152 mm) lustre C-type (silver-halide) photo print |
 | Print area, orientation | `default`, landscape 6 × 4 in |
-| Artwork | 1800 × 1200 px at 300 dpi, full bleed, sRGB, JPG, sizing `fillPrintArea` |
+| Artwork | 1800 × 1200 px at 300 dpi, full bleed, sRGB, JPG, sizing `fillPrintArea`. The pixel size is **derived** (6 × 4 in × 300 dpi), not published by Prodigi: the product-details read (`variants[].printAreaSizes.default.{horizontalResolution,verticalResolution}`) must confirm it. |
 | Destination, shipping | `US`, `Standard` (`standard` in quotes) |
-| Provenance | `published-docs`. No authenticated product-details read, quote or order has been made. |
+| Provenance | `published-docs` for the SKU, size, dpi, format, shipping method, sizing and print area; `derived` for the pixel size. No authenticated product-details read, quote or order has been made. |
 
 It is used **only** for the first owner-approved sandbox product-details read, quote and test order. It is **not** a customer-facing mapping:
 
-- No tier, size or finish points at it. It is not in `VARIANTS`, no variant carries its SKU, and every physical variant stays `preview` or `unavailable`.
+- No tier, size or finish points at it. It is not in `capabilities.ts` or `VARIANTS`, no variant carries its SKU, and every physical variant stays `preview` or `unavailable`.
 - No price, finish or size claim in the studio changes. The `print` tier is still sold as matte, foil or holo, in Classic stub (2 × 5.5 in) or Stamp (2 × 3 in).
 - **Open product decision:** the customer-facing `print`-tier mapping. Lustre is not matte, the SKU has no foil or holo option, and a customer would get a 6 × 4 sheet with the stub composed on it (a 5.5 × 2 in stub is 1650 × 600 px, which fits), not a trimmed stub. Finish naming, which variants map, and trim still need a decision. Until then the tier stays `preview`.
 
@@ -115,4 +117,4 @@ Until then: no physical variant is `orderable`, destinations are not modeled (th
 
 ## Check
 
-`node scripts/check-capabilities.mjs` (Node 22.15+, no network, no credentials) covers: every tier × size × finish present, the sandbox validation product's spec and that it maps to no customer variant, Card + Foil, Print + Holo and Framed + Holo explicit, no fabricated dimension, the 18 × 24 / 14 × 20 fixture, quote ids that name the version, a stale cart item flagged, historical receipts untouched, and live mode blocking preview variants.
+`node scripts/check-capabilities.mjs` (Node 22.15+, no network, no credentials) covers: every tier × size × finish present, the sandbox validation product's spec (kept outside the capability map, with the derived pixel size still open) and that it maps to no customer variant, Card + Foil, Print + Holo and Framed + Holo explicit, no fabricated dimension, the 18 × 24 / 14 × 20 fixture, quote ids that name the version, a stale cart item flagged, historical receipts untouched, and live mode blocking preview variants.
