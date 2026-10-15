@@ -67,9 +67,32 @@ export function focusables(root: HTMLElement): FocusTarget[] {
     .filter((el) => (el.tabIndex >= 0 || isEditingHost(el)) && availableForFocus(el));
 }
 
+/** A scroll container with no sequentially focusable descendants is a native
+ * tab stop in modern browsers even though its tabIndex property remains -1. */
+function implicitScrollStops(root: HTMLElement, sequential: FocusTarget[]): Set<HTMLElement> {
+  const sequentialTargets = new Set(sequential);
+  const subtreeHasStop = new Map<Element, boolean>();
+  const stops = new Set<HTMLElement>();
+  const elements = [...root.querySelectorAll("*")];
+  for (const el of elements.reverse()) {
+    const descendantStop = [...el.children].some((child) => subtreeHasStop.get(child) ?? false);
+    if (el instanceof HTMLElement && !el.hasAttribute("tabindex") && !isEditingHost(el)
+      && !sequentialTargets.has(el) && availableForFocus(el)) {
+      const style = getComputedStyle(el);
+      const scrollable = ((style.overflowX === "auto" || style.overflowX === "scroll") && el.scrollWidth > el.clientWidth)
+        || ((style.overflowY === "auto" || style.overflowY === "scroll") && el.scrollHeight > el.clientHeight);
+      if (scrollable && !descendantStop) stops.add(el);
+    }
+    const ownStop = isFocusTarget(el) && sequentialTargets.has(el);
+    const implicitStop = el instanceof HTMLElement && stops.has(el);
+    subtreeHasStop.set(el, ownStop || implicitStop || descendantStop);
+  }
+  return stops;
+}
+
 /** Native Tab already understands radios and browser-owned controls. Temporarily make
  * excluded subtrees inert while its default action runs, then restore only our own writes. */
-function excludeHiddenForTab(root: HTMLElement): () => void {
+function excludeHiddenForTab(root: HTMLElement, excludeOutside = false): () => void {
   const owned: { el: FocusTarget; name: "inert" | "tabindex"; before: string | null; value: string }[] = [];
   const write = (el: FocusTarget, name: "inert" | "tabindex", value: string) => {
     if (owned.some((item) => item.el === el && item.name === name)) return;
@@ -85,6 +108,29 @@ function excludeHiddenForTab(root: HTMLElement): () => void {
       for (const target of [el, ...el.querySelectorAll("*")].filter(isFocusTarget)) {
         if (target.tabIndex >= 0 || isEditingHost(target)) write(target, "tabindex", "-1");
       }
+    }
+  }
+  if (excludeOutside) {
+    // Native Tab must see the dialog's own sequential order when entering a
+    // browser-owned stop such as an iframe. Temporarily make sibling branches
+    // inert so outside positives and earlier document-order controls cannot
+    // steal that transition; restore only attributes this handler owns.
+    const excludeSibling = (el: Element) => {
+      if (el instanceof HTMLElement) {
+        if (!el.hasAttribute("inert")) write(el, "inert", "");
+      } else if (el instanceof SVGElement) {
+        for (const target of [el, ...el.querySelectorAll("*")].filter(isFocusTarget)) {
+          if (target.tabIndex >= 0) write(target, "tabindex", "-1");
+        }
+      }
+    };
+    for (let branch: Element = root; branch !== document.body;) {
+      const parent = branch.parentNode;
+      const siblings = parent instanceof ShadowRoot ? parent.children : parent instanceof Element ? parent.children : [];
+      for (const sibling of siblings) if (sibling !== branch) excludeSibling(sibling);
+      if (parent instanceof ShadowRoot) branch = parent.host;
+      else if (parent instanceof Element) branch = parent;
+      else break;
     }
   }
   const changed = new Map<Node, Set<string>>();
@@ -117,8 +163,13 @@ function sameRadioGroup(a: Element | null, b: FocusTarget): boolean {
 }
 
 /** Use sequential tabindex order only for modal boundaries; interior movement stays native. */
-function boundaryStops(root: HTMLElement): FocusTarget[] {
-  return focusables(root).filter((el) => {
+function boundaryStops(root: HTMLElement): { targets: FocusTarget[]; implicitScrolls: Set<HTMLElement> } {
+  const sequential = focusables(root);
+  const sequentialTargets = new Set(sequential);
+  const implicitScrolls = implicitScrollStops(root, sequential);
+  const order = [...root.querySelectorAll("*")].filter(isFocusTarget)
+    .filter((el) => sequentialTargets.has(el) || implicitScrolls.has(el as HTMLElement));
+  const targets = order.filter((el) => {
     if (!(el instanceof HTMLInputElement) || el.type !== "radio" || !el.name) return true;
     const tree = el.getRootNode();
     if (!(tree instanceof Document || tree instanceof ShadowRoot)) return true;
@@ -128,15 +179,16 @@ function boundaryStops(root: HTMLElement): FocusTarget[] {
     // unchecked interior member when its checked peer is still keyboard-focusable.
     return !checked || checked === el || checked.tabIndex < 0 || !availableForFocus(checked, false);
   }).sort((a, b) => {
-    // Implicit editing hosts participate in the native zero-tabindex phase,
-    // despite exposing -1 through the tabIndex property.
-    const ai = isEditingHost(a) ? 0 : a.tabIndex;
-    const bi = isEditingHost(b) ? 0 : b.tabIndex;
+    // Implicit editing hosts and scroll containers participate in the native
+    // zero-tabindex phase despite exposing -1 through the tabIndex property.
+    const ai = isEditingHost(a) || implicitScrolls.has(a as HTMLElement) ? 0 : a.tabIndex;
+    const bi = isEditingHost(b) || implicitScrolls.has(b as HTMLElement) ? 0 : b.tabIndex;
     if (ai === bi) return 0;
     if (ai === 0) return 1;
     if (bi === 0) return -1;
     return ai - bi;
   });
+  return { targets, implicitScrolls };
 }
 
 /**
@@ -226,7 +278,7 @@ export function useDialogFocus(ref: RefObject<HTMLElement | null>, active: boole
       // cancel or move focus here; target/document widgets retain first refusal.
       restoreHidden = excludeHiddenForTab(root);
       restoreTimer = setTimeout(restore, 0);
-      const list = boundaryStops(root);
+      const { targets: list } = boundaryStops(root);
       boundaryKey = e;
       nativeBoundary = { first: list[0] ?? root, last: list.at(-1) ?? root, reverse: e.shiftKey };
       nativeTabHeld = true;
@@ -234,7 +286,7 @@ export function useDialogFocus(ref: RefObject<HTMLElement | null>, active: boole
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Tab" || e.defaultPrevented || !ownsTab()) return;
       const at = document.activeElement;
-      const list = boundaryStops(root);
+      const { targets: list, implicitScrolls } = boundaryStops(root);
       if (!list.length) {
         e.preventDefault();
         root.focus();
@@ -253,7 +305,21 @@ export function useDialogFocus(ref: RefObject<HTMLElement | null>, active: boole
       const next = index < 0 ? null : sequential[(index + (e.shiftKey ? -1 : 1) + sequential.length) % sequential.length];
       // The document's positive-tabindex phase can otherwise jump to a zero-indexed control
       // outside this modal. Contain that explicit ordering transition, not ordinary native Tab.
-      if (isFocusTarget(at) && next && (at.tabIndex > 0 || (e.shiftKey && next.tabIndex > 0))) {
+      if (next && implicitScrolls.has(next as HTMLElement)) {
+        // Focus the browser-owned implicit scroll stop directly. Native Tab
+        // would choose the same target, while direct focus keeps outside stops
+        // from changing the modal's boundary order.
+        e.preventDefault();
+        next.focus();
+      } else if (next instanceof HTMLIFrameElement) {
+        // focus() on an iframe reaches its child BODY, not its first sequential
+        // child. Let this trusted native Tab enter the opaque child document.
+        // Sibling branches are masked only for this default action so the
+        // browser's next stop remains within this modal in either direction.
+        restore();
+        restoreHidden = excludeHiddenForTab(root, true);
+        restoreTimer = setTimeout(restore, 0);
+      } else if (isFocusTarget(at) && next && (at.tabIndex > 0 || (e.shiftKey && next.tabIndex > 0))) {
         e.preventDefault();
         next.focus();
       } else if (!root.contains(at)) {

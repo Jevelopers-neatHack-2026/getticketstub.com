@@ -1,4 +1,5 @@
-// Refs #18 / #126: independent regressions for review comments 4253031263, 4253031270 and 4253031277.
+// Refs #18 / #126: independent regressions for review comments 4253031263, 4253031270,
+// 4253031277, 4266209966 and 4266209971.
 // This supplements, never replaces, check-dialog-focus.mjs. Native keyboard/DOM; synthetic effects.
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
@@ -23,7 +24,7 @@ const report = {
   runId: process.env.GITHUB_RUN_ID ?? null, attempt: process.env.GITHUB_RUN_ATTEMPT ?? null,
   sourceSha256: createHash("sha256").update(source).digest("hex"),
   runnerSha256: createHash("sha256").update(readFileSync(new URL(import.meta.url))).digest("hex"),
-  expectedScenarios: 220, viewports: [{ width: 390, height: 844, mobile: true }, { width: 1280, height: 844, mobile: false }],
+  expectedScenarios: 248, viewports: [{ width: 390, height: 844, mobile: true }, { width: 1280, height: 844, mobile: false }],
   checks: [], errors: [], sequences: {},
 };
 function check(name, actual, expected) {
@@ -118,6 +119,70 @@ try {
         const sequence = [];
         for (let i = 0; i < order.length - 1; i++) { await page.key("Tab", { shift: reverse }); sequence.push(await active(page)); }
         check(`${name}:untrapped-order`, sequence, expected.slice(0, order.length - 1));
+      });
+    }
+    // Review findings 4266209966 and 4266209971: positive-order boundaries must
+    // preserve browser-owned native stops. Compare the trapped helper with the
+    // same Chrome's untrapped sequential Tab on an otherwise identical dialog.
+    const scrollSequence = '<button id="positive" tabindex="1">positive</button><div id="scroll" style="overflow:auto;width:80px;height:40px"><div style="height:240px">scroll content</div></div><button id="zero">zero</button>';
+    for (const reverse of [false, true]) {
+      const direction = reverse ? "reverse" : "forward";
+      const name = `${width}:positive-order:implicit-scroll:${direction}`;
+      let native;
+      await withPage(width, shell(scrollSequence), async page => {
+        await page.eval("document.getElementById('opener').inert = true; document.getElementById('outside').inert = true; true");
+        await page.eval(`document.getElementById(${JSON.stringify(reverse ? "zero" : "positive")}).focus(); true`);
+        await page.key("Tab", { shift: reverse });
+        native = await page.eval(`({active:document.activeElement.id,tabIndex:document.getElementById('scroll').tabIndex,scrollHeight:document.getElementById('scroll').scrollHeight,clientHeight:document.getElementById('scroll').clientHeight,trusted:window.__trusted.at(-1)})`);
+        report.sequences[`${name}:native`] = native;
+        check(`${name}:native-implicit-stop`, native, { active: "scroll", tabIndex: -1, scrollHeight: 240, clientHeight: 40, trusted: true });
+      });
+      await withPage(width, shell(scrollSequence), async page => {
+        await page.eval("document.getElementById('opener').inert = true; document.getElementById('outside').inert = true; true");
+        await start(page, "dialog", reverse ? "#zero" : "#positive");
+        await page.key("Tab", { shift: reverse });
+        const trapped = await page.eval("({active:document.activeElement.id,trusted:window.__trusted.at(-1)})");
+        check(`${name}:trapped-native-parity`, trapped, { active: native.active, trusted: true });
+      });
+    }
+    const nestedScrollSequence = '<button id="positive" tabindex="1">positive</button><div id="outer" style="overflow:auto;width:100px;height:70px"><div id="inner" style="overflow:auto;width:80px;height:30px"><div style="height:200px">inner content</div></div><div style="height:200px">outer content</div></div><button id="zero">zero</button>';
+    let nativeNestedScroll;
+    await withPage(width, shell(nestedScrollSequence), async page => {
+      await page.eval("document.getElementById('opener').inert = true; document.getElementById('outside').inert = true; document.getElementById('positive').focus(); true");
+      await page.key("Tab");
+      nativeNestedScroll = await page.eval("({active:document.activeElement.id,outerTabIndex:document.getElementById('outer').tabIndex,innerTabIndex:document.getElementById('inner').tabIndex})");
+      report.sequences[`${width}:positive-order:nested-scroll:native`] = nativeNestedScroll;
+      check(`${width}:positive-order:nested-scroll:native-stop`, nativeNestedScroll, { active: "inner", outerTabIndex: -1, innerTabIndex: -1 });
+    });
+    await withPage(width, shell(nestedScrollSequence), async page => {
+      await start(page, "dialog", "#positive");
+      await page.key("Tab");
+      check(`${width}:positive-order:nested-scroll:trapped-native-parity`, await active(page), nativeNestedScroll.active);
+    });
+    for (const opaque of [false, true]) for (const reverse of [false, true]) {
+      const direction = reverse ? "reverse" : "forward";
+      const name = `${width}:positive-order:iframe-native-entry:opaque=${opaque}:${direction}`;
+      const iframeSequence = `<button id="positive" tabindex="1">positive</button>${frame("frame", opaque)}<button id="zero">zero</button>`;
+      let native;
+      await withPage(width, shell(iframeSequence), async page => {
+        if (!await page.waitFor("window.__frameWitness.frame?.ready === true")) throw new Error(`${name}: native frame did not become ready`);
+        await page.eval("document.getElementById('opener').inert = true; document.getElementById('outside').inert = true; true");
+        await page.eval(`document.getElementById(${JSON.stringify(reverse ? "zero" : "positive")}).focus(); true`);
+        await page.key("Tab", { shift: reverse });
+        native = await page.eval("({parent:document.activeElement.id,child:window.__frameWitness.frame?.active,trusted:window.__trusted.at(-1)})");
+        const child = reverse ? "two" : "one";
+        report.sequences[`${name}:native`] = native;
+        check(`${name}:native-child-control`, native, { parent: "frame", child, trusted: true });
+      });
+      await withPage(width, shell(iframeSequence), async page => {
+        if (!await page.waitFor("window.__frameWitness.frame?.ready === true")) throw new Error(`${name}: trapped frame did not become ready`);
+        // An outside positive stop would precede the iframe in the document's
+        // global order. The modal's native entry must still reach the frame.
+        await page.eval("document.getElementById('outside').setAttribute('tabindex', '2'); true");
+        await start(page, "dialog", reverse ? "#zero" : "#positive");
+        await page.key("Tab", { shift: reverse });
+        const trapped = await page.eval("({parent:document.activeElement.id,child:window.__frameWitness.frame?.active,trusted:window.__trusted.at(-1),openerInert:document.getElementById('opener').getAttribute('inert'),outsideInert:document.getElementById('outside').getAttribute('inert'),outsideTabindex:document.getElementById('outside').getAttribute('tabindex')})");
+        check(`${name}:trapped-native-parity-and-restoration`, trapped, { ...native, openerInert: null, outsideInert: null, outsideTabindex: "2" });
       });
     }
     await withPage(width, '<button id="opener">open</button><div id="child" role="dialog" aria-modal="true"><button id="auto">autofocus proxy</button><audio id="media" controls></audio></div><div id="parent" role="dialog" aria-modal="true"><button id="p1">parent one</button><button id="p2">parent two</button></div>', async page => {
