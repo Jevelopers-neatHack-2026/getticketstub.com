@@ -106,7 +106,7 @@ try {
     };
   ` });
   await accountPage.goto(base + '/make');
-  const warning = `document.body.textContent.includes("this browser couldn't save the updated copy")`;
+  const warning = `document.body.textContent.includes("The server acknowledged your wall, but this browser could not safely update its saved data")`;
   check('normal signed-in mount surfaces failed local persistence without sign-in return parameters', await accountPage.waitFor(warning,10000) && await accountPage.eval(`location.search===''`));
   await accountPage.eval(`new Promise(r=>setTimeout(r,5100))`);
   check('local persistence warning stays until recovery', await accountPage.eval(warning));

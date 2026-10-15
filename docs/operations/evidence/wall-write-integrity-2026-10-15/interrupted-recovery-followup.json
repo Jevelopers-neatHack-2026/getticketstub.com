@@ -1,0 +1,147 @@
+{
+  "finding": "APP-WALL-REVIEW-004",
+  "reviewedPreviousHead": "ab9dad0b0089d62903994697b4e16a9e59180591",
+  "implementationHead": "b2a87c95fa27b271e646e0ed4251b33748f90836",
+  "base": "872a5c644b624d7f55fbdaf9fb48c06e2c816a92",
+  "createdAt": "2026-10-15T08:43:13.158987+00:00",
+  "behavior": "Read-only inspection classifies recognized recoverable and diverged data. Explicit rollback-only UI is mounted for guests and signed-in accounts. Affirmative closure/stopped-writers acknowledgment is required. Action rechecks exact journal and primary snapshot plus existing known before/after/quota-release allowlists, restores beforeWall/beforeDeleted including null absence, removes only matching marker, then reloads. Failure retains blocked state; ordinary reads/mutations/sync do not infer abandonment.",
+  "checks": {
+    "exactAb9Red": {
+      "passed": 11,
+      "failed": 6
+    },
+    "recoveryActualSQLite": {
+      "passed": 17,
+      "failed": 0
+    },
+    "affected": {
+      "passed": 257,
+      "failed": 0
+    },
+    "fullUnits": {
+      "passed": 1058,
+      "failed": 0,
+      "skipped": 1
+    },
+    "build": "exit 0",
+    "typecheck": "exit 0",
+    "lint": "exit 0; existing fixture $comment warning only",
+    "browser": {
+      "childPassed": 24,
+      "wrapperPassed": 26,
+      "failed": 0,
+      "skipped": 0,
+      "outboundAttempts": 0
+    }
+  },
+  "sourceDigests": [
+    {
+      "path": "scripts/check-wall-write-integrity.mjs",
+      "sha256": "09c5ecf1b9b52e07f62179e123d30ca3d5685ce2358b3d6930daee7b9ee10823"
+    },
+    {
+      "path": "src/customer/account/AccountRoot.tsx",
+      "sha256": "01f981f1f75bae20bd0ffa294f6877f50296460ff4f711298fc4973f44bc13ca"
+    },
+    {
+      "path": "src/customer/account/WallRecovery.tsx",
+      "sha256": "cacfb4e460a8d54a13995e634eed53f77ebc6e5c4e736da8d99b136e834aadb5"
+    },
+    {
+      "path": "src/customer/account/account.module.css",
+      "sha256": "f097c1419f001f8839ee4a076e9b6552c0e837de742ae568209764089b123c11"
+    },
+    {
+      "path": "src/customer/studio/store.ts",
+      "sha256": "b9f0a4dd7e8df9176c73b93624afac933dc70b037e887bb56c1774136736356f"
+    },
+    {
+      "path": "tests/studio-wall-mutation-recovery.test.mjs",
+      "sha256": "02802de0295b5baaddd450d30efd4e4f2e9ed11c8fc245bc53a0e51ebeb080f9"
+    }
+  ],
+  "logs": [
+    {
+      "path": "/tmp/gt-wall-review004-red.log",
+      "sha256": "1c21d5ddb86bb6fad9623cc0b5372cb51358efcfed90a35437d07aab888e48f6"
+    },
+    {
+      "path": "/tmp/gt-wall-review004-red-qualified.log",
+      "sha256": "d00ecf5329370f06f354e4fb6cd5d2355703dfe9479b2704bdd0e34fe6a63626"
+    },
+    {
+      "path": "/tmp/gt-wall-review004-focused-qualified.log",
+      "sha256": "a619f1a0aea7713c2463414c20da7dd9947770b1bb9555995a45eeb88671a490"
+    },
+    {
+      "path": "/tmp/gt-wall-review004-recovery-final.log",
+      "sha256": "22ea39e32016ca973f74763179f627ae073d1c77835f93af13e49b8fe3f491b6"
+    },
+    {
+      "path": "/tmp/gt-wall-review004-units-final-qualified.log",
+      "sha256": "028d50f6460e2f275fb89b15c3301fa5821efa26d5c277cdaf8080abcd4a9e27"
+    },
+    {
+      "path": "/tmp/gt-wall-review004-build-v2.log",
+      "sha256": "bdf2c4b7fd5d365da943d0520d24092eb5921d4c3d8a03a7e42dd4d4420a57c9"
+    },
+    {
+      "path": "/tmp/gt-wall-review004-build-qualified.log",
+      "sha256": "47e395457998c39b8a20c9c0df48b98863804df5148a57139c223bb017a5cc64"
+    },
+    {
+      "path": "/tmp/gt-wall-review004-type-qualified.log",
+      "sha256": "e4e4b2fb82d424c4b657842e800afa6fce95282a1d9d1797eede0f15516a527f"
+    },
+    {
+      "path": "/tmp/gt-wall-review004-lint-qualified.log",
+      "sha256": "6236e1fc4371dd166fb8f60228aa4135ad4606cc2b9a3a314dbb58143a518a2b"
+    },
+    {
+      "path": "/tmp/gt-wall-review004-browser.log",
+      "sha256": "00afef00e9535f02b6eff83cd3b83785bcc496ca97055dbff5a593e14bca6fc9"
+    },
+    {
+      "path": "/tmp/gt-wall-review004-browser-final.log",
+      "sha256": "dc7b899fc58de9dddfb712e8fcd9c4922b4e9d6452b5b231c4b0253260cc73f4"
+    },
+    {
+      "path": "/tmp/gt-wall-review004-browser-v3.log",
+      "sha256": "ccea8cfe30ef9b68ad89a1cc05d1569012386d2ec0e889bc7d0b7251a7786bdd"
+    },
+    {
+      "path": "/tmp/gt-wall-review004-browser-qualified.log",
+      "sha256": "80affb01c1d63dec50b9ce5c0f8afde394acc2b30565ca8801e9b70e0445c26f"
+    },
+    {
+      "path": "/tmp/gt-wall-review004-browser-qualified/wall-integrity-2026-10-15T08-40-38-597Z.json",
+      "sha256": "efca15db2f5404c0810d824d66f00821719057fa91b2ab63eaaa115c9d2879be"
+    }
+  ],
+  "retainedFailures": [
+    {
+      "log": "/tmp/gt-wall-review004-build-v2.log",
+      "reason": "Intermediate inspection union did not narrow; corrected to discriminated union. Final build passes."
+    },
+    {
+      "log": "/tmp/gt-wall-review004-browser.log",
+      "reason": "Overlapped local rebuild; guest fixture failed to load; not passing evidence."
+    },
+    {
+      "log": "/tmp/gt-wall-review004-browser-final.log",
+      "reason": "Unsupported Space-key name in harness left confirmation unchecked; corrected to native space key."
+    }
+  ],
+  "provenance": "Final executable bytes verified before implementation commit; browser metadata identifies ab9dad0 with dirty=true. Final full suite includes retry-intended-deletion assertions. Historical receipt.json and review-followup.json unchanged. New exact-head hosted and independent review pending.",
+  "runtime": {
+    "node": "22.23.3",
+    "npm": "11.16.0",
+    "liveAccountProviderCalls": 0
+  },
+  "limits": [
+    "Exclusive use is a user-established precondition, not a detected condition, lease, timeout, CAS or cross-process fence. No safety promised against an active/older concurrent writer.",
+    "Rollback only; no completion or broader generation merge election. Different or unreadable data remains blocked. A failed restore can partially restore primary bytes but retains journal and unknown state for a supported retry.",
+    "No deployment, merge or closure; synthetic proofs are not canonical app-owned assembly/owner-run acceptance.",
+    "Original refs remain preserved; previous hosted results do not qualify this correction."
+  ]
+}

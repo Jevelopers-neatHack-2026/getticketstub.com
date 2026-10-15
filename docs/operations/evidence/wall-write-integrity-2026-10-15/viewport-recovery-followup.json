@@ -1,0 +1,143 @@
+{
+  "finding": "APP-WALL-REVIEW-005",
+  "reviewedPreviousHead": "c186456738942fa960b1e9ff3bb3f2988769e79c",
+  "implementationHead": "ebbf59d8831901cc33cb1a18386f46ba4e953a1a",
+  "base": "872a5c644b624d7f55fbdaf9fb48c06e2c816a92",
+  "createdAt": "2026-10-15T08:52:14.604737+00:00",
+  "changes": "Only recovery CSS and browser assertions changed. Fixed top placement with viewport-bounded width/height, internal scroll and overscroll containment. Protocol/component logic unchanged.",
+  "reviewerNegativeMeasurements": {
+    "source": "Independent exact-c186 guest CDP review supplied in conversation, not locally remeasured raw values",
+    "desktop": {
+      "width": 1280,
+      "height": 900,
+      "top": 960,
+      "bottom": 1687,
+      "scrollY": 0,
+      "visible": false
+    },
+    "phone": {
+      "width": 390,
+      "height": 844,
+      "top": 904,
+      "bottom": 1322,
+      "scrollY": 0,
+      "visible": false
+    }
+  },
+  "localNegative": "Unchanged c186 production build fails actual initial-1280x900 viewport assertion; retained red receipt exit1. DOM-presence assertions previously passed.",
+  "positiveMeasurements": [
+    {
+      "width": 1280,
+      "height": 900,
+      "scrollY": 0,
+      "top": 12,
+      "bottom": 285.59375,
+      "left": 304,
+      "right": 976
+    },
+    {
+      "width": 390,
+      "height": 844,
+      "scrollY": 0,
+      "top": 12,
+      "bottom": 429.59375,
+      "left": 12,
+      "right": 378
+    }
+  ],
+  "checks": {
+    "build": "exit 0",
+    "lint": "exit 0; existing fixture warning only",
+    "browser": {
+      "childPassed": 30,
+      "wrapperPassed": 32,
+      "failed": 0,
+      "skipped": 0,
+      "outboundAttempts": 0,
+      "covers": [
+        "viewport bounds at desktop/phone",
+        "labeled checkbox with disabled restore before confirmation",
+        "native Space confirmation and Tab to visible enabled restore at both sizes",
+        "restore failure, retry, reload, diverged peer refusal and previous wall/sync behavior"
+      ]
+    },
+    "priorUnitsBinding": {
+      "receipt": "interrupted-recovery-followup.json",
+      "fullPassed": 1058,
+      "defaultPostgresSkipped": 1,
+      "affectedPassed": 257,
+      "rerunForCssOnly": false,
+      "unchangedSourceDigests": [
+        {
+          "path": "src/customer/account/AccountRoot.tsx",
+          "sha256": "01f981f1f75bae20bd0ffa294f6877f50296460ff4f711298fc4973f44bc13ca"
+        },
+        {
+          "path": "src/customer/account/WallRecovery.tsx",
+          "sha256": "cacfb4e460a8d54a13995e634eed53f77ebc6e5c4e736da8d99b136e834aadb5"
+        },
+        {
+          "path": "src/customer/studio/store.ts",
+          "sha256": "b9f0a4dd7e8df9176c73b93624afac933dc70b037e887bb56c1774136736356f"
+        },
+        {
+          "path": "tests/studio-wall-mutation-recovery.test.mjs",
+          "sha256": "02802de0295b5baaddd450d30efd4e4f2e9ed11c8fc245bc53a0e51ebeb080f9"
+        }
+      ]
+    }
+  },
+  "sourceDigests": [
+    {
+      "path": "src/customer/account/account.module.css",
+      "sha256": "cf47dfdc3172a1822a3cd3b441907a7618b5c8576b2e91923930262ff5975a3a"
+    },
+    {
+      "path": "scripts/check-wall-write-integrity.mjs",
+      "sha256": "eee3f7255263abf32728f0d87f51f9b545ab29de5c80c6ea8ba5f4cb1df81f8b"
+    }
+  ],
+  "logs": [
+    {
+      "path": "/tmp/gt-wall-review005-red-browser.log",
+      "sha256": "946391b848113f69a5e72948ede4fced149e4531b665cb78cc693b3edcdbfe17"
+    },
+    {
+      "path": "/tmp/gt-wall-review005-red-browser/wall-integrity-2026-10-15T08-48-30-628Z.json",
+      "sha256": "a5a842ce27a5d89deea72adf5288f3f30b3f7625743d321cfee71d11dc526d41"
+    },
+    {
+      "path": "/tmp/gt-wall-review005-build.log",
+      "sha256": "9cdd9c3d0964a991f4c1f040ba6d735d71a2eb0f9b6db3d7f6cda9a7809832ef"
+    },
+    {
+      "path": "/tmp/gt-wall-review005-lint.log",
+      "sha256": "6236e1fc4371dd166fb8f60228aa4135ad4606cc2b9a3a314dbb58143a518a2b"
+    },
+    {
+      "path": "/tmp/gt-wall-review005-browser.log",
+      "sha256": "91cd8fe0820704697d3695dabc11adc9120c315a29a45346798d931bef6f6165"
+    },
+    {
+      "path": "/tmp/gt-wall-review005-browser/wall-integrity-2026-10-15T08-49-54-381Z.json",
+      "sha256": "02abc1ef0a86445f9cc1cb492f862b750fd88b9953203ec0bb150e3d3365fabb"
+    },
+    {
+      "path": "/tmp/gt-wall-c186-hosted-failed.log",
+      "sha256": "339a2a453d63b280ed3be343f14b5296d19cae0ae608734a4e80d91d3225e96e"
+    }
+  ],
+  "previousHeadHostedFailure": {
+    "head": "c186456738942fa960b1e9ff3bb3f2988769e79c",
+    "run": 38707699095,
+    "result": "failure",
+    "details": "281 analytics journey assertions passed; seven phone entry/navigation failures begin with landing loader not dismissing. Not waived or repaired by this scoped CSS patch. Runtime-order gates passed.",
+    "url": "https://github.com/Jevelopers-neatHack-2026/getticketstub.com/actions/runs/38707699095"
+  },
+  "provenance": "Final CSS/script checked before code commit; browser metadata names c186456 dirty=true. Prior receipts retained unchanged.",
+  "limits": [
+    "New hosted checks and independent exact-head re-review pending.",
+    "No recovery protocol or broader generation merge/fence changes. Human-established single-writer precondition remains required.",
+    "No deployment, merge, closure, live account/provider calls or canonical acceptance."
+  ]
+}
