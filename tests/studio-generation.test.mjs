@@ -901,6 +901,51 @@ describe("boundary repairs: first-observation unknown, and a removal that restor
     assert.equal((await q).op.phase, "applied");
   });
 
+  test("a malformed whole-wall entry stays unknown, does not latch removal, and recovers without losing other projects", async () => {
+    const ed = openEditor();
+    const request = ed.ask();
+    await tick();
+    const other = makeStub("other");
+    const malformed = { ...makeStub("broken-peer"), versions: {} };
+    const raw = JSON.stringify([other, malformed]);
+    localStorage.setItem("ticketstub.wall.v1", raw);
+    assert.equal(store.wallPresenceFromValue(raw, "s1"), "unknown", "an invalid peer makes whole-wall absence untrustworthy");
+    ed.gen.observeTransition((id) => store.wallPresenceFromValue(raw, id));
+    assert.equal(ed.gen.get("s1").phase, "pending", "unknown wall content cannot permanently retire a live run");
+    calls[0].ok("held");
+    const held = (await request).op;
+    assert.equal(held.phase, "ready", "unknown wall content holds the result instead of claiming the project was removed");
+    assert.match(held.message, /storage can't be read/i);
+    assert.equal(localStorage.getItem("ticketstub.wall.v1"), raw, "unknown bytes are preserved exactly");
+
+    localStorage.setItem("ticketstub.wall.v1", JSON.stringify([makeStub("s1"), other]));
+    const recovered = ed.gen.apply(held.runId);
+    assert.equal(recovered.phase, "applied");
+    assert.equal(recovered.saved, true);
+    const saved = JSON.parse(localStorage.getItem("ticketstub.wall.v1"));
+    assert.equal(saved.find((stub) => stub.id === "s1").versions.length, 2);
+    assert.ok(saved.some((stub) => stub.id === "other"), "a valid peer survives recovery and Apply");
+  });
+
+  test("null and malformed history entries are unknown rather than evidence that a project is absent", () => {
+    assert.equal(store.wallPresenceFromValue(null, "s1"), "absent", "a genuinely empty storage value remains absence");
+    assert.equal(store.wallPresenceFromValue(JSON.stringify([null]), "s1"), "unknown");
+    assert.equal(store.wallPresenceFromValue(JSON.stringify([42]), "s1"), "unknown");
+    assert.equal(store.wallPresenceFromValue(JSON.stringify([{ id: "other", versions: {} }]), "s1"), "unknown");
+  });
+
+  test("a valid empty wall after the project was seen still retires its pending result", async () => {
+    const ed = openEditor();
+    const request = ed.ask();
+    await tick();
+    assert.equal(ed.gen.get("s1").phase, "pending");
+    assert.equal(store.wallPresenceFromValue("[]", "s1"), "absent");
+    ed.gen.observeTransition((id) => store.wallPresenceFromValue("[]", id));
+    assert.equal(ed.gen.get("s1").phase, "discarded");
+    assert.equal(ed.gen.get("s1").code, "project_removed");
+    assert.equal((await request).op.code, "project_removed");
+  });
+
   /** What the paused editor will be handed later: removal then restoration, as two queued storage events. */
   function queuedDeleteThenRestore(ed) {
     const key = "ticketstub.wall.v1";

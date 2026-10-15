@@ -7,6 +7,7 @@ import { releasable, releaseOldest, retainArt } from "./versions/retention";
 import { applyCorrection, entries, undoCorrection, type CorrectionInput } from "./facts/corrections";
 import { storageFailure, storageReason } from "@/customer/flows/events";
 import { forgetStatus } from "./generation/status-store";
+import { readableGenerationHistory } from "./generation/readable-history";
 
 const KEY = "ticketstub.wall.v1";
 /** The localStorage key of the wall, for code that reads a `storage` event's payload. */
@@ -104,12 +105,12 @@ export function saveWall(stubs: Stub[]): boolean {
 /** What a wall says about one stub. "unknown" means the wall could not be read: never "gone". */
 export type StubPresence = "present" | "absent" | "unknown";
 
-/** Presence from a raw stored wall value (a `storage` event's newValue, or a direct read). null is an empty wall. */
+/** Presence from a raw stored wall value (a `storage` event's newValue, or a direct read). A malformed peer makes the wall unknown. */
 export function wallPresenceFromValue(raw: string | null, id: string): StubPresence {
   if (raw === null) return "absent";
   try {
     const wall = JSON.parse(raw) as unknown;
-    if (!Array.isArray(wall)) return "unknown";
+    if (!Array.isArray(wall) || !wall.every(readableGenerationHistory)) return "unknown";
     return wall.some((s) => (s as Stub | null)?.id === id) ? "present" : "absent";
   } catch {
     return "unknown";
@@ -131,7 +132,7 @@ export function readStoredStub(id: string): { status: "present"; stub: Stub } | 
     const raw = localStorage.getItem(KEY);
     if (raw === null) return { status: "absent" };
     const wall = JSON.parse(raw) as unknown;
-    if (!Array.isArray(wall)) return { status: "unknown" };
+    if (!Array.isArray(wall) || !wall.every(readableGenerationHistory)) return { status: "unknown" };
     const stub = (wall as Stub[]).find((s) => s?.id === id);
     return stub ? { status: "present", stub } : { status: "absent" };
   } catch {

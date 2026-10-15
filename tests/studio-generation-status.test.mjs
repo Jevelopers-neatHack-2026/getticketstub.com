@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { registerHooks } from "node:module";
 import React from "react";
@@ -12,6 +13,7 @@ registerHooks({ load(url, context, next) {
 } });
 globalThis.fetch = () => { throw new Error("Network forbidden in generation status recovery controls."); };
 const { GenerationController } = await import("../src/customer/studio/generation/operations.ts");
+const { subscribeGenerationAnnouncements } = await import("../src/customer/studio/generation/announcements.ts");
 const { GenerationStatus } = await import("../src/customer/studio/generation/GenerationStatus.tsx");
 const { loadStatus, saveStatus, forgetStatus, INTERRUPTED_MESSAGE } = await import("../src/customer/studio/generation/status-store.ts");
 const KEY = "ticketstub.generation.v1";
@@ -56,6 +58,50 @@ for (const phase of phases) test(`valid ${phase} status follows the recovery pol
     assert.equal(op.phase, phase); assert.ok(html.includes("Art generation status"));
   } else { assert.equal(op, null); assert.equal(html, ""); }
   assert.equal(storage.getItem(KEY), raw); assert.equal(storage.writes, 0);
+});
+
+test("Editor installs the live announcement subscriber before adopting a persisted interrupted status", () => {
+  const editor = readFileSync(new URL("../src/customer/studio/editor/Editor.tsx", import.meta.url), "utf8");
+  const host = editor.indexOf("const [generation] = useState(() => new GenerationController");
+  const effect = editor.indexOf("useEffect(() => {", host);
+  const subscribe = editor.indexOf("const unsub = subscribeGenerationAnnouncements", effect);
+  const attach = editor.indexOf("generation.attach();", effect);
+  assert.ok(host >= 0 && effect > host && subscribe > effect && attach > effect && subscribe < attach,
+    "the production effect must subscribe before attach emits its adopted status");
+
+  for (const phase of ["pending", "ready"]) {
+    const storage = saved({ "synthetic-status": status(phase) });
+    const controller = new GenerationController({ current: () => ({ id: "synthetic-status" }), revision: () => 0,
+      isGone: () => false, presence: () => "present", commit() { throw new Error("Status recovery cannot commit a design."); } }, storage);
+    const heard = [];
+    let unsubscribe = subscribeGenerationAnnouncements(controller, (message) => heard.push(message));
+    try {
+      controller.attach();
+      assert.deepEqual(heard, [INTERRUPTED_MESSAGE], `${phase} is adopted and announced exactly once during initialization`);
+      assert.equal(controller.get("synthetic-status").phase, "interrupted");
+      unsubscribe();
+      controller.detach();
+      unsubscribe = subscribeGenerationAnnouncements(controller, (message) => heard.push(message));
+      controller.attach();
+      assert.deepEqual(heard, [INTERRUPTED_MESSAGE], "a Strict Mode style detach/reattach does not announce the same status twice");
+    } finally { unsubscribe(); controller.detach(); }
+  }
+});
+
+test("a newly started request still reaches the same announcement subscriber", async () => {
+  const storage = new MemoryStorage();
+  const stub = { id: "synthetic-status", versions: [{ id: "v0" }], currentVersionId: "v0" };
+  const controller = new GenerationController({ current: () => stub, revision: () => 0,
+    isGone: () => false, commit() { throw new Error("The announcement test cannot commit a design."); } }, storage);
+  const heard = [];
+  const unsubscribe = subscribeGenerationAnnouncements(controller, (message) => heard.push(message));
+  controller.attach();
+  const request = controller.start({ via: "sheet", run: () => new Promise(() => {}) });
+  assert.deepEqual(heard, ["Generating new art."]);
+  assert.equal(controller.get("synthetic-status").phase, "pending");
+  unsubscribe();
+  controller.detach();
+  assert.equal((await request).op.phase, "interrupted");
 });
 
 for (const phase of phases) test(`object-valued message in ${phase} status is not adopted or rewritten`, () => {
