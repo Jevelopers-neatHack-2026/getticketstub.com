@@ -8,4 +8,4 @@ A curated set from the Midjourney exploration, converted to 1600 px WebP. The fu
 | `back-side/` | Setlist, note, friends, QR, Ts stamp, in golden-hour light |
 | `finish-holo/` | Holo and light-leak finish studies, holo Ts stamp |
 
-Prompts are in `../research/prompt-library.md`. The thermal references with real Ticketmaster logos were left out on purpose.
+Prompts are in the [prompt library](../research/prompt-library.md). Return to the [studio design index](../README.md) for the design decisions these references support. The thermal references with real Ticketmaster logos were left out on purpose.

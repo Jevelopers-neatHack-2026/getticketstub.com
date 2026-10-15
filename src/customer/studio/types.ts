@@ -11,6 +11,8 @@ export type EventType = "concert" | "game" | "show" | "generic";
 
 /** One researched fact (EventIntelligencePackage.facts[]). Unknown facts stay visible (AGT-01). */
 export interface Fact {
+  /** Persisted studio entity identity; never a producer/canonical fact ID. */
+  clientEntityKey?: string;
   id: string;
   label: string; // short, printed on the stub, e.g. "Night 2 of 3"
   value: string;
@@ -34,8 +36,11 @@ export interface ReviewAsset {
 
 /** One entry in a stub's correction history. Entries are never edited or removed; an undo is a new entry (GT-05). */
 export interface Correction {
+  /** Legacy duplicate IDs made this history entry's target unknowable. Retained for audit only. */
+  unresolvedIdentity?: true;
   id: string;
-  factId: string;
+  factId: string; // original source identity
+  clientEntityKey?: string; // local target, absent on legacy history
   kind: "correct" | "confirm" | "undo";
   /** The fact as it was before this entry. */
   original: { value: string; label: string; source: string; provenance: Provenance; confidence: number; kept?: boolean };
@@ -109,8 +114,6 @@ export interface DesignVersion {
   id: string;
   parentId?: string;
   edition: Edition;
-  /** SVG stub template id (public/stubs/<id>). When set it is the style drawn; `edition` stays as the fallback. */
-  template?: string;
   art: ArtLayer;
   createdAt: string;
   context?: VersionContext;

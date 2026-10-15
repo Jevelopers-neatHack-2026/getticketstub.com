@@ -104,12 +104,14 @@
 
 .foot {
   display: grid;
+  grid-template-columns: minmax(0, 1fr); /* the input's own width must not stretch the track past the sheet */
   gap: 12px;
   padding-top: 12px;
   border-top: 1px dashed var(--desk-rule-strong);
 }
 
 .composer {
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 6px;

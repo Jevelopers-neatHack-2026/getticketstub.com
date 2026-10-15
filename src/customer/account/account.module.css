@@ -19,6 +19,15 @@
   font-weight: 600;
   overflow-wrap: anywhere;
 }
+/* signed in on the way to paying: a paper note, not an alert */
+.resume {
+  margin: 0;
+  padding: 10px 12px;
+  font: var(--type-body);
+  color: var(--desk-ink);
+  background: var(--desk-paper-sunk);
+  box-shadow: inset 3px 0 0 var(--desk-ink), inset 0 0 0 1px var(--desk-rule);
+}
 .small {
   margin: 0;
   font: var(--type-label);
@@ -84,6 +93,13 @@
   margin: 0;
   font: var(--type-ui);
   font-variant-numeric: tabular-nums;
+}
+.toast[data-persistence="true"] {
+  flex-wrap: wrap;
+}
+.toast[data-persistence="true"] button {
+  max-width: 100%;
+  white-space: normal;
 }
 @keyframes slipIn {
   from {

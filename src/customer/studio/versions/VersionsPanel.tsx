@@ -11,7 +11,7 @@ import { messageFor } from "@/customer/feedback-messages/messages";
 import { PunchTabs, Tag, Tags, TearLink } from "@/customer/desk/Desk";
 import { WALL_SYNCED } from "@/customer/account/sync";
 import { ApproveSheet, compositionNow } from "../approval/ApproveSheet";
-import { printedLines } from "../approval/printed";
+import { printedLines, sameComposition } from "../approval/printed";
 import { atVersion } from "../editor/ops";
 import { whenLabel } from "../facts/FactsReview";
 import { artUnavailable } from "./retention";
@@ -104,7 +104,7 @@ function PrintApproval({ stub }: { stub: Stub }) {
 
   // An edit shows here at once, from the same fields the binding covers, before the server has heard of it: an approval that no
   // longer matches never reads as approved. (Title style, hidden fields and the note are caught when the sync lands.)
-  const outOfDate = !!live && (JSON.stringify(live.approval.binding.composition) !== JSON.stringify(compositionNow(stub)) || (!!live.summary && JSON.stringify(live.summary.printed) !== JSON.stringify(printedLines(stub))));
+  const outOfDate = !!live && (!sameComposition(live.approval.binding.composition, compositionNow(stub)) || (!!live.summary && JSON.stringify(live.summary.printed) !== JSON.stringify(printedLines(stub))));
   if (state === "loading") return null;
   return (
     <div ref={box} tabIndex={-1} className={styles.approval} data-approved={live && !outOfDate ? "true" : undefined}>

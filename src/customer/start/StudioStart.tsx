@@ -25,6 +25,7 @@ import {
 } from "./make";
 import { errorCode, flow } from "@/customer/flows/events";
 import { useIdleSway } from "./useIdleSway";
+import { useReducedMotion } from "@/customer/landing/MotionContext";
 import s from "./StudioStart.module.css";
 
 type Phase = "idle" | "feeding" | "printing" | "leaving";
@@ -44,6 +45,7 @@ const freshId = () => Math.random().toString(36).slice(2, 10);
 /** `fill`: the section is the whole page (/make) and centres its content in the screen height. Without it, it sizes to its content, for sitting under a hero. */
 export function StudioStart({ fill = false }: { fill?: boolean } = {}) {
   const router = useRouter();
+  const reduced = useReducedMotion();
   // where this start section sits: the whole /make page, or under the landing hero
   const entry = fill ? "make" : "home";
   const inputId = useId();
@@ -93,11 +95,8 @@ export function StudioStart({ fill = false }: { fill?: boolean } = {}) {
     setMessage(null);
     setJob(next);
     setPhase("feeding");
-    const calm = window.matchMedia?.(
-      "(prefers-reduced-motion: reduce)",
-    ).matches;
     section.current?.scrollIntoView({
-      behavior: calm ? "auto" : "smooth",
+      behavior: reduced ? "auto" : "smooth",
       block: "start",
     });
     later(() => setPhase("printing"), FEED_MS);
@@ -163,6 +162,7 @@ export function StudioStart({ fill = false }: { fill?: boolean } = {}) {
   return (
     <section
       ref={section}
+      data-reduced-motion={reduced ? "" : undefined}
       className={cx(
         "desk-surface",
         s.section,

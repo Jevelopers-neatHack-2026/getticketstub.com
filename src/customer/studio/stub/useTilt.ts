@@ -13,6 +13,7 @@
 //   --glow      0..1 (0.1 at rest)
 // Pointer is tracked over the element's parent (an untransformed hit area) when there is one.
 import { useCallback, useEffect, useRef, type RefObject } from "react";
+import { useReducedMotion } from "@/customer/landing/MotionContext";
 
 const TILT_MAX = 11;
 const TAU_TILT = 110;
@@ -35,13 +36,12 @@ interface State {
 const rest = (): State => ({ rx: 0, ry: 0, lx: 50, ly: 35, glow: REST_GLOW });
 const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
 
-function reducedMotion(): boolean {
-  return typeof window !== "undefined" && !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-}
-
 type OrientationCtor = typeof DeviceOrientationEvent & { requestPermission?: () => Promise<"granted" | "denied"> };
 
 export function useTilt(ref: RefObject<HTMLElement | null>, enabled: boolean): { requestGyro: () => Promise<void> } {
+  const reduced = useReducedMotion();
+  const reducedRef = useRef(reduced);
+  const active = useRef(true);
   const cur = useRef<State>(rest());
   const tgt = useRef<State>(rest());
   const raf = useRef<number | null>(null);
@@ -53,7 +53,8 @@ export function useTilt(ref: RefObject<HTMLElement | null>, enabled: boolean): {
   const wrote = useRef(false);
   useEffect(() => {
     enabledRef.current = enabled;
-  }, [enabled]);
+    reducedRef.current = reduced;
+  }, [enabled, reduced]);
 
   const write = useCallback(() => {
     const el = ref.current;
@@ -70,9 +71,10 @@ export function useTilt(ref: RefObject<HTMLElement | null>, enabled: boolean): {
   }, [ref]);
 
   const kick = useCallback(() => {
-    if (raf.current != null) return;
+    if (!active.current || reducedRef.current || raf.current != null) return;
     last.current = 0;
     const step = (now: number) => {
+      if (!active.current || reducedRef.current) { raf.current = null; return; }
       const dt = clamp(now - (last.current || now - 16.7), 0, DT_MAX);
       last.current = now;
       const c = cur.current;
@@ -128,15 +130,18 @@ export function useTilt(ref: RefObject<HTMLElement | null>, enabled: boolean): {
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    if (!enabled) {
-      // ease home from wherever it is (CSS defaults apply if we never wrote anything)
-      if (wrote.current && !reducedMotion()) relax();
-      return;
-    }
-    if (reducedMotion()) {
+    if (reduced) {
+      if (raf.current != null) cancelAnimationFrame(raf.current);
+      raf.current = null;
+      last.current = 0;
       cur.current = { ...rest(), glow: REDUCED_GLOW };
       tgt.current = { ...cur.current };
-      write();
+      if (enabled || wrote.current) write();
+      return;
+    }
+    if (!enabled) {
+      // ease home from wherever it is (CSS defaults apply if we never wrote anything)
+      if (wrote.current) relax();
       return;
     }
     write();
@@ -160,12 +165,12 @@ export function useTilt(ref: RefObject<HTMLElement | null>, enabled: boolean): {
       host.removeEventListener("pointerleave", onLeave);
       host.removeEventListener("pointercancel", onLeave);
     };
-  }, [enabled, ref, aim, relax, write]);
+  }, [enabled, reduced, ref, aim, relax, write]);
 
   // gyro listener
   const onOrient = useCallback(
     (e: DeviceOrientationEvent) => {
-      if (!enabledRef.current || e.beta == null || e.gamma == null) return;
+      if (!active.current || !enabledRef.current || reducedRef.current || e.beta == null || e.gamma == null) return;
       const lp = gyroLP.current;
       const next = lp
         ? { beta: lp.beta + (e.beta - lp.beta) * LOWPASS, gamma: lp.gamma + (e.gamma - lp.gamma) * LOWPASS }
@@ -184,7 +189,9 @@ export function useTilt(ref: RefObject<HTMLElement | null>, enabled: boolean): {
   );
 
   useEffect(() => {
+    active.current = true;
     return () => {
+      active.current = false;
       if (raf.current != null) cancelAnimationFrame(raf.current);
       raf.current = null;
       if (gyroOn.current) window.removeEventListener("deviceorientation", onOrient);
@@ -193,16 +200,16 @@ export function useTilt(ref: RefObject<HTMLElement | null>, enabled: boolean): {
   }, [onOrient]);
 
   useEffect(() => {
-    if (!enabled && gyroOn.current) {
+    if ((!enabled || reduced) && gyroOn.current) {
       window.removeEventListener("deviceorientation", onOrient);
       gyroOn.current = false;
       gyroBase.current = null;
       gyroLP.current = null;
     }
-  }, [enabled, onOrient]);
+  }, [enabled, reduced, onOrient]);
 
   const requestGyro = useCallback(async () => {
-    if (typeof window === "undefined" || gyroOn.current || !enabledRef.current || reducedMotion()) return;
+    if (typeof window === "undefined" || !active.current || gyroOn.current || !enabledRef.current || reducedRef.current) return;
     if (typeof DeviceOrientationEvent === "undefined") return;
     try {
       const ctor = DeviceOrientationEvent as OrientationCtor;
@@ -210,6 +217,7 @@ export function useTilt(ref: RefObject<HTMLElement | null>, enabled: boolean): {
         const res = await ctor.requestPermission();
         if (res !== "granted") return;
       }
+      if (!active.current || !enabledRef.current || reducedRef.current) return;
       gyroBase.current = null;
       gyroLP.current = null;
       window.addEventListener("deviceorientation", onOrient);

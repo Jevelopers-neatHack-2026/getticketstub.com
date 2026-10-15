@@ -1,6 +1,9 @@
 // Reference verifier and reference issuer model for ticketstub.order-authorization/1. No dependencies: copy these functions into a consumer.
 //   node fixtures/order-authorization/verify.mjs      checks every token fixture and every reference-driven scenario in this folder
-// verifyOrderAuthorization(token, key, expect, { now, state, intent }) -> { ok: true, authorization } | { ok: false, reason, fields? }
+// verifyOrderAuthorization(token, keys, expect, { now, state, intent }) -> { ok: true, authorization } | { ok: false, reason, fields? }
+// keys maps kid -> HMAC key ({ [kid]: key }, or a function (kid, keyTimeMs) => key | null). The token header names its kid; a kid you hold no key for
+// is forged. During a rotation hold the previous kid's key too, until its tokens have expired (fifteen minutes).
+// keyTimeMs is the signedAt header time when present, else legacy record issuedAt (not proof of actual signing time).
 // reason is one of: unknown | forged | unsupported_version | wrong_scope | changed_terms | revoked | expired | stale_approval | stale |
 //                   not_orderable | already_claimed | not_claimed | idempotency_conflict
 // expect MUST name { tenant, project: { kind, id }, action, provider, terms } with the FULL terms the consumer holds (orderRef, sku, options, quote,
@@ -57,10 +60,12 @@ export function termDiffs(held, bound, prefix = "") {
   return out;
 }
 
-export function signOrderAuthorization(record, key) {
-  const head = enc(JSON.stringify({ alg: "HS256", typ: "ticketstub.order-authorization" }));
+/** signer: { kid, key }. Header signedAt uses the actual clock, or an explicit synthetic fixture clock. */
+export function signOrderAuthorization(record, signer, signedAtMs = Date.now()) {
+  if (!Number.isFinite(signedAtMs) || signedAtMs <= 0) throw new Error("order authorization signing clock is invalid");
+  const head = enc(JSON.stringify({ alg: "HS256", typ: "ticketstub.order-authorization", kid: signer.kid, signedAt: new Date(signedAtMs).toISOString() }));
   const body = enc(JSON.stringify({ authorization: record }));
-  return `${head}.${body}.${createHmac("sha256", key).update(`${head}.${body}`).digest("base64url")}`;
+  return `${head}.${body}.${createHmac("sha256", signer.key).update(`${head}.${body}`).digest("base64url")}`;
 }
 
 function shaped(v) {
@@ -83,7 +88,8 @@ function shaped(v) {
  *   -> revoked -> expired -> stale_approval -> stale (renewed, membership or capability version moved) -> not_orderable
  *   -> claim rules by intent: verify refuses any claim (already_claimed); claim allows only a replay under the same key; revalidate needs the claim it was given (not_claimed).
  */
-export function verifyOrderAuthorization(token, key, expect, { now = Date.now(), state, intent = "verify" } = {}) {
+const KID = /^[A-Za-z0-9._-]{1,64}$/;
+export function verifyOrderAuthorization(token, keys, expect, { now = Date.now(), state, intent = "verify" } = {}) {
   const no = (reason, fields) => ({ ok: false, reason, ...(fields ? { fields } : {}) });
   if (typeof now !== "number" || !Number.isFinite(now) || now <= 0) return no("invalid_clock");
   if (typeof token !== "string" || token.length > 8192) return no("unknown");
@@ -96,7 +102,13 @@ export function verifyOrderAuthorization(token, key, expect, { now = Date.now(),
   } catch {
     return no("unknown");
   }
-  if (!isObj(head) || head.alg !== "HS256" || head.typ !== "ticketstub.order-authorization" || !isObj(body)) return no("unknown");
+  if (!isObj(head) || head.alg !== "HS256" || head.typ !== "ticketstub.order-authorization" || typeof head.kid !== "string" || !KID.test(head.kid) || !isObj(body)) return no("unknown");
+  const claimedSigned = typeof head.signedAt === "string" ? Date.parse(head.signedAt) : Number.NaN;
+  const stamped = Object.hasOwn(head, "signedAt");
+  if (stamped && (!Number.isFinite(claimedSigned) || claimedSigned <= 0 || new Date(claimedSigned).toISOString() !== head.signedAt)) return no("unknown");
+  const keyTime = stamped ? claimedSigned : isObj(body.authorization) && typeof body.authorization.issuedAt === "string" ? Date.parse(body.authorization.issuedAt) : Number.NaN;
+  const key = typeof keys === "function" ? keys(head.kid, keyTime) : isObj(keys) && Object.hasOwn(keys, head.kid) ? keys[head.kid] : null;
+  if (!(typeof key === "string" && key.length > 0) && !(Buffer.isBuffer(key) && key.length > 0)) return no("forged");
   const want = createHmac("sha256", key).update(`${parts[0]}.${parts[1]}`).digest();
   const got = dec(parts[2]);
   if (got.length !== want.length || !timingSafeEqual(got, want)) return no("forged");
@@ -135,8 +147,8 @@ export const CLOCKS = { nan: Number.NaN, infinity: Number.POSITIVE_INFINITY, neg
 export const fixtureNow = (fx) => (fx.consumer?.clock !== undefined ? CLOCKS[fx.consumer.clock] : Date.parse(fx.verifyAt));
 
 /** Runs one token fixture the way a consumer would: its own terms, the issuer's state, the intent. */
-export function runFixture(fx, key) {
-  return verifyOrderAuthorization(fx.token, key, fx.expect, { now: fixtureNow(fx), state: fx.state, intent: fx.intent });
+export function runFixture(fx, keys) {
+  return verifyOrderAuthorization(fx.token, keys, fx.expect, { now: fixtureNow(fx), state: fx.state, intent: fx.intent });
 }
 
 /** Does a result match the fixture's outcome (ok, or the reason, and the fields when it names them)? */
@@ -152,8 +164,9 @@ export function matchesOutcome(r, outcome) {
 
 const CAP = "2026-10-11.1";
 export class ReferenceIssuer {
-  constructor({ key, baseTerms, tenant, project, scenario }) {
-    this.key = key;
+  constructor({ key, kid = "fixture", baseTerms, tenant, project, scenario }) {
+    this.signer = { kid, key };
+    this.key = { [kid]: key }; // the verify side: kid -> key
     this.base = baseTerms;
     this.tenant = tenant;
     this.project = project;
@@ -199,7 +212,7 @@ export class ReferenceIssuer {
       notAuthorizes: ["payment", "refund", "other_orders", "destination_change", "asset_rights"], environment: "development", mode: "fixture",
       issuedAt: new Date(this.now).toISOString(), expiresAt: new Date(this.now + TTL_MS).toISOString(),
     };
-    this.auths.set(label, { record, token: signOrderAuthorization(record, this.key), revoked: false, n });
+    this.auths.set(label, { record, token: signOrderAuthorization(record, this.signer, this.now), revoked: false, n });
     return { ok: true };
   }
   async claim(label, keyLabel) {
@@ -332,7 +345,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   let bad = 0;
   for (const f of index.fixtures) {
     const fx = JSON.parse(readFileSync(join(here, f), "utf8"));
-    const r = runFixture(fx, keyFile.key);
+    const r = runFixture(fx, { [keyFile.kid]: keyFile.key });
     const ok = matchesOutcome(r, fx.outcome);
     if (!ok) bad++;
     console.log(`${ok ? "ok  " : "FAIL"} ${fx.fixture}: ${r.ok ? "ok" : r.reason}${ok ? "" : ` (wanted ${fx.outcome.ok ? "ok" : fx.outcome.reason})`}`);

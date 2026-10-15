@@ -59,7 +59,9 @@ Vendored paths must be plain relative paths (no `..`, backslash, absolute, NUL, 
 tracked HEAD blobs; symlinks and submodules are refused. `--out` must have a value, may not go through a symlink, may not be named `.env*`/`*.pem`, and is compared by real
 location (so `/tmp` vs `/private/tmp` aliases of the repo count as in-repo): in-repo targets must be git-ignored and
 untracked. An existing target is overwritten only if it is a regular file that is itself an assembly-evidence manifest;
-new files are created exclusively (temp file + link), previous manifests replaced by atomic rename.
+new files are created exclusively (temp file + link), previous manifests replaced by atomic rename. A target absent
+at initial validation stays create-only: if another writer creates it during snapshot assembly, the final link fails
+with `EEXIST`, preserves that writer's bytes and removes the temporary file.
 
 ## Verify
 

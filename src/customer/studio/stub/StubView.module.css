@@ -258,9 +258,8 @@
   min-width: 0;
 }
 .factLine {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
+  overflow-wrap: anywhere;
   max-width: 100%;
 }
 /* Small print under the weather: its own line, unstyled by the edition. cqw follows the stub's width, so the
@@ -1107,17 +1106,4 @@ button.chip:focus-visible {
   letter-spacing: 0.16em;
   color: var(--ink);
   opacity: 0.85;
-}
-
-/* SVG template faces: the file draws everything, including the die-cut, so the face is a bare host. */
-.svgFace {
-  border-radius: 0;
-  background: none;
-}
-.svgFace::after {
-  display: none;
-}
-.svgHost {
-  position: absolute;
-  inset: 0;
 }

@@ -7,6 +7,7 @@ import { haptic, play, type Cue, type PlayOptions } from "@/customer/studio/feed
 import type { Provenance } from "@/customer/studio/types";
 import s from "./Desk.module.css";
 import { CloseIcon, RegistrationIcon } from "./icons";
+import { useReducedMotion } from "@/customer/landing/MotionContext";
 
 const SUBTLE: PlayOptions = { emphasis: "subtle" };
 
@@ -14,13 +15,14 @@ type ButtonProps = Omit<ButtonHTMLAttributes<HTMLButtonElement>, "children"> & {
 
 /** Pressed state that follows the pointer, plus the part's cue on release. */
 function usePress(cue: Cue | null, buzz: number | number[] = 0, opts?: PlayOptions) {
+  const reduced = useReducedMotion();
   const [pressed, setPressed] = useState(false);
   const down = useCallback(() => setPressed(true), []);
   const up = useCallback(() => setPressed(false), []);
   const fire = useCallback(() => {
     if (cue) play(cue, opts);
-    if (buzz) haptic(buzz);
-  }, [cue, buzz, opts]);
+    if (buzz && !reduced) haptic(buzz);
+  }, [cue, buzz, opts, reduced]);
   return {
     pressed,
     bind: {

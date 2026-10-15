@@ -1,6 +1,6 @@
 # Acceptance view: getticketstub.com
 
-The [master checklist](https://github.com/Jevelopers-neatHack-2026/integration-evals/blob/main/planning/acceptance-checklist.md) and its JSON tracker are authoritative. This view selects relevant criteria; update states and evidence there, not here. All criteria start planned; architecture distribution verifies none. Owner roles are preserved; named assignees remain unconfirmed. Local brief checkboxes add domain guidance without replacing master IDs.
+The [master integration-evals checklist](https://github.com/Jevelopers-neatHack-2026/integration-evals/blob/main/planning/acceptance-checklist.md) and its JSON tracker are authoritative for criterion state, evidence, and owner assignments. This page only maps the local repository's relevant IDs; it does not maintain status. Architecture-kit distribution or a passing local suite is not a substitute for acceptance evidence.
 
 - [ARC-01 — Pinned clean assembly](https://github.com/Jevelopers-neatHack-2026/integration-evals/blob/main/planning/acceptance-checklist.md#arc-01-pinned-clean-assembly): P0; owner role: Product and frontend.
 - [ARC-02 — Single data ownership](https://github.com/Jevelopers-neatHack-2026/integration-evals/blob/main/planning/acceptance-checklist.md#arc-02-single-data-ownership): P0; owner role: Product and frontend.

@@ -12,7 +12,7 @@ export interface Placed {
   order: Order;
   /** True when the server took the order, so the receipt is on its way to order.email. */
   receipt: boolean;
-  /** Set when the server refused or couldn't be reached: the order is only on this device. Catalog code, never shown raw. */
+  /** Set when the server refused or its response could not be confirmed. A lost response does not prove no server order exists. Catalog code, never shown raw. */
   code?: string;
   /** The id of this checkout attempt. A retry sends it again, so the server answers with the order it already made. */
   attemptId: string;
@@ -87,7 +87,7 @@ export async function placeOrder(draft: Draft, attemptId = newAttemptId()): Prom
     return { order, receipt: !!draft.email, attemptId };
   } catch (e) {
     const code = codeOf(e);
-    // An order that could be paid for, and wasn't taken, is no order: nothing was charged, so this device keeps no record of it.
+    // An unconfirmed payable checkout keeps no local order; the same attempt must be reconciled on retry.
     const unpaid = isPayable(draft);
     if (unpaid) dropOrder(local.id);
     reportOrder(draft, "local", made.stored && !unpaid, e);
@@ -95,7 +95,7 @@ export async function placeOrder(draft: Draft, attemptId = newAttemptId()): Prom
   }
 }
 
-/** Sends an order that stayed on this device to the server again. It does not make a second local record. */
+/** Reconciles the same attempt after an unsuccessful response. It does not make a second local record. */
 export async function resendOrder(placed: Placed): Promise<Placed> {
   if (isSavingOff()) return placed;
   const { order } = placed;

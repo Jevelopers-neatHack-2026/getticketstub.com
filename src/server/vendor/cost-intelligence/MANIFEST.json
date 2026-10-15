@@ -1,0 +1,18 @@
+{
+  "repository": "https://github.com/Jevelopers-neatHack-2026/cost-intelligence",
+  "commit": "a08760e9ea65bda1e116867ac00b3e03d737bb7e",
+  "files": {
+    "runtime.tgz": "4c3a878bfa76a0c260dcf5fb9ce3053b13ecfaeaf56b29969c01d0ece75eaacd",
+    "migrations/0001_foundation.sql": "149333f85d5b5673d0a050e001e9cb1fdc370568c37fef23006bb98c9e03a11b",
+    "migrations/0002_foundation_health.sql": "d49306f7312d713b335b3dc5863fe228e8b4daf1a5380138f8847c14a7f62b99",
+    "migrations/0003_financial_ledger.sql": "d8db9d67e42ffa9ac3d5b7205992956a6afef26d8114580a29dc0d2e409a7c6a",
+    "migrations/0004_pricing_catalog.sql": "86ce94579fe19f5edb965721ef1c9d8e5daa874ada4dbeb2b87c23a0a325441b",
+    "migrations/0005_pricing_valuation_history.sql": "b648d9dffbff134250c032622a5a946df903b36ba42f1bdc4daefb81dee9af80",
+    "migrations/0006_finance_security_roles.sql": "fb5ef6ffd1cae4afaf5c3d35092bf837948878aae7ac83dd31566daa0fd06b8e",
+    "migrations/0007_accounting_projection_snapshots.sql": "7fad294f854955f118f65fa3e198cfe4b1a7cb835a22e156a3d3509281f64ca6",
+    "migrations/0008_budget_reservations.sql": "ae4a6eabdfd06779f76c80a204c00b08ed36c493ec08334a84b3bd2dae1da0c0",
+    "migrations/0009_usage_intake.sql": "ad083cdc40e78ac3753e657a46de6c201ca3efb33e6bd3b024bf7e29a3c24b0f",
+    "migrations/0010_budget_authority_bindings.sql": "1f3f1949abd9ce3a4771e17287fce813694a56a93c0f901dfaeb60a568b80af6",
+    "SOURCE_LOCK.json": "f9f551c0c60f841074389251ba06f773e404c26223a4077697358d1564ec613e"
+  }
+}

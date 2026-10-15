@@ -16,6 +16,66 @@ export class HttpError extends Error {
 
 const NO_STORE = { "cache-control": "no-store" };
 
+// Labels are fixed codes, shorter than the event sanitizer's token-like string limit.
+// Static routes precede dynamic ones (notably share/revoke). New routes default to unknown.
+const API_ROUTE_LABELS = [
+  ["account", "account"],
+  ["account/email", "account_email"],
+  ["account/email/confirm", "account_email_confirm"],
+  ["admin/backup", "admin_backup"],
+  ["admin/harness", "admin_harness"],
+  ["agent", "agent"],
+  ["approvals", "approvals"],
+  ["approvals/revoke", "approvals_revoke"],
+  ["approvals/verify", "approvals_verify"],
+  ["art", "art"],
+  ["auth/callback", "auth_callback"],
+  ["auth/confirm", "auth_confirm"],
+  ["auth/link", "auth_link"],
+  ["auth/me", "auth_me"],
+  ["auth/signout", "auth_signout"],
+  ["context", "context"],
+  ["context/verify", "context_verify"],
+  ["creative", "creative"],
+  ["dev/email-preview", "dev_email_preview"],
+  ["events", "events"],
+  ["gift", "gift"],
+  ["health", "health"],
+  ["order-authorizations", "order_authorizations"],
+  ["order-authorizations/claim", "order_auth_claim"],
+  ["order-authorizations/claims/lookup", "order_auth_claim_lookup"],
+  ["order-authorizations/revalidate", "order_auth_revalidate"],
+  ["order-authorizations/revoke", "order_auth_revoke"],
+  ["order-authorizations/verify", "order_auth_verify"],
+  ["orders", "orders"],
+  ["organizer/events", "organizer_events"],
+  ["payments/dodo/webhook", "payments_dodo_webhook"],
+  ["payments/stripe/webhook", "payments_stripe_webhook"],
+  ["research", "research"],
+  ["share", "share"],
+  ["share/revoke", "share_revoke"],
+  ["wall/public", "wall_public"],
+  ["wall/sync", "wall_sync"],
+  ["fulfillment/prodigi/callbacks/:token", "prodigi_callbacks"],
+  ["claim/:token", "claim_token"],
+  ["files/:name", "files_name"],
+  ["gift/:token", "gift_token"],
+  ["share/:token", "share_token"],
+  ["stub-image/:token", "stub_image_token"],
+  ["u/:token", "u_token"],
+] as const;
+
+/** Never derive a telemetry value from a request's dynamic segments or an unknown path. */
+function safeRouteLabel(pathname: string): string {
+  if (!pathname.startsWith("/api/")) return "unknown";
+  const segments = pathname.slice(5).replace(/\/$/, "").split("/");
+  for (const [template, label] of API_ROUTE_LABELS) {
+    const parts = template.split("/");
+    if (parts.length === segments.length && parts.every((part, i) => part.startsWith(":") ? segments[i].length > 0 : part === segments[i])) return label;
+  }
+  return "unknown";
+}
+
 export function json(data: unknown, init?: { status?: number; headers?: Record<string, string> }): NextResponse {
   return NextResponse.json(data, { status: init?.status ?? 200, headers: { ...NO_STORE, ...init?.headers } });
 }
@@ -57,8 +117,8 @@ export function route<A extends unknown[]>(fn: (...args: A) => Promise<Response>
       return tagged(await fn(...args), requestId);
     } catch (e) {
       if (e instanceof HttpError && e.code === "storage_unavailable") {
-        const path = req ? new URL(req.url).pathname.replace(/^\/api\//, "").replace(/[^a-z0-9]+/gi, "_").toLowerCase().slice(0, 40) : "unknown";
-        const ev = sanitizeEvent({ type: "storage_unavailable", requestId, fields: { code: "storage_unavailable", route: /^[a-z]/.test(path) ? path : "unknown" } });
+        const label = req ? safeRouteLabel(new URL(req.url).pathname) : "unknown";
+        const ev = sanitizeEvent({ type: "storage_unavailable", requestId, fields: { code: "storage_unavailable", route: label } });
         if (ev) pushRing(ev);
       }
       return tagged(errorResponse(e), requestId);
@@ -68,10 +128,11 @@ export function route<A extends unknown[]>(fn: (...args: A) => Promise<Response>
 
 export const notFound = () => new HttpError(404, "not_found", "We couldn't find that.");
 
-/** APP_URL's origin, when it is an absolute https URL (or http on localhost). Anything else counts as unset. */
+/** APP_URL's origin, when it is credential-free HTTPS (or HTTP on localhost/127.0.0.1). Invalid values return null. */
 export function configuredOrigin(): string | null {
   try {
     const u = new URL(process.env.APP_URL?.trim() ?? "");
+    if (u.username || u.password) return null;
     const local = u.hostname === "localhost" || u.hostname === "127.0.0.1";
     return u.protocol === "https:" || (u.protocol === "http:" && local) ? u.origin : null;
   } catch {
@@ -79,16 +140,28 @@ export function configuredOrigin(): string | null {
   }
 }
 
-/** The public origin, for links in emails. APP_URL wins; otherwise the request's own origin. */
-export function appOrigin(req: Request): string {
-  const configured = configuredOrigin();
-  if (configured) return configured;
-  const host = req.headers.get("x-forwarded-host") ?? req.headers.get("host") ?? new URL(req.url).host;
-  const proto = req.headers.get("x-forwarded-proto")?.split(",")[0].trim() ?? new URL(req.url).protocol.replace(":", "");
-  return `${proto}://${host}`;
+/** Configured authority, or a loopback request URL for local operation. Headers never supply authority. */
+function trustedOrigin(req: Request): string | null {
+  if (process.env.APP_URL?.trim()) return configuredOrigin();
+  try {
+    // NextRequest.url normalizes loopback hosts. Recover the native constructor-held URL,
+    // bypassing framework/instance overrides without consulting authority headers.
+    const u = new URL(Reflect.get(Request.prototype, "url", req));
+    const local = u.hostname === "localhost" || u.hostname === "127.0.0.1" || u.hostname === "[::1]";
+    return local && !u.username && !u.password && (u.protocol === "http:" || u.protocol === "https:") ? u.origin : null;
+  } catch {
+    return null;
+  }
 }
 
-/** Mutating routes only accept a browser Origin that is APP_URL or this request's own host. */
+/** The origin for security links; public requests require a valid APP_URL. */
+export function appOrigin(req: Request): string {
+  const origin = trustedOrigin(req);
+  if (!origin) throw new HttpError(503, "origin_unavailable", "The public URL isn't configured on this server.");
+  return origin;
+}
+
+/** Mutating routes require the complete configured origin, or the exact loopback request URL origin. */
 export function checkOrigin(req: Request): void {
   const deny = () => new HttpError(403, "bad_origin", "This request didn't come from TicketStub.");
   const origin = req.headers.get("origin");
@@ -99,11 +172,7 @@ export function checkOrigin(req: Request): void {
   } catch {
     throw deny();
   }
-  const own = (req.headers.get("x-forwarded-host") ?? req.headers.get("host") ?? "").toLowerCase();
-  let allowed = parsed.host.toLowerCase() === own;
-  const configured = configuredOrigin();
-  if (!allowed && configured) allowed = parsed.origin === configured;
-  if (!allowed) throw deny();
+  if (parsed.username || parsed.password || parsed.pathname !== "/" || parsed.search || parsed.hash || parsed.origin !== trustedOrigin(req)) throw deny();
 }
 
 /** True when the request carries an Origin that isn't ours. A missing Origin is not foreign: for the routes that guests may call without one. */

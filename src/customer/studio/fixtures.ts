@@ -1,6 +1,7 @@
 import type { ArtLayer, EventData, Stub } from "./types";
 import { motifSeed } from "./stub/proceduralArt";
 import { hashSeed } from "./stub/rng";
+import { normalizeEventFacts } from "./facts/identity";
 
 // Demo fixtures. Fictional band and teams; neatHack is the real demo event, facts marked pending where unknown.
 
@@ -85,7 +86,7 @@ export function newStub(event: EventData, id = Math.random().toString(36).slice(
   return {
     id,
     createdAt: new Date().toISOString(),
-    event,
+    event: normalizeEventFacts(event),
     versions: [v],
     currentVersionId: v.id,
     personal: { titleFont: 0, titleColor: "", foilTitle: true, hiddenFields: [], friends: [] },

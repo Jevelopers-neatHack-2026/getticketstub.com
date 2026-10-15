@@ -53,6 +53,19 @@ function Form({ request }: { request: SignInRequest }) {
   const [error, setError] = useState("");
   const progress = useProgress();
   const sent = request.sent;
+  const guest = request.onGuest ? (
+    <TearLink
+      type="button"
+      onClick={() => {
+        flow("signin_choice", { choice: "guest", reason: request.reason });
+        play("tap", { emphasis: "subtle" });
+        closeSignIn();
+        request.onGuest?.();
+      }}
+    >
+      Continue as guest
+    </TearLink>
+  ) : null;
 
   async function send() {
     const to = email.trim();
@@ -84,7 +97,7 @@ function Form({ request }: { request: SignInRequest }) {
     return (
       <div className={s.body}>
         <p className={s.lede} data-announce>
-          We sent a link to <strong className={s.addr}>{sent.email}</strong>. Open it on this device to save your wall. It works once and lasts 15 minutes.
+          We sent a link to <strong className={s.addr}>{sent.email}</strong>. {request.onGuest ? "Open it on this device to come back here and finish paying." : "Open it on this device to save your wall."} It works once and lasts 15 minutes.
         </p>
         {sent.devLink ? (
           <div className={s.sandbox}>
@@ -117,6 +130,7 @@ function Form({ request }: { request: SignInRequest }) {
             Close
           </TearLink>
         </div>
+        {guest}
       </div>
     );
   }
@@ -152,15 +166,17 @@ function Form({ request }: { request: SignInRequest }) {
       <Stamp type="submit" block disabled={progress.busy}>
         {progress.busy ? "Sending" : "Email me a link"}
       </Stamp>
-      <TearLink
-        type="button"
-        onClick={() => {
-          flow("signin_choice", { choice: "skip", reason: request.reason });
-          closeSignIn();
-        }}
-      >
-        Not now
-      </TearLink>
+      {guest ?? (
+        <TearLink
+          type="button"
+          onClick={() => {
+            flow("signin_choice", { choice: "skip", reason: request.reason });
+            closeSignIn();
+          }}
+        >
+          Not now
+        </TearLink>
+      )}
       <p className={s.small}>
         We keep your email to sign you in. Read the{" "}
         <Link href="/privacy" className={s.plain} onClick={closeSignIn}>

@@ -316,12 +316,13 @@ function checkOutputPath(root, out) {
     try { gitBytes(root, "check-ignore", "-q", "--", rel); }
     catch { throw new Error(`refusing to write inside the repo to a non-ignored path: ${rel} (the app SHA must not be committed)`); }
   }
-  if (existsSync(real)) {
+  const replacing = existsSync(real);
+  if (replacing) {
     let previous = null;
     if (lstatSync(real).isFile()) { try { previous = JSON.parse(readFileSync(real, "utf8")); } catch { previous = null; } }
     if (previous?.schema !== SCHEMA) throw new Error(`refusing to overwrite an existing file that is not an assembly-evidence manifest: ${real}`);
   }
-  return real;
+  return { target: real, replacing };
 }
 
 // Write to a private temp file, then link (fails if the target appeared) or, for a validated previous manifest, rename.
@@ -341,9 +342,9 @@ function main() {
   try {
     const args = parseArgs(rest);
     if (command === "build") {
-      const target = checkOutputPath(root, args.out ?? DEFAULT_OUT);
+      const { target, replacing } = checkOutputPath(root, args.out ?? DEFAULT_OUT);
       const manifest = buildManifest(root, { allowDirty: args.allowDirty });
-      writeOutput(target, `${JSON.stringify(manifest, null, 2)}\n`, existsSync(target));
+      writeOutput(target, `${JSON.stringify(manifest, null, 2)}\n`, replacing);
       const pending = manifest.components.required.filter((c) => c.status === "pending").map((c) => c.name);
       console.log(`wrote ${target}\napp ${manifest.app.sha} dirty=${manifest.app.dirty} mode=${MODE} acceptance=not_accepted\npending pins: ${pending.join(", ") || "none"}`);
     } else if (command === "verify") {

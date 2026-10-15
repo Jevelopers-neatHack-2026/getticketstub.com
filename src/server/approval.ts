@@ -22,11 +22,13 @@ import {
   type ApprovalState,
   type ApprovalVerifyResult,
 } from "./approval-token";
-import { contextEnvironment, signingMode, tokenSigningKey, type RequestContext } from "./context";
+import { contextEnvironment, type RequestContext } from "./context";
 import { readStoredFile } from "./files";
 import { HttpError } from "./http";
 import { parseSummary, printedSummary, type ApprovalDrift, type ApprovalSummary } from "@/customer/studio/approval/printed";
 import { getStorage } from "./index";
+import type { Keyring } from "./keyring";
+import { approvalKeyring, requireApprovalKeyring } from "./signing-keys";
 import type { ApprovalRow, NewApproval } from "./storage";
 
 // Artwork approval, server side: builds the binding from the stub the server holds (never from a body), issues
@@ -84,7 +86,7 @@ const newApprovalId = () => `apr_${randomBytes(12).toString("base64url")}`;
  */
 export async function issueApproval(ctx: RequestContext, stubId: string, purpose: ApprovalPurpose, expectedVersionId: string, askedSize: unknown): Promise<{ view: ApprovalView; created: boolean }> {
   if (ctx.actor.kind !== "account") throw new HttpError(401, "unauthorized", "Sign in with an emailed link to do that.");
-  const key = tokenSigningKey(); // 503 in live mode without CONTEXT_SECRET, before anything is written
+  const keys = requireApprovalKeyring(); // 503 in live mode without APPROVAL_SIGNING_KEYS (or with an invalid set), before anything is written
   const actorId = ctx.actor.id;
   const now = Date.now();
   const res = await getStorage().issueApproval(ctx.tenant.id, stubId, now, (stub): NewApproval => {
@@ -104,14 +106,14 @@ export async function issueApproval(ctx: RequestContext, stubId: string, purpose
       membershipRevision: ctx.membershipRevision,
       notAuthorizes: NOT_AUTHORIZED,
       environment: contextEnvironment(),
-      mode: signingMode(),
+      mode: keys.mode,
       issuedAt: new Date(now).toISOString(),
       expiresAt: new Date(now + APPROVAL_TTL_MS).toISOString(),
     };
     return { id: record.id, purpose, idemKey: hashJson({ purpose, binding, membershipRevision: ctx.membershipRevision }), record: canonicalJson(record), summary: JSON.stringify(printedSummary(stub)), issuedAt: now, expiresAt: now + APPROVAL_TTL_MS };
   });
   if (!res) throw new HttpError(404, "not_found", "We couldn't find that.");
-  return { view: await viewOf(res.row, key, now), created: res.created };
+  return { view: await viewOf(res.row, keys, now), created: res.created };
 }
 
 /** What the issuer says right now about a stored approval. */
@@ -129,14 +131,16 @@ async function stateOf(row: ApprovalRow, record: ApprovalRecord): Promise<Approv
 
 const STATUS_OF: Partial<Record<ApprovalFailure, ApprovalStatus>> = { expired: "expired", revoked: "revoked", stale: "stale" };
 
-async function viewOf(row: ApprovalRow, key: string, now: number): Promise<ApprovalView> {
+async function viewOf(row: ApprovalRow, keys: Keyring, now: number): Promise<ApprovalView> {
   const record = JSON.parse(row.record) as ApprovalRecord;
-  const token = signApproval(record, key);
+  // Re-signed on demand with the active key: after a rotation the owner's list hands out tokens under the new kid,
+  // while tokens already handed out keep verifying under the retired kid until they expire.
+  const token = signApproval(record, keys.signer());
   // The record checked against its own scope: only expiry, revocation and staleness can fail here.
   const state = await stateOf(row, record);
   // The issuer's own view of its record: the content it holds is the binding itself, so only expiry, revocation and staleness can fail.
   const { designHash, artHash, factsHash, compositionHash } = record.binding;
-  const r = verifyApproval(token, key, { tenant: record.tenant.id, project: record.project, purpose: record.purpose, content: { designHash, artHash, factsHash, compositionHash } }, now, state);
+  const r = verifyApproval(token, (kid, keyTime) => keys.lookup(kid, now, keyTime), { tenant: record.tenant.id, project: record.project, purpose: record.purpose, content: { designHash, artHash, factsHash, compositionHash } }, now, state);
   const status: ApprovalStatus = r.ok ? "active" : (STATUS_OF[r.reason] ?? "stale");
   const b = record.binding;
   const c = state.current;
@@ -146,10 +150,10 @@ async function viewOf(row: ApprovalRow, key: string, now: number): Promise<Appro
 
 /** Every approval for the owner's stub, newest first, each with its current status. */
 export async function listApprovals(tenant: string, stubId: string): Promise<ApprovalView[]> {
-  const key = tokenSigningKey();
+  const keys = requireApprovalKeyring();
   const now = Date.now();
   const rows = await getStorage().listApprovals(tenant, stubId);
-  return Promise.all(rows.map((r) => viewOf(r, key, now)));
+  return Promise.all(rows.map((r) => viewOf(r, keys, now)));
 }
 
 /** Adds the revocation row. The approval and the art bytes stay: only its authority ends. */
@@ -159,16 +163,14 @@ export async function revokeApproval(tenant: string, stubId: string, approvalId:
 
 /**
  * The verifier behind POST /api/approvals/verify: signature, version, scope, purpose and expiry from the token, then the issuer's
- * records for revoked, stale and unknown. A token the key can't verify (no key, wrong key, the published fixture key) is forged.
+ * records for revoked, stale and unknown. A token no approval key can verify (no key set, unknown or purged kid, wrong key, a
+ * CONTEXT_SECRET signature, the published fixture key) is forged.
  */
 export async function verifyApprovalLive(token: string, expect: ApprovalExpectation, now = Date.now()): Promise<ApprovalVerifyResult> {
-  let key: string;
-  try {
-    key = tokenSigningKey();
-  } catch {
-    return { ok: false, reason: "forged" }; // no key, nothing can be valid
-  }
-  const first = verifyApproval(token, key, expect, now);
+  const keyring = approvalKeyring();
+  if (!keyring) return { ok: false, reason: "forged" }; // no usable key set, nothing can be valid
+  const keys = (kid: string, keyTime: number) => keyring.lookup(kid, now, keyTime);
+  const first = verifyApproval(token, keys, expect, now);
   if (!first.ok && (first.reason === "invalid_clock" || first.reason === "unknown" || first.reason === "forged" || first.reason === "unsupported_version")) return first;
   // Past here the signature and shape are good, so the id is the issuer's own.
   const id = approvalIdOf(token);
@@ -177,7 +179,7 @@ export async function verifyApprovalLive(token: string, expect: ApprovalExpectat
   const record = JSON.parse(row.record) as ApprovalRecord;
   // A signed record that differs from what we stored under that id is not something we issued.
   if (canonicalJson(record) !== canonicalJson(tokenRecord(token))) return { ok: false, reason: "forged" };
-  return verifyApproval(token, key, expect, now, await stateOf(row, record));
+  return verifyApproval(token, keys, expect, now, await stateOf(row, record));
 }
 
 function tokenRecord(token: string): unknown {

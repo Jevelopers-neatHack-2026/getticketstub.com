@@ -58,10 +58,11 @@ function Catalogue() {
     >
       <header style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", marginBottom: 24 }}>
         <h1 style={{ fontSize: 18, margin: 0 }}>Stub lab · {STUB_TEMPLATES.length} templates</h1>
-        <select value={sample} onChange={(e) => setSample(e.target.value)}>
+        <p>Design studies with synthetic data. Not available for customer downloads, approval or ordering.</p>
+        <select aria-label="Sample event" value={sample} onChange={(e) => setSample(e.target.value)}>
           {Object.keys(SAMPLES).map((k) => <option key={k}>{k}</option>)}
         </select>
-        <select value={mode} onChange={(e) => setMode(e.target.value as StubMode)}>
+        <select aria-label="Rendering mode" value={mode} onChange={(e) => setMode(e.target.value as StubMode)}>
           <option value="screen">screen</option>
           <option value="print">print</option>
         </select>

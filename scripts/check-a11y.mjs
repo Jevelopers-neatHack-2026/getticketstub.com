@@ -20,6 +20,7 @@ const require = createRequire(import.meta.url);
 const axeSource = readFileSync(require.resolve("axe-core/axe.min.js"), "utf8");
 const axeVersion = JSON.parse(readFileSync(join(dirname(require.resolve("axe-core/package.json")), "package.json"), "utf8")).version;
 
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let failed = 0;
 let passed = 0;
 function check(name, ok, detail = "") {
@@ -203,10 +204,23 @@ try {
 
   // the tear has a keyboard path: Tab to the strip, Enter, the handle takes focus, arrows tear, Enter finishes
   await page.eval(`document.body.focus(); 0`);
+  const tearInView = (w, h) => page.eval(`(() => { const r = document.querySelector('[role="dialog"][aria-label="Tear off your stub"]')?.getBoundingClientRect(); return !!r && r.width > 0 && r.top >= 0 && r.left >= 0 && r.right <= ${w} + 1 && r.bottom <= ${h} + 1 && getComputedStyle(document.querySelector('[role="dialog"][aria-label="Tear off your stub"]')).position === "fixed"; })()`);
   const isStrip = `/Tear off and pin/.test(e.textContent || "")`;
+  await open(`/studio/${DEMO}`, 1440, 900, { desktop: true });
+  await page.eval(`document.body.focus(); 0`);
+  if (await tabTo(isStrip)) {
+    await page.key("Enter");
+    await page.waitFor(`!!document.querySelector('[role="dialog"][aria-label="Tear off your stub"]')`, 3000);
+  }
+  check("tear @1440: the stage fills the viewport", await tearInView(1440, 900));
+  await page.key("Escape");
+
+  await open(`/studio/${DEMO}`, 390, 844);
+  await page.eval(`document.body.focus(); 0`);
   check("studio @390: the tear strip can be reached by Tab", await tabTo(isStrip));
   await page.key("Enter");
   check("tear: focus lands on the tear handle (a slider)", await page.waitFor(`document.activeElement && document.activeElement.getAttribute("role") === "slider"`, 3000));
+  check("tear @390: the stage fills the viewport (fixed, not pushed below the fold by .desk-surface)", await tearInView(390, 844));
   await page.key("ArrowRight");
   check("tear: the arrow keys tear a little at a time", Number(await page.eval(`document.activeElement.getAttribute("aria-valuenow")`)) > 0);
   await page.key("Escape");
@@ -216,6 +230,17 @@ try {
   await page.waitFor(`document.activeElement && document.activeElement.getAttribute("role") === "slider"`, 3000);
   await page.key("Enter");
   check("tear: Enter on the handle tears it off and pins it to the wall", await page.waitFor(`location.pathname === "/wall"`, 6000), await page.eval("location.href"));
+
+  check("tear: the stub just pinned on the wall lifts the lamp when tapped", await (async () => {
+    await page.waitFor(`!!document.querySelector('[class*="landingBtn"]')`, 4000);
+    await sleep(1200); // the landing animation
+    const at = await page.eval(`(() => { const el = document.querySelector('[class*="landingBtn"]'); el.scrollIntoView({ block: "center" }); const r = el.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; })()`);
+    await page.click(at[0], at[1]);
+    const opened = await page.waitFor(`![...document.querySelectorAll('[role="dialog"]')].every((x) => x.closest("[inert]") || x.getAttribute("aria-hidden") === "true")`, 3000);
+    await page.key("Escape");
+    await page.waitFor(noDialog, 3000);
+    return opened;
+  })());
 
   // the wall: move a stub with the arrow keys, lift it, pin it back
   await open("/wall", 1280, 800);

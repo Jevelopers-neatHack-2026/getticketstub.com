@@ -197,7 +197,7 @@ export function Canvas({ label, layoutKey, fitKey, panOverStubs = false, onCance
       <button type="button" className={s.back} data-cam-ui onClick={cam.fit}>
         Back to your stubs
       </button>
-      <div className={s.controls} data-cam-ui role="toolbar" aria-label="Board view">
+      <div className={s.controls} data-cam-ui data-lamp={overlay ? "" : undefined} role="toolbar" aria-label="Board view">
         <button type="button" className={s.btn} aria-label="Zoom out" title="Zoom out (−)" onClick={() => cam.zoomBy(1 / 1.25)}>
           <Minus />
         </button>

@@ -12,9 +12,43 @@ const monthIndex = (w: string) => MONTHS.findIndex((m) => w === m || w === m.sli
 const pad = (n: number) => String(n).padStart(2, "0");
 
 /** The first date in the text: yyyy-mm-dd, "12 Oct 2024" or "October 12, 2024". The year defaults to the stub's. Null when none is found. */
-export function findDate(t: string, fallbackYear?: number): { iso: string; real: boolean } | null {
+export function findDate(t: string, fallbackYear?: number, fallbackMonth?: number): { iso: string; real: boolean } | null {
+  const r = locateDate(t, fallbackYear, fallbackMonth);
+  return r && { iso: r.iso, real: r.real };
+}
+
+/** True when the text holds a date candidate: an ISO date, a bare ordinal, or a day beside a month name. */
+function hasDateCandidate(t: string): boolean {
+  if (/\b\d{4}-\d{2}-\d{2}\b|\b\d{1,2}(?:st|nd|rd|th)\b/i.test(t)) return true;
+  const named = [...t.matchAll(/\b\d{1,2}(?:st|nd|rd|th)?(?:\s+of)?\s+([a-z]{3,9})\b/gi), ...t.matchAll(/\b([a-z]{3,9})\.?\s+\d{1,2}\b/gi)];
+  return named.some((m) => monthIndex(m[1].toLowerCase()) >= 0);
+}
+
+type Located = { iso: string; real: boolean; span: string[] };
+/** The text with the words a date was read from taken out. */
+const without = (t: string, span: string[]) => span.reduce((acc, w) => acc.replace(w, " "), t);
+const REL_SHIFT: Record<string, number> = { next: 1, following: 1, last: -1, previous: -1, this: 0 };
+/** "next year" / "last year" / "this year" right after a date: the year it moves to. */
+const yearQualifier = (after: string) => {
+  const m = /^\s*,?\s*(?:of\s+)?(next|following|last|previous|this)\s+year\b/i.exec(after);
+  return m ? { shift: REL_SHIFT[m[1].toLowerCase()], text: m[0] } : null;
+};
+
+/**
+ * findDate, plus `span`: the words the date was read from, so a caller can plan what else was said. Nothing is guessed:
+ * a second candidate date ("12 Oct 2024 or the 13th") or a qualifier left over that was not used ("or", "week", "month",
+ * "year") reads as no date, so the caller asks and no qualifier is dropped silently.
+ */
+function locateDate(t: string, fallbackYear?: number, fallbackMonth?: number): Located | null {
+  const r = locateFirst(t, fallbackYear, fallbackMonth);
+  if (!r) return null;
+  const rest = without(t, r.span);
+  return hasDateCandidate(rest) || /\b(or|month|week|weekend|year|tomorrow|yesterday)\b/i.test(rest) ? null : r;
+}
+
+function locateFirst(t: string, fallbackYear?: number, fallbackMonth?: number): Located | null {
   const iso = /\b(\d{4})-(\d{2})-(\d{2})\b/.exec(t);
-  if (iso) return { iso: iso[0], real: isRealDate(iso[0]) };
+  if (iso) return { iso: iso[0], real: isRealDate(iso[0]), span: [iso[0]] };
   const dayFirst = /\b(\d{1,2})(?:st|nd|rd|th)?(?:\s+of)?\s+([a-z]{3,9})\.?(?:,?\s+(\d{4}))?\b/i.exec(t);
   const monthFirst = /\b([a-z]{3,9})\.?\s+(\d{1,2})(?:st|nd|rd|th)?(?:,?\s+(\d{4}))?\b/i.exec(t);
   const pick = (day: string, mon: string, year: string | undefined) => {
@@ -24,13 +58,48 @@ export function findDate(t: string, fallbackYear?: number): { iso: string; real:
     const out = `${y}-${pad(mi + 1)}-${pad(Number(day))}`;
     return { iso: out, real: isRealDate(out) };
   };
+  // a named month, with "next year" / "last year" honoured when it follows
+  const named = (m: RegExpExecArray, day: string, mon: string, year: string | undefined): Located | null => {
+    const yq = !year && fallbackYear ? yearQualifier(t.slice(m.index + m[0].length)) : null;
+    const r = pick(day, mon, yq ? String(fallbackYear! + yq.shift) : year);
+    return r && { ...r, span: [m[0] + (yq ? yq.text : "")] };
+  };
   if (dayFirst) {
-    const r = pick(dayFirst[1], dayFirst[2], dayFirst[3]);
+    const r = named(dayFirst, dayFirst[1], dayFirst[2], dayFirst[3]);
     if (r) return r;
   }
-  if (monthFirst) return pick(monthFirst[2], monthFirst[1], monthFirst[3]);
-  return null;
+  if (monthFirst) {
+    const r = named(monthFirst, monthFirst[2], monthFirst[1], monthFirst[3]);
+    if (r) return r;
+  }
+  // A day alone is in the stub's own month and year only when it is genuinely bare ("the 12th", "on the 17th, and ...").
+  // "next month" / "last month" next to it, before or after, move the month; anything else beside it ("or 13th",
+  // "12th-ish", "next week", "of this year") is not guessed, so the caller asks.
+  const ordinals = t.match(/\b\d{1,2}(?:st|nd|rd|th)\b/gi) ?? [];
+  const ordinal = /\b(\d{1,2})(?:st|nd|rd|th)\b/i.exec(t);
+  if (!ordinal || ordinals.length !== 1 || !fallbackYear || !fallbackMonth) return null;
+  const before = t.slice(0, ordinal.index);
+  const after = t.slice(ordinal.index + ordinal[0].length);
+  // "the 12th in November [next year]" / "the 12th of November 2025": an explicit month
+  const month = /^\s+(?:in|of)\s+([a-z]{3,9})\.?(?:,?\s+(\d{4}))?\b/i.exec(after);
+  const monthAt = month ? monthIndex(month[1].toLowerCase()) : -1;
+  if (month && monthAt >= 0) {
+    const yq = month[2] ? null : yearQualifier(after.slice(month[0].length));
+    const out = `${month[2] ?? fallbackYear + (yq ? yq.shift : 0)}-${pad(monthAt + 1)}-${pad(Number(ordinal[1]))}`;
+    return { iso: out, real: isRealDate(out), span: [ordinal[0] + month[0] + (yq ? yq.text : "")] };
+  }
+  const relAfter = /^\s*,?\s*(?:(?:of|in|on)\s+)?(?:the\s+)?(next|following|last|previous|this)\s+month\b/i.exec(after);
+  const relBefore = /\b(next|following|last|previous|this)\s+month\s*,?\s*(?:(?:on|for)\s+)?(?:the\s+)?$/i.exec(before);
+  if (relAfter && relBefore) return null;
+  const rel = relAfter ?? relBefore;
+  const bare = /^\s*(?:$|[.,;!?]|(?:and|then|please|also|but|instead|make|remix|switch|show|use|change|keep)\b)/i.test(after);
+  if (!rel && !bare) return null;
+  const zero = fallbackYear * 12 + (fallbackMonth - 1) + (rel ? REL_SHIFT[rel[1].toLowerCase()] : 0);
+  const out = `${Math.floor(zero / 12)}-${pad((zero % 12) + 1)}-${pad(Number(ordinal[1]))}`;
+  return { iso: out, real: isRealDate(out), span: rel ? (relAfter ? [ordinal[0] + rel[0]] : [rel[0], ordinal[0]]) : [ordinal[0]] };
 }
+const stateYear = (state: StateSummary) => (state.dateISO ? Number(state.dateISO.slice(0, 4)) : undefined);
+const stubMonth = (state: StateSummary) => (state.dateISO ? Number(state.dateISO.slice(5, 7)) || undefined : undefined);
 
 const tidy = (s: string) => s.trim().replace(/^["'“”‘’]+|["'“”‘’.!?]+$/g, "").trim();
 
@@ -55,7 +124,8 @@ function fromMessage(message: string, state: StateSummary): AgentPlan {
   const raw = message.trim();
   const t = raw.toLowerCase();
   const actions: Action[] = [];
-  const year = state.dateISO ? Number(state.dateISO.slice(0, 4)) : undefined;
+  const year = stateYear(state);
+  let dateAsk: AgentPlan | undefined;
 
   // a demo-only switch so the failure and recovery path is reproducible without a provider
   if (/\bsimulate\b.*\b(fail|failure)\b|\bforce\b.*\bfail/.test(t)) {
@@ -64,10 +134,10 @@ function fromMessage(message: string, state: StateSummary): AgentPlan {
 
   // date
   if (/\bdate\b/.test(t) && /\b(fix|change|correct|set|update|wrong|should|was|is|to)\b/.test(t)) {
-    const found = findDate(valueAfter(raw, /\bdate\b/) ?? raw, year);
+    const found = findDate(valueAfter(raw, /\bdate\b/) ?? raw, year, stubMonth(state));
     if (found?.real) actions.push({ type: "set_fact", field: "date", value: found.iso });
     else
-      return {
+      dateAsk = {
         reply: found ? `${found.iso} is not a real calendar date, so I will not change anything.` : "I could not find a date in that.",
         actions: [ask("Which date was it? Give a day, month and year, like 12 Oct 2024.", undefined, "date")],
       };
@@ -115,6 +185,12 @@ function fromMessage(message: string, state: StateSummary): AgentPlan {
   }
   if (/\b(show|flip|see|view|turn)\b.*\b(back|reverse)\b|\bback of\b/.test(t)) actions.push({ type: "show_back" });
 
+  // the date could not be read: keep what else was asked for, and ask for the date after it
+  if (dateAsk) {
+    if (!actions.length) return dateAsk;
+    const kept = actions.slice(0, LIMITS.actions - 1);
+    return { reply: `${sentence(kept, state)} ${dateAsk.reply} The date stays as it is until you give it.`, actions: [...kept, ...dateAsk.actions] };
+  }
   const picked = actions.slice(0, LIMITS.actions);
   if (!picked.length) {
     const question = raw.endsWith("?");
@@ -170,6 +246,24 @@ const FIELD_LABEL: Record<AskField, string> = { date: "date", venue: "venue", ti
 const FIELD_MAX: Record<AskField, number> = { date: LIMITS.value, venue: LIMITS.value, title: LIMITS.title, subtitle: LIMITS.subtitle, note: LIMITS.note };
 
 /**
+ * A message that is a clear instruction: it parses to an action AND is phrased as one (opens with an instruction verb,
+ * or says "the <field> is/to ..."). A bare field word is not enough: "The Venue" or "Title Bar" is a literal answer.
+ */
+const LEAD = String.raw`(?:(?:hi|hey|hello|ok(?:ay)?|so|well|actually|oh|u+m+|uh+|sorry|also|and|then|but|please|pls|kindly|(?:can|could|would|will) you(?: please)?|i'd like you to|i want you to|i (?:want|need|would like) to|i'd like to|let's|lets)\b[\s,.:;!-]*)*`;
+const VERB = String.raw`(?:fix|set|change|correct|update|switch|make|remix|regenerate|redo|show|flip|view|turn|keep|include|add|print|unkeep|drop|remove|hide|use|try|go|simulate|force)\b`;
+// an instruction verb opens the message, or any clause after a comma, colon, semicolon, "and" or "then"
+export const INSTRUCTION = new RegExp(String.raw`(?:^|[,:;]|\b(?:and|then|also)\b)[\s,.:;!-]*${LEAD}${VERB}`, "i");
+const FIELD_STATEMENT = /\b(?:date|venue|title|subtitle)\b[^.?!]*?\b(?:is|was|to|should be)\b/i;
+const FIELDS = ["date", "venue", "title", "subtitle"];
+/** An explicit instruction naming a field other than the one being asked about, wherever it sits in the message. */
+export function namesOtherField(raw: string, field?: string): boolean {
+  return FIELDS.filter((f) => f !== field).some((f) => new RegExp(String.raw`\b(?:fix|set|change|update|correct)\s+(?:the\s+)?${f}\b|\bthe\s+${f}\s+(?:is|was|should be)\b`, "i").test(raw));
+}
+function isInstruction(raw: string, state: StateSummary, field?: string): boolean {
+  return (INSTRUCTION.test(raw) || FIELD_STATEMENT.test(raw) || namesOtherField(raw, field)) && fromMessage(raw, state).actions.length > 0;
+}
+
+/**
  * Translates an answer to the pending question into a typed proposal. Returns undefined when the message is a change
  * of topic (the caller plans it as a new request, which clears the pending question). An answer that can't be used
  * asks again, with a reason: it never goes quiet. The result is a proposal only; the owner still taps Apply.
@@ -181,14 +275,29 @@ export function resolvePending(message: string, pending: PendingQuestion, state:
   if (!isOption) {
     // a different request (a question, or something the planner can act on) is a change of topic
     if (raw.endsWith("?")) return undefined;
-    if (fromMessage(raw, state).actions.some((a) => a.type !== "ask_user") && !(pending.field === "date" && findDate(raw, state.dateISO ? Number(state.dateISO.slice(0, 4)) : undefined))) return undefined;
+    // a day that is plainly meant as the date but is ambiguous ("the 12th or 13th") stays an attempt at the answer
+    const attempt = pending.field === "date" && hasDateCandidate(raw);
+    // (including one that only asks, like "fix the date to the 12th or 13th": it is never the literal answer to another field)
+    if (isInstruction(raw, state, pending.field) && !(pending.field === "date" && (attempt || findDate(raw, stateYear(state), stubMonth(state))))) return undefined;
   }
   const answer = isOption ? pending.options!.find((o) => o.toLowerCase() === raw.toLowerCase())! : tidy(raw);
   if (pending.field === "date") {
-    const found = findDate(answer, state.dateISO ? Number(state.dateISO.slice(0, 4)) : undefined);
-    if (!found) return again("I could not find a date in that, so nothing is proposed.");
-    if (!found.real) return again(`${found.iso} is not a real calendar date, so nothing is proposed.`);
-    return { reply: sentence([{ type: "set_fact", field: "date", value: found.iso }], state), actions: [{ type: "set_fact", field: "date", value: found.iso }] };
+    const found = locateDate(answer, stateYear(state), stubMonth(state));
+    // whatever else was said alongside the date answer ("the 12th and make it moodier") is planned too, minus the date's own words
+    const others = (): Action[] => {
+      if (isOption) return [];
+      const rest = found ? without(raw, found.span) : raw;
+      return fromMessage(rest, state).actions.filter((a) => a.type !== "ask_user" && !(a.type === "set_fact" && a.field === "date"));
+    };
+    const reask = (why: string): AgentPlan => {
+      const kept = others().slice(0, LIMITS.actions - 1);
+      return kept.length ? { reply: `${sentence(kept, state)} ${why} The date stays as it is until you give it.`, actions: [...kept, ask(pending.question, pending.options, pending.field)] } : again(why);
+    };
+    if (!found) return reask("I could not find a date in that, so nothing is proposed.");
+    if (!found.real) return reask(`${found.iso} is not a real calendar date, so nothing is proposed.`);
+    const dateAction: Action = { type: "set_fact", field: "date", value: found.iso };
+    const picked = [dateAction, ...others()].slice(0, LIMITS.actions);
+    return { reply: sentence(picked, state), actions: picked };
   }
   const label = FIELD_LABEL[pending.field];
   if (!answer) return again(`I need a ${label} to propose it.`);

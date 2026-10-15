@@ -38,4 +38,7 @@ const agent = await post("/api/agent", { event, message: "Tell me about it" });
 assert.equal(agent.status, 204);
 const missing = await fetch(new URL("/missing-deployment-smoke-route", base));
 assert.equal(missing.status, 404);
-console.log("PASS demo APIs, blocked external research, simulated art/agent, and 404");
+// Prodigi sandbox callbacks: 404 when off (the default), and 404 for a wrong token when on. Never 2xx here.
+const callback = await post(`/api/fulfillment/prodigi/callbacks/${"smoke".padEnd(43, "0")}`, { specversion: "1.0" });
+assert.equal(callback.status, 404, "the Prodigi callback route must not answer a wrong token");
+console.log("PASS demo APIs, blocked external research, simulated art/agent, 404, and the closed Prodigi callback route");

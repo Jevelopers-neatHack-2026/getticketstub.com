@@ -41,7 +41,7 @@ process.env.TICKETSTUB_FILES = join(scratch, "files");
 delete process.env.TICKETSTUB_OPS_TELEMETRY;
 
 const P = await import("../src/customer/studio/agent/protocol.ts");
-const { planDemo, findDate } = await import("../src/customer/studio/agent/planner.ts");
+const { planDemo, findDate, INSTRUCTION, namesOtherField } = await import("../src/customer/studio/agent/planner.ts");
 const { applyToStub } = await import("../src/customer/studio/agent/apply.ts");
 const { PALE_HOURS, newStub } = await import("../src/customer/studio/fixtures.ts");
 const { currentVersion } = await import("../src/customer/studio/types.ts");
@@ -208,6 +208,56 @@ test("an invalid date is not proposed: the planner asks instead", () => {
   assert.deepEqual(types(ask("fix the date")), ["ask_user"]);
 });
 
+test("a day alone resolves in the stub's own month and year, and an unreadable date does not drop the other asks", () => {
+  const iso = state().dateISO;
+  const [y, m] = iso.split("-");
+  assert.deepEqual(findDate("the 12th", Number(y), Number(m)), { iso: `${y}-${m}-12`, real: true });
+  assert.deepEqual(findDate("on the 17th", Number(y), Number(m)), { iso: `${y}-${m}-17`, real: true });
+  assert.equal(findDate("the 12th", Number(y)), null, "without a month there is nothing to resolve against");
+  assert.deepEqual(ask("Fix the date to the 12th").actions, [{ type: "set_fact", field: "date", value: `${y}-${m}-12` }]);
+  assert.deepEqual(ask("Fix the date to the 12th and make it moodier").actions, [
+    { type: "set_fact", field: "date", value: `${y}-${m}-12` },
+    { type: "remix_art", vibe: "moodier" },
+  ]);
+  const both = ask("Fix the date to soonish and make it moodier");
+  assert.deepEqual(types(both), ["remix_art", "ask_user"], "the art change is still proposed, the date is asked for");
+  assert.match(both.reply, /could not find a date/);
+  assert.match(both.reply, /moodier/);
+  assert.equal(both.actions[1].field, "date");
+  assert.deepEqual(types(ask("fix the date to 2024-02-31 and make it moodier")), ["remix_art", "ask_user"]);
+});
+
+// the stub as the reviewer saw it: dated 2024-10-11
+const on1011 = { ...state(), dateISO: "2024-10-11" };
+const askOn = (message, pending) => planDemo(request({ message, pending, state: on1011 }));
+
+const setDate = (value) => [{ type: "set_fact", field: "date", value }];
+const moodier = { type: "remix_art", vibe: "moodier" };
+test("reviewer case 1: '12th of next month' resolves to next month, with the remix kept", () => {
+  assert.deepEqual(askOn("Fix the date to the 12th of next month and make it moodier").actions, [...setDate("2024-11-12"), moodier]);
+});
+test("'the 12th of last month' and 'of the previous month' resolve to the month before", () => {
+  assert.deepEqual(askOn("Fix the date to the 12th of last month").actions, setDate("2024-09-12"));
+  assert.deepEqual(askOn("Fix the date to the 12th of the previous month").actions, setDate("2024-09-12"));
+});
+test("'the 12th of next month' in December rolls over to January of the next year, and last month back across January", () => {
+  assert.deepEqual(findDate("the 12th of next month", 2024, 12), { iso: "2025-01-12", real: true });
+  assert.deepEqual(findDate("the 12th of last month", 2025, 1), { iso: "2024-12-12", real: true });
+});
+test("a bare day still resolves to the current month, and an explicit month is used", () => {
+  assert.deepEqual(findDate("the 17th", 2024, 10), { iso: "2024-10-17", real: true });
+  assert.deepEqual(askOn("Fix the date to the 17th").actions, setDate("2024-10-17"));
+  assert.deepEqual(findDate("the 12th of May", 2024, 10), { iso: "2024-05-12", real: true });
+});
+test("an ambiguous day ('12th or 13th', '12th-ish', 'of this year', 'next week') asks and keeps the other ask", () => {
+  for (const vague of ["the 12th or 13th", "the 12th-ish", "the 12th of this year", "the 12th next week", "the 12th, 13th"]) {
+    const plan = askOn(`Fix the date to ${vague} and make it moodier`);
+    assert.deepEqual(plan.actions.map((a) => a.type), ["remix_art", "ask_user"], `${vague}: the other ask is kept, the date is asked for`);
+    assert.equal(plan.actions[1].field, "date");
+  }
+  assert.equal(findDate("the 12th or 13th", 2024, 10), null);
+});
+
 // What the browser carries from one turn to the next: the first typed question of the last plan.
 const pendingOf = (plan) => {
   const q = plan.actions.find((a) => a.type === "ask_user" && a.field);
@@ -226,6 +276,26 @@ test("a clarifying question is answered on the next turn: date and venue, typed"
   const plan = answer(v1, "Barrowland Ballroom");
   assert.match(plan.reply, /Nothing changes until you apply it/);
   assert.equal(P.parsePlan(plan).ok, true);
+});
+
+const answerOn = (prev, message) => askOn(message, pendingOf(prev));
+test("reviewer case 2: two turns, 'fix the date' then 'the 12th and make it moodier' proposes both", () => {
+  const d1 = askOn("fix the date");
+  const both = answerOn(d1, "the 12th and make it moodier");
+  assert.deepEqual(both.actions, [...setDate("2024-10-12"), moodier]);
+  assert.equal(P.parsePlan(both).ok, true);
+});
+test("a pending date answer plans the other actions too, and keeps a relative date's month", () => {
+  const d1 = askOn("fix the date");
+  assert.deepEqual(answerOn(d1, "11 Oct 2024 and show me the back").actions, [...setDate("2024-10-11"), { type: "show_back" }]);
+  assert.deepEqual(answerOn(d1, "the 12th of next month and make it moodier").actions, [...setDate("2024-11-12"), moodier]);
+});
+test("a pending date answer that is itself unclear re-asks and keeps the other ask", () => {
+  const d1 = askOn("fix the date");
+  const unclear = answerOn(d1, "the 12th or 13th and make it moodier");
+  assert.deepEqual(unclear.actions.map((a) => a.type), ["remix_art", "ask_user"]);
+  assert.deepEqual(pendingOf(unclear), pendingOf(d1));
+  assert.deepEqual(answerOn(d1, "no idea").actions.map((a) => a.type), ["ask_user"]);
 });
 
 test("a tapped option is an answer to the pending question", () => {
@@ -578,4 +648,118 @@ test("the ops and event schemas drop free text and unknown fields on agent steps
   assert.deepEqual(sanitizeEvent({ type: "agent_action", fields: { action: "set_fact", result: "applied", code: "x_y", value: "private" } }).fields, { action: "set_fact", result: "applied", code: "x_y" });
   assert.deepEqual(sanitizeEvent({ type: "agent_plan", fields: { source: "rules", outcome: "ok", actions: 2, reply: "text" } }).fields, { source: "rules", outcome: "ok", actions: 2 });
   assert.deepEqual(sanitizeEvent({ type: "agent_action", fields: { action: "format_disk", result: "applied" } }).fields, { result: "applied" });
+});
+
+test("an explicit month beside a day is used: 'the 12th in November' is November 12, not October", () => {
+  assert.deepEqual(findDate("the 12th in November", 2024, 10), { iso: "2024-11-12", real: true });
+  assert.deepEqual(findDate("the 12th of Nov 2025", 2024, 10), { iso: "2025-11-12", real: true });
+  assert.deepEqual(askOn("Fix the date to the 12th in November and make it moodier").actions, [...setDate("2024-11-12"), moodier]);
+});
+
+test("more than one candidate date asks instead of picking the first, and keeps the other asks", () => {
+  for (const two of ["12 Oct 2024 or the 13th", "2024-10-12 or 2024-10-13", "the 12th and the 13th"]) {
+    assert.equal(findDate(two, 2024, 10), null, two);
+    const plan = askOn(`Fix the date to ${two} and make it moodier`);
+    assert.deepEqual(plan.actions.map((a) => a.type), ["remix_art", "ask_user"], two);
+  }
+  assert.deepEqual(answerOn(askOn("fix the date"), "12 Oct 2024 or the 13th and make it moodier").actions.map((a) => a.type), ["remix_art", "ask_user"]);
+});
+
+test("a topic-changing instruction is never the literal answer to a pending venue, title, subtitle or note question", () => {
+  const typed = (field) => ({ field, question: "q?" });
+  for (const field of ["venue", "title", "subtitle", "note"]) {
+    for (const msg of ["fix the date to 2024-10-12", "fix the date to the 12th or 13th", "switch to letterpress and remix the art"]) {
+      const plan = planDemo(request({ message: msg, pending: typed(field), state: on1011 }));
+      assert.ok(plan.actions.length > 0, `${field} / ${msg}`);
+      assert.ok(!plan.actions.some((a) => (a.type === "set_text" || (a.type === "set_fact" && a.field === "venue")) && /fix the date/i.test(a.value)), `${field} / ${msg} must not be written as the answer`);
+    }
+    assert.deepEqual(planDemo(request({ message: "fix the date to 2024-10-12", pending: typed(field), state: on1011 })).actions, setDate("2024-10-12"));
+  }
+});
+
+test("a literal answer that merely contains a field word is still the answer to the pending question", () => {
+  const typed = (field) => ({ field, question: "q?" });
+  const reply = (field, message) => planDemo(request({ message, pending: typed(field), state: on1011 }));
+  assert.deepEqual(reply("venue", "The Venue").actions, [{ type: "set_fact", field: "venue", value: "The Venue" }]);
+  assert.deepEqual(reply("venue", "Venue77").actions, [{ type: "set_fact", field: "venue", value: "Venue77" }]);
+  assert.deepEqual(reply("venue", "Venue 9").actions, [{ type: "set_fact", field: "venue", value: "Venue 9" }]);
+  assert.deepEqual(reply("title", "The Title Bar").actions, [{ type: "set_text", field: "title", value: "The Title Bar" }]);
+  assert.deepEqual(reply("subtitle", "Date Night").actions, [{ type: "set_text", field: "subtitle", value: "Date Night" }]);
+  // a real instruction still wins
+  assert.deepEqual(reply("venue", "make it moodier").actions, [moodier]);
+  assert.deepEqual(reply("title", "please fix the date to 2024-10-12").actions, setDate("2024-10-12"));
+});
+
+test("'next month' / 'last month' bind to the day wherever they sit in the clause", () => {
+  for (const phrase of ["next month, on the 12th", "the 12th, next month", "on the 12th of next month", "12th next month", "next month the 12th", "the 12th of the next month"]) {
+    assert.deepEqual(findDate(phrase, 2024, 10), { iso: "2024-11-12", real: true }, phrase);
+    assert.deepEqual(askOn(`Fix the date to ${phrase} and make it moodier`).actions, [...setDate("2024-11-12"), moodier], phrase);
+  }
+  assert.deepEqual(findDate("last month, on the 12th", 2024, 10), { iso: "2024-09-12", real: true });
+  assert.deepEqual(findDate("the 12th, previous month", 2024, 1), { iso: "2023-12-12", real: true });
+  // cannot be bound with confidence: ask
+  for (const vague of ["next month, the 12th of last month", "the 12th next month or the month after", "next month and the 12th, make it moodier next month"]) {
+    assert.equal(findDate(vague, 2024, 10), null, vague);
+  }
+});
+
+test("a year qualifier next to a named month is honoured, and never dropped silently", () => {
+  assert.deepEqual(findDate("the 12th in November next year", 2024, 10), { iso: "2025-11-12", real: true });
+  assert.deepEqual(findDate("the 12th of November last year", 2024, 10), { iso: "2023-11-12", real: true });
+  assert.deepEqual(findDate("12 Nov next year", 2024, 10), { iso: "2025-11-12", real: true });
+  assert.deepEqual(findDate("November 12, last year", 2024, 10), { iso: "2023-11-12", real: true });
+  assert.deepEqual(findDate("the 12th in November this year", 2024, 10), { iso: "2024-11-12", real: true });
+  assert.deepEqual(findDate("the 12th in November 2026", 2024, 10), { iso: "2026-11-12", real: true });
+  assert.deepEqual(askOn("Fix the date to the 12th in November next year and make it moodier").actions, [...setDate("2025-11-12"), moodier]);
+  for (const vague of ["the 12th in November sometime next year or so", "12 Nov 2024 next year", "12 Oct 2024 next month", "the 12th in November, next week"]) {
+    assert.equal(findDate(vague, 2024, 10), null, vague);
+  }
+});
+
+test("leading politeness or discourse words never hide an instruction while a field question is pending", () => {
+  const reply = (field, message) => planDemo(request({ message, pending: { field, question: "q?" }, state: on1011 }));
+  for (const field of ["venue", "title", "subtitle", "note"]) {
+    for (const [msg, want] of [
+      ["Actually, fix the date: 2024-10-12", "2024-10-12"],
+      ["Hi, can you fix the date 2024-10-12", "2024-10-12"],
+      ["Hey, please set the date to 2024-10-12", "2024-10-12"],
+      ["OK so change the date to 12 Oct 2024", "2024-10-12"],
+      ["Sorry, the date was 2024-10-12", "2024-10-12"],
+      ["um could you update the date: 2024-10-12", "2024-10-12"],
+      ["well, and then fix the date to 2024-10-12", "2024-10-12"],
+    ]) assert.deepEqual(reply(field, msg).actions, setDate(want), `${field} / ${msg}`);
+  }
+  assert.deepEqual(reply("venue", "The Venue").actions, [{ type: "set_fact", field: "venue", value: "The Venue" }]);
+  assert.deepEqual(reply("venue", "Venue77").actions, [{ type: "set_fact", field: "venue", value: "Venue77" }]);
+  assert.deepEqual(reply("subtitle", "Date Night").actions, [{ type: "set_text", field: "subtitle", value: "Date Night" }]);
+  assert.deepEqual(reply("title", "The Title Bar").actions, [{ type: "set_text", field: "title", value: "The Title Bar" }]);
+});
+
+test("the four more-thing cases", () => {
+  const reply = (field, message) => planDemo(request({ message, pending: { field, question: "q?" }, state: on1011 }));
+  for (const field of ["venue", "title", "subtitle", "note"]) {
+    for (const msg of ["One more thing, fix the date: 2024-10-12", "One more thing and fix the date: 2024-10-12", "Before we continue, set the date: 2024-10-12", "Thanks; update the date: 2024-10-12"]) {
+      assert.deepEqual(reply(field, msg).actions, setDate("2024-10-12"), `${field} / ${msg}`);
+    }
+  }
+});
+
+test("the composed instruction patterns really carry word-boundary and whitespace escapes (a cooked backspace would never match)", () => {
+  const bs = String.fromCharCode(92);
+  assert.ok(INSTRUCTION.source.includes(bs + "b") && INSTRUCTION.source.includes(bs + "s"), INSTRUCTION.source);
+  assert.equal(INSTRUCTION.test("Thanks; update the date"), true);
+  assert.equal(INSTRUCTION.test("The Venue"), false);
+  assert.equal(namesOtherField("One more thing, fix the date: 2024-10-12", "venue"), true);
+  assert.equal(namesOtherField("the date was 2024-10-12", "venue"), true);
+  assert.equal(namesOtherField("Date Night", "subtitle"), false);
+  assert.equal(namesOtherField("fix the date", "date"), false);
+});
+
+test("a pending date answer that is date-like but unresolvable keeps the date ask beside the other actions", () => {
+  const d1 = askOn("fix the date");
+  for (const msg of ["12 Nov 2024 next year and make it moodier and show the back", "12 Oct 2024 next month and make it moodier and show the back"]) {
+    const plan = answerOn(d1, msg);
+    assert.deepEqual(plan.actions.map((a) => a.type), ["remix_art", "show_back", "ask_user"], msg);
+    assert.equal(plan.actions[2].field, "date");
+  }
 });

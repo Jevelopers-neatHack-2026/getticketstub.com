@@ -1,5 +1,6 @@
 /* Printing happens on the paper desk, beside the sidebar. */
-.stage {
+.stage.stage {
+  /* doubled so it wins over .desk-surface { position: relative } whatever the bundle order */
   position: fixed;
   inset: 0 0 0 var(--nav-w, 0px);
   z-index: 50;

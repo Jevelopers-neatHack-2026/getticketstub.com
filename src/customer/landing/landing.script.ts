@@ -8,16 +8,37 @@ import { animate, inView, scroll, stagger } from "motion";
 
 export function mountLanding(ctx) {
   const lpRoot = ctx.root, hosts = ctx.hosts;
+  // ctx.mode (motion.ts): still = no motion at all; no3d = never load three.js, show the printed version at once
+  const STILL = !!ctx.mode?.still, LITE = STILL || !!ctx.mode?.no3d;
+  lpRoot.classList.toggle('still', STILL);
+  if (LITE){
+    lpRoot.classList.add('no3d', 'ready');
+    const loader = lpRoot.querySelector('#loader');
+    if (loader){ loader.classList.add('done'); loader.hidden = true; }
+  }
   let disposed = false;
   const disposers = [];
+  const listen = (el, t, f, o) => { el.addEventListener(t, f, o); disposers.push(() => el.removeEventListener(t, f, o)); };
+  const animations = new Set(), idles = new Set();
+  const nativeAnimate = (el, ...a) => {
+    if (disposed) return;
+    const control = el.animate(...a); animations.add(control);
+    control.finished.then(() => animations.delete(control), () => animations.delete(control));
+    return control;
+  };
+  const requestIdleCallback = cb => {
+    if (disposed) return 0;
+    const id = window.requestIdleCallback(t => { idles.delete(id); if (!disposed) cb(t); }, { timeout: 200 });
+    idles.add(id); return id;
+  };
   // every global the page listens or schedules with goes through these, so cleanup can undo it
   const addEventListener = (t, f, o) => { window.addEventListener(t, f, o); disposers.push(() => window.removeEventListener(t, f, o)); };
   const removeEventListener = (t, f, o) => window.removeEventListener(t, f, o);
   const rafs = new Set(), timers = new Set();
   const requestAnimationFrame = cb => { if (disposed) return 0; const id = window.requestAnimationFrame(t => { rafs.delete(id); if (!disposed) cb(t); }); rafs.add(id); return id; };
-  const setTimeout = (fn, ms, ...a) => { const id = window.setTimeout(() => { timers.delete(id); if (!disposed) fn(...a); }, ms); timers.add(id); return id; };
+  const setTimeout = (fn, ms, ...a) => { if (disposed) return 0; const id = window.setTimeout(() => { timers.delete(id); if (!disposed) fn(...a); }, ms); timers.add(id); return id; };
   const clearTimeout = id => { timers.delete(id); window.clearTimeout(id); };
-  const setInterval = (fn, ms, ...a) => { const id = window.setInterval(() => { if (!disposed) fn(...a); }, ms); timers.add(id); return id; };
+  const setInterval = (fn, ms, ...a) => { if (disposed) return 0; const id = window.setInterval(() => { if (!disposed) fn(...a); }, ms); timers.add(id); return id; };
   const clearInterval = id => { timers.delete(id); window.clearInterval(id); };
   // lookups: the landing hosts first (the studio start lives outside them), then the whole landing root
   const qs = sel => { for (const h of hosts) { const r = h.querySelector(sel); if (r) return r; } return lpRoot.querySelector(sel); };
@@ -25,7 +46,16 @@ export function mountLanding(ctx) {
   const byId = id => qs('#' + id);
   const docTop = el => el.getBoundingClientRect().top + window.scrollY;
   // Motion, with the stoppers it hands back collected for cleanup
-  const M = { animate, stagger,
+  const M = { animate: (...a) => {
+      if (disposed) return { then() {}, stop() {} };
+      const options = a[2];
+      if (options){ a[2] = { ...options }; for (const k of ['onUpdate', 'onComplete']){
+        if (typeof options[k] === 'function') a[2][k] = (...v) => { if (!disposed) options[k](...v); };
+      } }
+      const control = animate(...a); animations.add(control);
+      control.then(() => animations.delete(control));
+      return control;
+    }, stagger,
     inView: (...a) => { const stop = inView(...a); disposers.push(stop); return stop; },
     scroll: (...a) => { const stop = scroll(...a); disposers.push(stop); return stop; } };
   // the hero stub's intro and spin: driven by Motion springs (TSMotion), read by the 3D frame loop
@@ -36,7 +66,7 @@ export function mountLanding(ctx) {
     /* ---------- TicketStub cards: one component for the studio, the gallery ribbon and the checkout preview ---------- */
     const TS = (() => {
       const fine = matchMedia('(hover:hover) and (pointer:fine)').matches;
-      const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const still = STILL;
       const buzz = p => { try { if (!still && navigator.vibrate) navigator.vibrate(p); } catch (e) {} };
       const esc = v => String(v).replace(/[&<>"]/g, ch => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[ch]));
       // brand motion: foil and tilt never step. Targets are eased every frame (tilt tau 110ms, glow in 400ms / out 600ms), max 11deg.
@@ -57,12 +87,12 @@ export function mountLanding(ctx) {
       function wire(st){
         if (st.dataset.wired) return; st.dataset.wired = 1;
         if (fine && !still){
-          st.addEventListener('pointermove', e => { const r = st.getBoundingClientRect(); set(st.querySelector('.ts-tilt'), (e.clientX - r.left) / r.width - .5, (e.clientY - r.top) / r.height - .5, .9); });
-          st.addEventListener('pointerleave', () => set(st.querySelector('.ts-tilt'), 0, 0, .12));
+          listen(st, 'pointermove', e => { const r = st.getBoundingClientRect(); set(st.querySelector('.ts-tilt'), (e.clientX - r.left) / r.width - .5, (e.clientY - r.top) / r.height - .5, .9); });
+          listen(st, 'pointerleave', () => set(st.querySelector('.ts-tilt'), 0, 0, .12));
         }
         const flip = () => { st.classList.toggle('flipped'); buzz([8]); };
-        st.addEventListener('click', flip);
-        st.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' '){ e.preventDefault(); flip(); } });
+        listen(st, 'click', flip);
+        listen(st, 'keydown', e => { if (e.key === 'Enter' || e.key === ' '){ e.preventDefault(); flip(); } });
       }
       // d = { kind, no, ol, fl, meta, a, vs, b, sub, boxes:[[label,value]], back:[[label,value]], c1, c2 }
       function inner(d){
@@ -114,9 +144,9 @@ export function mountLanding(ctx) {
           label.textContent = torn ? 'Torn · turn them back' : 'Drag to tear ✂';
           stubs.forEach((st, i) => setTimeout(() => { st.classList.toggle('flipped', torn); if (torn && TSMotion) TSMotion.pin(st); }, still ? 0 : i * 140));
           if (torn) buzz([30, 30, 60]); };
-        tear.addEventListener('click', () => { if (dragged){ dragged = false; return; } setTorn(!tear.classList.contains('torn')); });
+        listen(tear, 'click', () => { if (dragged){ dragged = false; return; } setTorn(!tear.classList.contains('torn')); });
         // signature move: drag along the perforation; past 60% it rips free
-        if (!still) tear.addEventListener('pointerdown', e => {
+        if (!still) listen(tear, 'pointerdown', e => {
           if (tear.classList.contains('torn')) return;
           const r = tear.getBoundingClientRect(), x0 = e.clientX; let last = 0, p = 0; tear.setPointerCapture(e.pointerId);
           const move = ev => { p = Math.max(0, Math.min(1, (ev.clientX - x0) / (r.width * .7))); if (Math.abs(ev.clientX - x0) > 8) dragged = true;
@@ -124,7 +154,7 @@ export function mountLanding(ctx) {
             if (p >= .6){ end(); setTorn(true); } };
           const end = () => { tear.removeEventListener('pointermove', move); tear.removeEventListener('pointerup', end); tear.removeEventListener('pointercancel', end);
             if (p < .6) M.animate(tear, { '--tp': 0 }, { duration: .38, ease: [.45, 0, .55, 1] }); else tear.style.setProperty('--tp', 0); };
-          tear.addEventListener('pointermove', move); tear.addEventListener('pointerup', end); tear.addEventListener('pointercancel', end);
+          listen(tear, 'pointermove', move); listen(tear, 'pointerup', end); listen(tear, 'pointercancel', end);
         });
       }
       return { card, paint, wire, set, fine, still, NIGHTS, buzz };
@@ -190,26 +220,29 @@ export function mountLanding(ctx) {
       let t0 = 0;
       const status = byId('finStatus'); let printT = 0;
       let proofs = 0;
-      const show = (d, loud) => { st.classList.remove('flipped'); TS.paint(st, d); st.insertAdjacentHTML('beforeend', '<i class="ts-sweep" aria-hidden="true"></i>');
-        if (TS.still){ return; }
+      const show = (d, loud, quiet = false) => { st.classList.remove('flipped'); TS.paint(st, d); st.insertAdjacentHTML('beforeend', '<i class="ts-sweep" aria-hidden="true"></i>');
+        if (TS.still || quiet){ return; }
         st.classList.add('printing'); status.classList.add('on'); status.lastChild.textContent = 'Printing proof…';
         clearTimeout(printT); printT = setTimeout(() => { st.classList.remove('printing'); status.classList.remove('on'); status.lastChild.textContent = 'Proof ready';
           if (loud || proofs === 0){ TSMotion && TSMotion.shutter(st); TS.buzz([18, 40, 28]); }
           proofs++; }, 900); };
       const upd = () => { const v = ev.value.trim(); fin.classList.toggle('typing', !!v); show(v ? fromText(v) : BLANK); };
-      ev.addEventListener('input', () => { clearTimeout(t0); t0 = setTimeout(upd, 60); });
-      ev.addEventListener('change', upd);
+      // A motion remount restores the existing draft before this initializer runs. Paint it without another proof cycle.
+      const initial = ev.value.trim();
+      if (initial){ fin.classList.add('typing'); show(fromText(initial), false, true); }
+      listen(ev, 'input', () => { clearTimeout(t0); t0 = setTimeout(upd, 60); });
+      listen(ev, 'change', upd);
       const chips = [...qsa('.fin-try button')];
       chips.forEach(btn => {
         const k = btn.dataset.demo, d = DEMOS[k];
-        btn.addEventListener('click', () => { ev.value = DEMO_TEXT[k]; fin.classList.add('typing'); show(d, true); setNote(NOTE_DEFAULT); chips.forEach(c => c.setAttribute('aria-pressed', c === btn)); ev.focus({ preventScroll: true }); });
-        if (TS.fine){ btn.addEventListener('pointerenter', () => show(d)); btn.addEventListener('pointerleave', () => { const v = ev.value.trim(); const hit = Object.keys(DEMO_TEXT).find(x => DEMO_TEXT[x] === v); show(hit ? DEMOS[hit] : v ? fromText(v) : BLANK); }); }
+        listen(btn, 'click', () => { ev.value = DEMO_TEXT[k]; fin.classList.add('typing'); show(d, true); setNote(NOTE_DEFAULT); chips.forEach(c => c.setAttribute('aria-pressed', c === btn)); ev.focus({ preventScroll: true }); });
+        if (TS.fine){ listen(btn, 'pointerenter', () => show(d)); listen(btn, 'pointerleave', () => { const v = ev.value.trim(); const hit = Object.keys(DEMO_TEXT).find(x => DEMO_TEXT[x] === v); show(hit ? DEMOS[hit] : v ? fromText(v) : BLANK); }); }
       });
-      ev.addEventListener('input', () => { chips.forEach(c => c.setAttribute('aria-pressed', 'false')); if (ev.hasAttribute('aria-invalid')) setNote(NOTE_DEFAULT); });
+      listen(ev, 'input', () => { chips.forEach(c => c.setAttribute('aria-pressed', 'false')); if (ev.hasAttribute('aria-invalid')) setNote(NOTE_DEFAULT); });
       if (matchMedia('(max-width:760px)').matches) ev.placeholder = 'Event link or the night';
       // same origin: a pasted link or a typed night goes to /new, where the studio researches it (ctx.submit picks url or q)
       let sent = false;
-      form.addEventListener('submit', e => {
+      listen(form, 'submit', e => {
         e.preventDefault();
         const v = ev.value.trim();
         if (!v){ setNote('Add an event link or the night, like Nova Riot, Marigold Arena, Jul 12.', true); ev.focus(); TSMotion && TSMotion.shake(ev); return; }
@@ -224,7 +257,7 @@ export function mountLanding(ctx) {
 
     /* ---------- brand motion, driven by Motion (motion.dev) with the brand-kit timings ---------- */
     const TSMotion = (() => {
-      const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const still = STILL;
       const ENTER = [.16, 1, .3, 1], STD = [.2, .8, .2, 1], FLIP = [.45, 0, .55, 1];
       const ok = !!(M && M.animate && !still);
       // print-complete shutter: an RGB split that fades out with (1-p)^2.6 over 320ms, plus a paper snap of scale
@@ -232,7 +265,7 @@ export function mountLanding(ctx) {
         if (!ok) return;
         M.animate(0, 1, { duration: .32, ease: 'linear', onUpdate: p => { const k = Math.pow(1 - p, 2.6), d = (6 * k).toFixed(2);
           el.style.filter = k > .01 ? `drop-shadow(${d}px 0 0 rgba(228,87,46,${(.85 * k).toFixed(2)})) drop-shadow(-${d}px 0 0 rgba(124,198,210,${(.85 * k).toFixed(2)})) brightness(${(1 + .25 * k).toFixed(3)})` : ''; } });
-        el.animate([{ scale: '1.04' }, { scale: '1' }], { duration: 380, easing: 'cubic-bezier(.45,0,.55,1)' });   // the independent scale property keeps the card's own rotate
+        nativeAnimate(el, [{ scale: '1.04' }, { scale: '1' }], { duration: 380, easing: 'cubic-bezier(.45,0,.55,1)' });   // the independent scale property keeps the card's own rotate
       }
       // pin to the wall: lands with the reveal curve at a random angle between -4 and 4 degrees
       function pin(el){
@@ -264,9 +297,9 @@ export function mountLanding(ctx) {
           const play = () => { if (done) return; done = true; pending--;
             setTimeout(settle, 1800);   // never leave copy hidden, whatever the browser does with the animation
             M.animate(h, fade ? { opacity: [0, 1], transform: ['translateY(.2em)', 'translateY(0em)'] } : { clipPath: ['inset(0 0 100% 0)', 'inset(0 0 -12% 0)'], transform: ['translateY(.28em)', 'translateY(0em)'] }, { duration: .6, ease: ENTER })
-              .then(() => { h.style.clipPath = ''; h.style.transform = ''; h.style.opacity = ''; });
+              .then(() => { if (disposed) return; h.style.clipPath = ''; h.style.transform = ''; h.style.opacity = ''; });
             if (items.length) M.animate(items, { opacity: [0, 1], transform: ['translateY(26px)', 'translateY(0px)'] }, { duration: .6, ease: ENTER, delay: M.stagger(.07, { startDelay: .18 }) })
-              .then(() => items.forEach(el => { el.style.opacity = ''; el.style.transform = ''; }));
+              .then(() => { if (!disposed) items.forEach(el => { el.style.opacity = ''; el.style.transform = ''; }); });
           };
           M.inView(host, play, { margin: '0px 0px -22% 0px' });
           watchers.push(() => { if (!done && host.getBoundingClientRect().top < innerHeight * .78) play(); });   // backup for big jumps (anchor links)
@@ -302,12 +335,12 @@ export function mountLanding(ctx) {
       const heroIn = () => {
         if (!ok || !h1) return;
         const chars = [...h1.querySelectorAll('.ch')];
-        const settleChars = () => chars.forEach(c => { c.getAnimations().forEach(a => { try { a.finish(); } catch (e) {} }); c.style.opacity = ''; c.style.transform = ''; c.style.filter = ''; });
+        const settleChars = () => { if (disposed) return; chars.forEach(c => { c.getAnimations().forEach(a => { try { a.finish(); } catch (e) {} }); c.style.opacity = ''; c.style.transform = ''; c.style.filter = ''; }); };
         setTimeout(settleChars, 2600);
         M.animate(chars, { opacity: [0, 1], transform: ['translateY(.55em) rotate(4deg)', 'translateY(0em) rotate(0deg)'], filter: ['blur(10px)', 'blur(0px)'] },
           { duration: .9, ease: OUT, delay: M.stagger(.045, { startDelay: .15 }) }).then(settleChars);
         const sw = h1.querySelector('.swash path');
-        if (sw){ const done = () => { sw.getAnimations().forEach(an => { try { an.finish(); } catch (e) {} }); sw.style.strokeDashoffset = '0'; };
+        if (sw){ const done = () => { if (disposed) return; sw.getAnimations().forEach(an => { try { an.finish(); } catch (e) {} }); sw.style.strokeDashoffset = '0'; };
           M.animate(sw, { strokeDashoffset: [1, 0] }, { duration: .7, ease: [.65, 0, .35, 1], delay: 1.05 }).then(done); setTimeout(done, 2400); }
         // the stub drops onto the disc on a spring, overshoots a touch and settles
         M.animate(0, 1, { type: 'spring', stiffness: 70, damping: 11, mass: 1, delay: .45, onUpdate: v => { hs.intro = v; } });
@@ -320,8 +353,8 @@ export function mountLanding(ctx) {
       const disc = byId('disc');
       if (ok && disc){
         let spin = 0, ctrl = null, x0 = 0, t0 = 0;
-        disc.addEventListener('pointerdown', e => { x0 = e.clientX; t0 = performance.now(); if (ctrl) ctrl.stop(); try { disc.setPointerCapture(e.pointerId); } catch (err) {} });
-        disc.addEventListener('pointerup', e => {
+        listen(disc, 'pointerdown', e => { x0 = e.clientX; t0 = performance.now(); if (ctrl) ctrl.stop(); try { disc.setPointerCapture(e.pointerId); } catch (err) {} });
+        listen(disc, 'pointerup', e => {
           const dx = e.clientX - x0, dt = Math.max(16, performance.now() - t0), vel = Math.max(-40, Math.min(40, dx / dt * 18));
           const turns = Math.abs(dx) < 6 ? 1 : Math.max(1, Math.round(Math.abs(vel) / 8));
           const target = Math.round(spin / (Math.PI * 2)) * Math.PI * 2 + Math.sign(dx || 1) * turns * Math.PI * 2;
@@ -335,15 +368,15 @@ export function mountLanding(ctx) {
       if (ok && btn && matchMedia('(hover:hover) and (pointer:fine)').matches){
         let mag = null;
         const go = (x, y) => { if (mag) mag.stop(); mag = M.animate(btn, { translate: `${x}px ${y}px` }, { type: 'spring', stiffness: 320, damping: 22 }); };
-        btn.addEventListener('pointermove', e => { const r = btn.getBoundingClientRect(); go(Math.max(-8, Math.min(8, (e.clientX - r.left - r.width / 2) * .18)), Math.max(-6, Math.min(6, (e.clientY - r.top - r.height / 2) * .3))); });
-        btn.addEventListener('pointerleave', () => go(0, 0));
+        listen(btn, 'pointermove', e => { const r = btn.getBoundingClientRect(); go(Math.max(-8, Math.min(8, (e.clientX - r.left - r.width / 2) * .18)), Math.max(-6, Math.min(6, (e.clientY - r.top - r.height / 2) * .3))); });
+        listen(btn, 'pointerleave', () => go(0, 0));
       }
       // every "Make yours" stub leans toward the cursor on a spring (the CSS translate property, so hover tilt and press scale still compose)
       if (ok && matchMedia('(hover:hover) and (pointer:fine)').matches){
         qsa('.cta').forEach(c => { let m = null;
           const go = (x, y) => { if (m) m.stop(); m = M.animate(c, { translate: `${x}px ${y}px` }, { type: 'spring', stiffness: 320, damping: 22 }); };
-          c.addEventListener('pointermove', e => { const r = c.getBoundingClientRect(); go(Math.max(-7, Math.min(7, (e.clientX - r.left - r.width / 2) * .16)), Math.max(-5, Math.min(5, (e.clientY - r.top - r.height / 2) * .3))); });
-          c.addEventListener('pointerleave', () => go(0, 0)); });
+          listen(c, 'pointermove', e => { const r = c.getBoundingClientRect(); go(Math.max(-7, Math.min(7, (e.clientX - r.left - r.width / 2) * .16)), Math.max(-5, Math.min(5, (e.clientY - r.top - r.height / 2) * .3))); });
+          listen(c, 'pointerleave', () => go(0, 0)); });
       }
       const fin = byId('finale');
       if (fin && btn){ let seen = false;
@@ -356,14 +389,15 @@ export function mountLanding(ctx) {
         const swap = txt => { lbl.innerHTML = txt; };
         if (!ok){ swap('Opening the studio…'); setTimeout(() => swap('Try the studio <span class="arr">→</span>'), 3000); return; }
         M.animate(lbl, { opacity: [1, 0], filter: ['blur(0px)', 'blur(4px)'], transform: ['translateY(0px)', 'translateY(-8px)'] }, { duration: .14, ease: [.4, 0, 1, 1] }).then(() => {
+          if (disposed) return;
           swap('Opening the studio…');
           M.animate(lbl, { opacity: [0, 1], filter: ['blur(4px)', 'blur(0px)'], transform: ['translateY(8px)', 'translateY(0px)'] }, { duration: .26, ease: OUT });
         });
         // spring-shaped easing (overshoot then settle), played on the independent scale property so rotations survive
         const springEase = 'linear(0, 0.35 8%, 0.82 18%, 1.06 30%, 1.1 38%, 1.04 52%, 0.99 66%, 1 100%)';
-        b.animate([{ scale: '0.94' }, { scale: '1' }], { duration: 520, easing: springEase });
-        if (card) card.animate([{ scale: '1.06' }, { scale: '1' }], { duration: 620, easing: springEase });
-        setTimeout(() => M.animate(lbl, { opacity: [1, 0] }, { duration: .14 }).then(() => { swap('Try the studio <span class="arr">→</span>'); M.animate(lbl, { opacity: [0, 1] }, { duration: .2, ease: OUT }); }), 3200);
+        nativeAnimate(b, [{ scale: '0.94' }, { scale: '1' }], { duration: 520, easing: springEase });
+        if (card) nativeAnimate(card, [{ scale: '1.06' }, { scale: '1' }], { duration: 620, easing: springEase });
+        setTimeout(() => M.animate(lbl, { opacity: [1, 0] }, { duration: .14 }).then(() => { if (disposed) return; swap('Try the studio <span class="arr">→</span>'); M.animate(lbl, { opacity: [0, 1] }, { duration: .2, ease: OUT }); }), 3200);
       }
       // hero press marks register once the loader lifts
       const marks = () => {
@@ -386,10 +420,19 @@ export function mountLanding(ctx) {
 
 
 
-    const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const reduced = STILL;
     const loaderEl = byId('loader');
     function dismissLoader(){ if (loaderEl.classList.contains('done')) return; loaderEl.classList.add('done'); lpRoot.classList.add('ready'); setTimeout(() => { loaderEl.hidden = true; }, 1200); }
-    const safety = setTimeout(() => { lpRoot.classList.add('no3d'); dismissLoader(); }, 8000);   // last resort if fonts or art stall
+    // no motion: the loader never shows (it would only slide away); the printed version is ready as soon as the page is
+    if (STILL){ loaderEl.classList.add('done'); loaderEl.hidden = true; lpRoot.classList.add('ready'); }
+    const safety = setTimeout(() => { lpRoot.classList.add('no3d'); dismissLoader(); }, 8000);
+    // Chrome keeps the ring's curved text (textPath) at its first layout: shown before its font loads (no loader with motion
+    // off), it stays small and off-centre. Lay it out again whenever fonts finish loading.
+    const relayoutRing = () => { if (disposed) return; qsa('.disc text').forEach(t => { t.style.display = 'none'; if (STILL){ t.getBoundingClientRect(); t.style.display = ''; } else requestAnimationFrame(() => { t.style.display = ''; }); }); };
+    if (document.fonts){
+      document.fonts.ready.then(relayoutRing);
+      listen(document.fonts, 'loadingdone', relayoutRing);
+    }   // last resort if fonts or art stall
 
     /* =============================== DATA =============================== */
     // scene order matches the Blender flights S0..S7 (even = performer on the left, throws right)
@@ -616,29 +659,41 @@ export function mountLanding(ctx) {
                sec: String(100 + (k*37)%180), row: String.fromCharCode(65 + k%20), seat: String(1 + (k*7)%30), seed: 5000 + k*91 };
     });
 
+    // Establish board accessibility before fonts or 3D can suspend initialization.
+    const root = lpRoot;
+    const boardEl = byId('wall'), boardUI = byId('boardUI'), finale = byId('finale'), bh1 = byId('bh1');
+    const WALL = { heroesEnd: .40, swarmEnd: .76, finaleAt: .78 };   // progress through the 560vh wall: heroes land, the swarm fills it, then "Make yours!"
+    let bhState = -1;
+    // Reconcile before focus restoration: a visible maker must not wait for the first static/3D frame.
+    boardState(boardEl.getBoundingClientRect(), innerHeight);
+
     /* =============================== static art (works with or without WebGL) =============================== */
-    const fontsReady = Promise.race([
+    const fontsReady = document.fonts ? Promise.race([
       Promise.all(['900 40px Archivo','italic 800 40px Archivo','italic 500 30px Archivo','500 16px "IBM Plex Mono"','600 16px "IBM Plex Mono"','900 40px "Big Shoulders Display"','40px "Abril Fatface"'].map(f => document.fonts.load(f))),
       new Promise(r => setTimeout(r, 6000))
-    ]).catch(()=>{});
+    ]).catch(()=>{}) : Promise.resolve();
     const pct = byId('lpct'), strip = byId('strip');
     let progress = 0;
     const lbar = byId('lbar');
     function setProgress(p){ progress = Math.max(progress, p); pct.textContent = Math.round(progress*100); lbar.setAttribute('aria-valuenow', Math.round(progress*100)); strip.style.transform = `translateY(${-100 + progress*100}%)`; }
     setProgress(0.03);
-    await fontsReady;
+    if (!LITE) await fontsReady;
     if (disposed) return;
-    const texCache = new Map();
+    const texCache = new Map(), artCopies = [];
+    const copyArt = (canvas, source) => {
+      const paint = () => { const g = canvas.getContext('2d'); g.clearRect(0, 0, canvas.width, canvas.height); g.drawImage(source, 0, 0, canvas.width, canvas.height); };
+      paint(); artCopies.push(paint);
+    };
     // full size only where the art is seen up close (the eight scene stubs and the hero); everything else is kept small
     const scratch = document.createElement('canvas');
     function drawSmall(d, w){ drawTicket(d, scratch); const c = document.createElement('canvas'); c.width = w; c.height = Math.round(w * TH / TW); c.getContext('2d').drawImage(scratch, 0, 0, c.width, c.height); return c; }
     [...sceneDesigns, heroDesign].forEach(d => texCache.set(d, drawTicket(d)));
     extraDesigns.forEach(d => texCache.set(d, drawSmall(d, 600)));
-    function mini(d, w = 600){ const src = texCache.get(d); const c = document.createElement('canvas'); c.width = w; c.height = Math.round(w * TH / TW); c.getContext('2d').drawImage(src, 0, 0, c.width, c.height); return c; }
+    function mini(d, w = 600){ const src = texCache.get(d); const c = document.createElement('canvas'); c.width = w; c.height = Math.round(w * TH / TW); copyArt(c, src); return c; }
     // statement: a used QR next to the stub you keep
     { const q = byId('qr').getContext('2d'); const r = rnd(9); q.fillStyle = '#111';
       for (let y=0;y<29;y++) for (let x=0;x<29;x++){ const finder = (x<8&&y<8)||(x>20&&y<8)||(x<8&&y>20); if (finder){ const lx = x>20?x-21:x, ly = y>20?y-21:y; if (lx===0||ly===0||lx===6||ly===6||(lx>1&&lx<5&&ly>1&&ly<5)) q.fillRect(x,y,1,1); } else if (r() > .5) q.fillRect(x,y,1,1); }
-      byId('proofstub').getContext('2d').drawImage(texCache.get(sceneDesigns[0]), 0, 0); }
+      copyArt(byId('proofstub'), texCache.get(sceneDesigns[0])); }
     // how-it-works visuals
     { const st = byId('styles'); [sceneDesigns[0], sceneDesigns[2], sceneDesigns[3]].forEach(d => st.appendChild(mini(d, 420)));
       byId('framed').appendChild(mini(sceneDesigns[2], 520)); }
@@ -651,7 +706,7 @@ export function mountLanding(ctx) {
     [...extraDesigns.slice(0, 14), ...sceneDesigns].forEach((d, k) => {
       if (k % 3 === 1) ribbon.appendChild(asCard(extraDesigns[(k * 5 + 2) % extraDesigns.length], k));
       const c = mini(d); c.setAttribute('role','img'); c.setAttribute('aria-label', `Ticket art: ${d.title}`); ribbon.appendChild(c); });
-    [...ribbon.children].slice(0, 12).forEach(c => { let k; if (c.tagName === 'CANVAS'){ k = c.cloneNode(); k.getContext('2d').drawImage(c, 0, 0); } else { k = c.cloneNode(true); delete k.dataset.wired; TS.wire(k); k.tabIndex = -1; }
+    [...ribbon.children].slice(0, 12).forEach(c => { let k; if (c.tagName === 'CANVAS'){ k = c.cloneNode(); copyArt(k, c); } else { k = c.cloneNode(true); delete k.dataset.wired; TS.wire(k); k.tabIndex = -1; }
       k.setAttribute('aria-hidden','true'); ribbon.appendChild(k); });
     // floating stubs at different depths in the quieter sections
     for (const [id, spots, off] of [['fl4', [[78,58,260,-9,.9],[88,30,170,12,.5],[70,84,150,-4,.4]], 2], ['fl2', [[44,4,150,-12,.45],[93,40,120,10,.35],[40,88,170,6,.6]], 11], ['fl3', [[70,6,190,-8,.55],[92,30,130,14,.4],[56,2,110,22,.3]], 19]]){
@@ -661,12 +716,26 @@ export function mountLanding(ctx) {
     { const fl = byId('fl1'); const spots = [[4,12,180,-14,.6],[78,8,240,9,1],[88,62,150,-6,.45],[2,70,220,12,.8],[60,82,120,-20,.35],[30,4,130,6,.4]];
       spots.forEach(([x,y,w,rot,depth], k) => { const c = mini(extraDesigns[(k*5+3) % extraDesigns.length], 420); Object.assign(c.style, { left: x + '%', top: y + '%', width: w + 'px', filter: depth < .5 ? `blur(${(1-depth)*3}px)` : 'none', opacity: .5 + depth*.5 }); c.dataset.depth = depth; c.dataset.rot = rot; fl.appendChild(c); }); }
     // 2D stubs for the no-WebGL version
-    byId('heroStub2d').getContext('2d').drawImage(texCache.get(heroDesign), 0, 0, 600, 220);
-    qsa('.stage .stub2d').forEach(c => c.getContext('2d').drawImage(texCache.get(sceneDesigns[+c.dataset.scene]), 0, 0, 600, 220));
+    copyArt(byId('heroStub2d'), texCache.get(heroDesign));
+    qsa('.stage .stub2d').forEach(c => copyArt(c, texCache.get(sceneDesigns[+c.dataset.scene])));
     // fallback wall
     // built only if the static version is needed
     let fallbackBuilt = false;
     function buildFallbackWall(){ if (fallbackBuilt) return; fallbackBuilt = true; const fb = byId('fallback'); [...sceneDesigns, ...extraDesigns].forEach(d => fb.appendChild(mini(d, 300))); }
+    // Printed mode paints immediately with available fonts, then refreshes the same canvases after fonts settle.
+    if (LITE){
+      const refreshArt = () => {
+        if (disposed) return;
+        texCache.forEach((canvas, d) => { const art = drawTicket(d); const g = canvas.getContext('2d'); g.clearRect(0, 0, canvas.width, canvas.height); g.drawImage(art, 0, 0, canvas.width, canvas.height); });
+        artCopies.forEach(paint => paint());
+      };
+      fontsReady.then(refreshArt);
+      if (document.fonts) listen(document.fonts, 'loadingdone', refreshArt);
+    }
+
+    // Gallery art changes the wall's position. Re-read after that layout, before restoring board focus.
+    boardState(boardEl.getBoundingClientRect(), innerHeight);
+    if (!disposed) ctx.onBoardReady?.();
 
 
     /* =============================== the loop: past the footer, stubs fly up and the page wraps back to the hero =============================== */
@@ -746,23 +815,21 @@ export function mountLanding(ctx) {
       }
       requestAnimationFrame(loopTick);
     }
-    measureLoop();
-    addEventListener('resize', () => { measureLoop(); if (loopItems.length){ buildLoopStubs(); loopItems.phone = innerWidth < 760; } });
-    if (window.ResizeObserver){ const ro = new ResizeObserver(measureLoop); ro.observe(document.body); disposers.push(() => ro.disconnect()); }
-    requestAnimationFrame(loopTick);
+    if (!STILL){
+      measureLoop();
+      addEventListener('resize', () => { measureLoop(); if (loopItems.length){ buildLoopStubs(); loopItems.phone = innerWidth < 760; } });
+      if (window.ResizeObserver){ const ro = new ResizeObserver(measureLoop); ro.observe(document.body); disposers.push(() => ro.disconnect()); }
+      requestAnimationFrame(loopTick);
+    }
 
     /* =============================== board state (shared by the 3D and static versions) =============================== */
-    const root = lpRoot;
-    const boardEl = byId('wall'), boardUI = byId('boardUI'), finale = byId('finale'), bh1 = byId('bh1');
-    const WALL = { heroesEnd: .40, swarmEnd: .76, finaleAt: .78 };   // progress through the 560vh wall: heroes land, the swarm fills it, then "Make yours!"
-    let bhState = -1;
-    finale.inert = true;   // never focusable while it can't be seen
     function boardState(br, Hh){
       const show = br.top < Hh * .2 && br.bottom > Hh * .98;
       if (boardUI.hidden === show) boardUI.hidden = !show;
       const P = Math.max(0, Math.min(1, -br.top / (br.height - Hh)));
       const on = show && P > WALL.finaleAt;
-      if (finale.classList.contains('on') !== on){ finale.classList.toggle('on', on); finale.inert = !on; }
+      if (finale.classList.contains('on') !== on) finale.classList.toggle('on', on);
+      finale.inert = !on;
       boardUI.classList.toggle('fin', P > WALL.finaleAt - .04);
       if (!root.classList.contains('no3d')){
         boardUI.classList.toggle('swarm', P > WALL.heroesEnd);
@@ -779,12 +846,13 @@ export function mountLanding(ctx) {
     /* ---------- in-page links: a short glide, and "Make yours" lands focus in the form ---------- */
     const ev = byId('ev');
     function focusMaker(){   // wait until the finale is actually showing, then put the cursor in the field
+      if (STILL){ boardState(boardEl.getBoundingClientRect(), innerHeight); if (!finale.inert) ev.focus({ preventScroll: true }); return; }
       const t0 = performance.now(); let stopped = false; const stop = () => { stopped = true; };
       addEventListener('wheel', stop, { once: true, passive: true }); addEventListener('touchstart', stop, { once: true, passive: true });
       const tryFocus = () => { if (stopped) return; if (!finale.inert){ ev.focus({ preventScroll: true }); return; } if (performance.now() - t0 < 2500) requestAnimationFrame(tryFocus); };
       requestAnimationFrame(tryFocus);
     }
-    qsa('a[href^="#"]').forEach(a => a.addEventListener('click', e => {
+    qsa('a[href^="#"]').forEach(a => listen(a, 'click', e => {
       const id = a.getAttribute('href'); const t = qs(id); if (!t) return; e.preventDefault();
       const make = id === '#make';
       const y = make ? docTop(boardEl) + boardEl.offsetHeight - innerHeight * 1.02 : t.getBoundingClientRect().top + scrollY;
@@ -804,18 +872,19 @@ export function mountLanding(ctx) {
     updateRail();
 
     /* =============================== 3D, with the printed (2D) version standing in =============================== */
-    let staticLoop = null, dead3d = false;
+    let staticLoop = null, dead3d = false, release3D = () => {};
     function useStatic(){
       if (disposed) return;
       root.classList.add('no3d');
       // A failed 3D frame may have hidden entering scene copy; restore its CSS defaults.
-      sceneEls.forEach(el => el.querySelector('.info').style.removeProperty('--ia'));
+      qsa('.scene .info').forEach(el => el.style.removeProperty('--ia'));
       if (!staticLoop) staticLoop = startStaticLoop();
     }
     function leaveStatic(){ if (staticLoop){ staticLoop.stop(); staticLoop = null; } root.classList.remove('no3d'); }
-    const threeP = build3D().then(start => start, err => { console.warn('3D unavailable, showing the static version', err); return null; });
+    // no3d (motion off, no GPU, Save-Data, low-end device): three.js is never fetched and the printed version shows now
+    const threeP = LITE ? Promise.resolve(null) : build3D().then(start => start, err => { release3D(); if (!disposed) console.warn('3D unavailable, showing the static version', err); return null; });
     // reveal as soon as the 3D hero is ready, or after a short wait with the printed stub on the disc instead
-    const first = await Promise.race([threeP, new Promise(r => setTimeout(() => r('wait'), 3500))]);
+    const first = LITE ? null : await Promise.race([threeP, new Promise(r => setTimeout(() => r('wait'), 3500))]);
     clearTimeout(safety);
     if (disposed) return;
     if (typeof first !== 'function') useStatic();
@@ -873,7 +942,7 @@ export function mountLanding(ctx) {
       // without the 3D layout the performers still need placing (even scenes = performer on the left)
       const place = () => { const W = innerWidth, H = innerHeight; scenes.forEach(s => { const i = +s.el.dataset.i; s.hand = placeFigure(s.el, i, i % 2 === 0, W, H, W < 760); }); };
       place(); addEventListener('resize', place);
-      scenes.forEach(s => s.el.querySelectorAll('.athlete,.panel img').forEach(im => { if (!im.complete) im.addEventListener('load', place, { once: true }); }));
+      scenes.forEach(s => s.el.querySelectorAll('.athlete,.panel img').forEach(im => { if (!im.complete) listen(im, 'load', place, { once: true }); }));
       const tick = () => {
         if (!live) return;
         const sy = scrollY, Hh = innerHeight, Ww = innerWidth;
@@ -881,16 +950,20 @@ export function mountLanding(ctx) {
         const col = navColour(); const rs = scenes.map(s => s.el.getBoundingClientRect()); const b = boardEl.getBoundingClientRect();
         // writes
         paintNav(nav, col); const onWall = b.top < Hh * .9 && b.bottom > Hh;
-        if ((sy > lastY + 2 && sy > 400) || onWall) nav.classList.add('hide'); else if (sy < lastY - 2) nav.classList.remove('hide'); lastY = sy;
+        if (!STILL && ((sy > lastY + 2 && sy > 400) || onWall)) nav.classList.add('hide'); else if (sy < lastY - 2) nav.classList.remove('hide'); lastY = sy;
         scenes.forEach(({ st, hand }, i) => { const r = rs[i]; if (r.top > Hh || r.bottom < 0) return;
-          const p = Math.max(0, Math.min(1, -r.top / (r.height - Hh))); const t = Math.max(0, Math.min(1, (p - .1) / .8)); const dir = i % 2 ? -1 : 1;
+          // no motion: the stub stays in the performer's hand instead of flying across as you scroll
+          const p = STILL ? 0 : Math.max(0, Math.min(1, -r.top / (r.height - Hh))); const t = Math.max(0, Math.min(1, (p - .1) / .8)); const dir = i % 2 ? -1 : 1;
           st.style.setProperty('--hx', hand[0] + 'px'); st.style.setProperty('--hy', hand[1] + 'px');
           st.style.setProperty('--tx', (dir * t * Ww * .8) + 'px'); st.style.setProperty('--ty', (Math.sin(t * Math.PI) * -80 + t * 120) + 'px'); st.style.setProperty('--tr', (dir * t * 220) + 'deg'); });
         if (!fallbackBuilt && b.top < Hh * 3) buildFallbackWall();
         boardState(b, Hh);
-        requestAnimationFrame(tick); };
-      requestAnimationFrame(tick);
-      return { stop(){ live = false; removeEventListener('resize', place); } };
+        if (!STILL) requestAnimationFrame(tick); };
+      if (STILL){ addEventListener('scroll', tick, { passive: true }); addEventListener('resize', tick); tick(); }
+      else requestAnimationFrame(tick);
+      const stop = () => { live = false; removeEventListener('resize', place); if (STILL){ removeEventListener('scroll', tick); removeEventListener('resize', tick); } };
+      disposers.push(stop);
+      return { stop };
     }
 
     async function build3D(){
@@ -898,17 +971,30 @@ export function mountLanding(ctx) {
       if (disposed) throw new Error('unmounted');
       const { GLTFLoader } = await import('three/addons/loaders/GLTFLoader.js');
       const { RoomEnvironment } = await import('three/addons/environments/RoomEnvironment.js');
+      if (disposed) throw new Error('unmounted');
       const canvas = byId('gl');
       const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, powerPreference: 'high-performance' });
+      const resourceStops = []; let released = false;
+      release3D = () => { if (released) return; released = true; resourceStops.splice(0).reverse().forEach(stop => { try { stop(); } catch (e) {} }); };
+      disposers.push(release3D);
+      resourceStops.push(() => { try { renderer.dispose(); } finally { renderer.forceContextLoss(); } });
+      resourceStops.push(() => { idles.forEach(id => window.cancelIdleCallback(id)); idles.clear(); });
+      const resources = new Set(), freed = new Set();
+      const own = resource => { resources.add(resource); return resource; };
+      const free = resource => { if (!resource || freed.has(resource)) return; freed.add(resource); resource.dispose(); };
+      const disposeObject = object => object.traverse(o => { free(o.geometry); const ms = o.material ? [].concat(o.material) : []; ms.forEach(m => { for (const k in m){ const v = m[k]; if (v && v.isTexture) free(v); } free(m); }); });
+      resourceStops.push(() => resources.forEach(free));
       renderer.setPixelRatio(Math.min(devicePixelRatio, innerWidth < 760 ? 1.6 : 2));
       renderer.outputColorSpace = THREE.SRGBColorSpace;
       renderer.toneMapping = THREE.NoToneMapping;
       renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.VSMShadowMap;
-      canvas.addEventListener('webglcontextlost', e => { e.preventDefault(); if (disposed) return; dead3d = true; useStatic(); }, { once: true });
-      disposers.push(() => { try { renderer.dispose(); renderer.forceContextLoss(); } catch (e) {} });
+      listen(canvas, 'webglcontextlost', e => { e.preventDefault(); if (disposed) return; dead3d = true; release3D(); useStatic(); }, { once: true });
       const scene = new THREE.Scene();
+      resourceStops.push(() => { disposeObject(scene); free(scene.environment); });
       const pmrem = new THREE.PMREMGenerator(renderer);
-      scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+      resourceStops.push(() => pmrem.dispose());
+      const room = new RoomEnvironment();
+      try { scene.environment = pmrem.fromScene(room, 0.04).texture; } finally { room.dispose(); }
       scene.environmentIntensity = 0.75;
       const fill = new THREE.DirectionalLight(0xffe7cc, 0.45); fill.position.set(8, -6, 10); scene.add(fill);
       const camera = new THREE.PerspectiveCamera(30, innerWidth/innerHeight, 0.1, 200);
@@ -923,18 +1009,27 @@ export function mountLanding(ctx) {
       scene.add(key); scene.add(key.target);
 
       const loadWithTimeout = (p, ms) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), ms))]);
-      const gltfP = new Promise((res, rej) => new GLTFLoader().load('/landing/ticketstub.gltf.json', res, e => { if (e.total) setProgress(0.1 + 0.6 * e.loaded / e.total); }, rej));
-      const flightP = fetch('/landing/flight.json').then(r => { if (!r.ok) throw new Error('flight'); return r.json(); });
-      const [gltf, flight] = await loadWithTimeout(Promise.all([gltfP, flightP]), 25000);
-      if (disposed) throw new Error('unmounted');
+      const gltfP = new Promise((res, rej) => new GLTFLoader().load('/landing/ticketstub.gltf.json', res, e => { if (!disposed && !released && e.total) setProgress(0.1 + 0.6 * e.loaded / e.total); }, rej)).then(gltf => {
+        if (disposed || released){ (gltf.scenes || [gltf.scene]).forEach(disposeObject); throw new Error('unmounted'); }
+        const scenes = gltf.scenes || [gltf.scene];
+        // Capture imported resources before dress() replaces materials or reparents meshes.
+        scenes.forEach(scene => scene.traverse(o => { if (o.geometry) own(o.geometry); const ms = o.material ? [].concat(o.material) : []; ms.forEach(m => { own(m); for (const k in m){ const v = m[k]; if (v && v.isTexture) own(v); } }); }));
+        resourceStops.push(() => scenes.forEach(disposeObject));
+        return gltf;
+      });
+      const assets = new AbortController(); resourceStops.push(() => assets.abort());
+      const canceled = new Promise((_, reject) => assets.signal.addEventListener('abort', () => reject(new Error('unmounted')), { once: true }));
+      const flightP = fetch('/landing/flight.json', { signal: assets.signal }).then(r => { if (!r.ok) throw new Error('flight'); return r.json(); });
+      const [gltf, flight] = await loadWithTimeout(Promise.race([Promise.all([gltfP, flightP]), canceled]), 25000);
+      if (disposed || released) throw new Error('unmounted');
       setProgress(0.85);
 
       const META = flight.meta, WEIGHTS = flight.weights, FPS = META.fps;
-      const backTex = new THREE.CanvasTexture(drawBack()); backTex.colorSpace = THREE.SRGBColorSpace; backTex.anisotropy = 8; backTex.flipY = false;
-      const backMat = new THREE.MeshStandardMaterial({ map: backTex, roughness: .8, emissive: 0x2a2116, emissiveIntensity: 1 });
-      const edgeMat = new THREE.MeshStandardMaterial({ color: 0xe6dac2, roughness: .9 });
+      const backTex = own(new THREE.CanvasTexture(drawBack())); backTex.colorSpace = THREE.SRGBColorSpace; backTex.anisotropy = 8; backTex.flipY = false;
+      const backMat = own(new THREE.MeshStandardMaterial({ map: backTex, roughness: .8, emissive: 0x2a2116, emissiveIntensity: 1 }));
+      const edgeMat = own(new THREE.MeshStandardMaterial({ color: 0xe6dac2, roughness: .9 }));
       const texFor = new Map();
-      function tex(design){ if (!texFor.has(design)){ const t = new THREE.CanvasTexture(texCache.get(design)); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; t.flipY = false; texFor.set(design, t); } return texFor.get(design); }
+      function tex(design){ if (!texFor.has(design)){ const t = own(new THREE.CanvasTexture(texCache.get(design))); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; t.flipY = false; texFor.set(design, t); } return texFor.get(design); }
       const PALS = [['#17140f','#f2b33d'],['#7a0b1d','#e0b25a'],['#1b3fd1','#ffffff'],['#0f5c3d','#f2b33d'],['#3a1c71','#ffaf7b'],['#0e3b43','#ffcf6e'],['#c8102e','#ffffff'],['#2b1608','#ffbe3d']];
       const TPLS = ['sport','gig','theater','fest'];
       function variant(d, j){
@@ -948,7 +1043,7 @@ export function mountLanding(ctx) {
         const nd = { ...d, tpl, title, c1: pal[0], c2: pal[1], seed: d.seed + j * 13, sec: String(100 + (j*29)%200), row: String.fromCharCode(65 + (j*3)%22), seat: String(1 + (j*11)%40) };
         texCache.set(nd, drawSmall(nd, 480)); return nd;   // swarm stubs are small on screen; 480 px keeps them crisp at a quarter of the memory
       }
-      const frontMat = (design, opts = {}) => new THREE.MeshStandardMaterial({ map: tex(design), roughness: .6, envMapIntensity: .55, ...opts });
+      const frontMat = (design, opts = {}) => own(new THREE.MeshStandardMaterial({ map: tex(design), roughness: .6, envMapIntensity: .55, ...opts }));
       const sceneMats = sceneDesigns.map(d => frontMat(d));
 
       function dress(node, fMat, bMat = backMat, eMat = edgeMat){
@@ -1006,22 +1101,22 @@ export function mountLanding(ctx) {
           if (i % 8000 === 7999) yield;
         }
         for (let i = 0; i < 380; i++){ x.fillStyle = `rgba(60,35,15,${.25 + r()*.25})`; x.beginPath(); x.arc(r()*2048, r()*1280, .8 + r()*1.2, 0, 7); x.fill(); } // old pin holes
-        const corkTex = new THREE.CanvasTexture(corkC); corkTex.colorSpace = THREE.SRGBColorSpace; corkTex.anisotropy = 8; corkTex.flipY = false;
+        const corkTex = own(new THREE.CanvasTexture(corkC)); corkTex.colorSpace = THREE.SRGBColorSpace; corkTex.anisotropy = 8; corkTex.flipY = false;
         corkMat.map = corkTex; corkMat.bumpMap = corkTex; corkMat.color.set(0xffffff); corkMat.needsUpdate = true;
       }
-      const corkMat = new THREE.MeshStandardMaterial({ color: 0xab7c4b, bumpScale: 1.4, roughness: .95 });   // plain cork colour until the texture is ready
+      const corkMat = own(new THREE.MeshStandardMaterial({ color: 0xab7c4b, bumpScale: 1.4, roughness: .95 }));   // plain cork colour until the texture is ready
       nodes['Cork'].traverse(o => { if (o.isMesh){ o.material = corkMat; o.receiveShadow = true; } });
-      const woodTex = new THREE.CanvasTexture(woodCanvas()); woodTex.colorSpace = THREE.SRGBColorSpace; woodTex.wrapS = woodTex.wrapT = THREE.RepeatWrapping; woodTex.anisotropy = 8;
-      nodes['Frame'].traverse(o => { if (o.isMesh){ o.material = new THREE.MeshStandardMaterial({ map: woodTex, bumpMap: woodTex, bumpScale: .6, roughness: .5, metalness: .02 }); o.castShadow = true; o.receiveShadow = true; } });
+      const woodTex = own(new THREE.CanvasTexture(woodCanvas())); woodTex.colorSpace = THREE.SRGBColorSpace; woodTex.wrapS = woodTex.wrapT = THREE.RepeatWrapping; woodTex.anisotropy = 8;
+      nodes['Frame'].traverse(o => { if (o.isMesh){ o.material = own(new THREE.MeshStandardMaterial({ map: woodTex, bumpMap: woodTex, bumpScale: .6, roughness: .5, metalness: .02 })); o.castShadow = true; o.receiveShadow = true; } });
       boardGroup.add(nodes['Cork'], nodes['Frame']);
 
       const pinSrc = nodes['Pin'];
-      const pinMats = [0xd8432c, 0xe2a83c, 0xece4d2].map(c => new THREE.MeshPhysicalMaterial({ color: c, roughness: .5, clearcoat: .15 }));
+      const pinMats = [0xd8432c, 0xe2a83c, 0xece4d2].map(c => own(new THREE.MeshPhysicalMaterial({ color: c, roughness: .5, clearcoat: .15 })));
       // backs and edges look the same on every stub, so they share one material per depth layer (only the front art differs)
       const layerMats = new Map();
       const matsForLayer = (layer, po) => { if (!layerMats.has(layer)) layerMats.set(layer, {
-        back: new THREE.MeshStandardMaterial({ map: backTex, roughness: .8, emissive: 0x2a2116, emissiveIntensity: 1, ...po }),
-        edge: new THREE.MeshStandardMaterial({ color: 0xe6dac2, roughness: .9, ...po }) }); return layerMats.get(layer); };
+        back: own(new THREE.MeshStandardMaterial({ map: backTex, roughness: .8, emissive: 0x2a2116, emissiveIntensity: 1, ...po })),
+        edge: own(new THREE.MeshStandardMaterial({ color: 0xe6dac2, roughness: .9, ...po })) }); return layerMats.get(layer); };
       // two walls from Blender: landscape (B..) for wide screens, portrait (P..) for phones. Only the one this screen needs is built,
       // a few stubs at a time during idle moments; if the visitor reaches the wall first, the rest is finished on the spot.
       const WALLSRC = { B: [META.heroes, META.swarm], P: [META.heroesP, META.swarmP] };
@@ -1057,9 +1152,9 @@ export function mountLanding(ctx) {
       function drain(job){ if (job) while (!job.next().done); }
       function ensureWall(key){ drain(corkJob); corkJob = null; if (!walls[key]){ drain(wallJobs[key] ||= wallSteps(key)); } return walls[key]; }
       // idle pump: about 10 ms of building per slice so scrolling never stalls
-      const idle = window.requestIdleCallback ? cb => requestIdleCallback(cb, { timeout: 200 }) : cb => setTimeout(() => cb({ timeRemaining: () => 10 }), 16);
+      const idle = window.requestIdleCallback ? cb => requestIdleCallback(cb) : cb => setTimeout(() => cb({ timeRemaining: () => 10 }), 16);
       function pump(deadline){
-        if (disposed) return;
+        if (disposed || released || dead3d) return;
         const key = wallKeyNow(); const t0 = performance.now(); const budget = () => Math.min(12, deadline.timeRemaining ? Math.max(4, deadline.timeRemaining()) : 10);
         while (performance.now() - t0 < budget()){
           if (corkJob){ if (corkJob.next().done) corkJob = null; continue; }
@@ -1074,7 +1169,7 @@ export function mountLanding(ctx) {
       // hero ticket: the Blender mesh, black and gold, on the punched red disc
       const heroTicket = new THREE.Group();
       const heroMesh = nodes['Ticket'].clone(true); heroMesh.position.set(0,0,0); heroMesh.quaternion.identity(); heroMesh.scale.setScalar(1);
-      dress(heroMesh, new THREE.MeshPhysicalMaterial({ map: tex(heroDesign), roughness: .45, clearcoat: .6, clearcoatRoughness: .3, envMapIntensity: .5 }));
+      dress(heroMesh, own(new THREE.MeshPhysicalMaterial({ map: tex(heroDesign), roughness: .45, clearcoat: .6, clearcoatRoughness: .3, envMapIntensity: .5 })));
       heroMesh.traverse(o => { if (o.isMesh) o.castShadow = false; });
       heroTicket.add(heroMesh); scene.add(heroTicket);
 
@@ -1093,6 +1188,7 @@ export function mountLanding(ctx) {
       }
       const heroBase = new THREE.Vector3(); let heroW = 1; const throwOffsets = [];
       function layout(){
+        if (disposed || released || dead3d) return;
         W = innerWidth; H = innerHeight; const phone = W < 760;
         renderer.setSize(W, H, false); camera.aspect = W/H; camera.updateProjectionMatrix();
         camera.position.set(0, 0, D); camera.lookAt(0,0,0); camera.updateMatrixWorld();
@@ -1116,7 +1212,7 @@ export function mountLanding(ctx) {
       }
       layout();
       addEventListener('resize', layout);
-      qsa('.athlete,.panel img').forEach(im => { if (!im.complete) im.addEventListener('load', layout, { once: true }); });
+      qsa('.athlete,.panel img').forEach(im => { if (!im.complete) listen(im, 'load', layout, { once: true }); });
 
       /* ---------- scroll engine ---------- */
       // Read native scrolling; page input must never depend on an animation frame.
@@ -1137,7 +1233,7 @@ export function mountLanding(ctx) {
       const keyOff = new THREE.Vector3(-7, 9, 16);
 
       function tick(now){
-        if (dead3d || disposed) return;   // WebGL context lost: the static version has taken over
+        if (dead3d || disposed || released) return;   // WebGL context lost: the static version has taken over
         try {
         const dt = Math.min(.05, (now - last) / 1000); last = now; clock += reduced ? 0 : dt;
         /* ---- reads: every measurement for this frame, before any style is written ---- */
@@ -1277,17 +1373,13 @@ export function mountLanding(ctx) {
         drewLast = anything;
         requestAnimationFrame(tick);
         } catch (err){
-          dead3d = true;
+          dead3d = true; release3D();
           console.warn('3D animation unavailable, showing the static version', err);
           useStatic();
         }
       }
-      disposers.push(() => {
-        scene.traverse(o => { if (o.geometry) o.geometry.dispose(); const ms = o.material ? [].concat(o.material) : []; ms.forEach(m => { for (const k in m){ const v = m[k]; if (v && v.isTexture) v.dispose(); } m.dispose(); }); });
-        [backTex, woodTex, ...texFor.values()].forEach(t => t.dispose()); if (scene.environment) scene.environment.dispose(); pmrem.dispose();
-      });
       // start the loop when the page hands over to 3D; build the wall in idle time from then on
-      return () => { requestAnimationFrame(tick); idle(pump); };
+      return () => { if (disposed || released || dead3d) return; requestAnimationFrame(tick); idle(pump); };
     }
 
   }
@@ -1296,6 +1388,9 @@ export function mountLanding(ctx) {
   return () => {
     disposed = true;
     rafs.forEach(id => window.cancelAnimationFrame(id));
+    idles.forEach(id => window.cancelIdleCallback(id));
+    animations.forEach(control => { try { if (control.stop) control.stop(); else control.cancel(); } catch (e) {} });
+    animations.clear();
     timers.forEach(id => { window.clearTimeout(id); window.clearInterval(id); });
     disposers.splice(0).reverse().forEach(f => { try { f(); } catch (e) {} });
   };

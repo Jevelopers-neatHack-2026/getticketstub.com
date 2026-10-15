@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -409,10 +409,43 @@ test("--out never clobbers existing secrets, tracked files (including via aliase
   assert.deepEqual(execFileSync("ls", ["-A", join(root, "out/assembly-evidence")], { encoding: "utf8" }).trim().split("\n"), ["manifest.json"]);
 }));
 
+test("--out preserves a non-manifest created after output validation", withRepo((root) => {
+  cli(root);
+  const target = join(root, "out/assembly-evidence/manifest.json");
+  const contents = "concurrent writer's non-manifest\n";
+  const preload = join(root, "out/create-late-output.mjs");
+  // The real CLI has validated --out before buildManifest asks for npm's version. Create the competing
+  // file at that existing subprocess boundary, without timers, sleeps, or changes to the production API.
+  put(root, "out/create-late-output.mjs", `
+import childProcess from "node:child_process";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
+import { dirname } from "node:path";
+const original = childProcess.execFileSync;
+childProcess.execFileSync = (command, args, options) => {
+  if (command === "npm" && args.length === 1 && args[0] === "--version") {
+    const target = ${JSON.stringify(target)};
+    mkdirSync(dirname(target), { recursive: true });
+    writeFileSync(target, ${JSON.stringify(contents)}, { flag: "wx" });
+  }
+  return original(command, args, options);
+};
+syncBuiltinESMExports();
+`);
+  const result = spawnSync(process.execPath, ["--import", preload, join(root, "scripts/assembly-evidence.mjs"), "build", "--out", target], { encoding: "utf8" });
+  assert.equal(result.error, undefined);
+  assert.equal(result.status, 1, `${result.stdout}${result.stderr}`);
+  assert.match(result.stderr, /EEXIST/);
+  assert.equal(readFileSync(target, "utf8"), contents);
+  assert.deepEqual(readdirSync(dirname(target)), ["manifest.json"]); // failed exclusive creation cleans up its temp file
+}));
+
 test("the real checkout's inputs build a manifest whose pending pins stay pending", () => {
   const manifest = buildManifest(REAL_ROOT, { allowDirty: true });
   const pending = manifest.components.required.filter((c) => c.status === "pending").map((c) => c.name);
-  assert.ok(pending.includes("event-intelligence") && pending.includes("creative-engine"));
+  assert.ok(pending.includes("event-intelligence"));
+  assert.equal(manifest.components.required.find((c) => c.name === "creative-engine").status, "installed-vendored");
+  assert.equal(manifest.components.required.find((c) => c.name === "cost-intelligence").status, "installed-vendored");
   assert.equal(manifest.components.required.find((c) => c.name === "agent-harness").status, "installed-vendored");
   assert.equal(manifest.acceptance.status, "not_accepted");
 });

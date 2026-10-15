@@ -1,10 +1,10 @@
 // Pure stub edits used by the studio editor. Every function returns a new Stub; callers persist with upsertStub.
-import { currentVersion } from "../types";
+import { factKey, resolveFact } from "../facts/identity";
+import { EDITIONS, currentVersion } from "../types";
 import type { ArtLayer, DesignVersion, Edition, Finish, Material, Stub } from "../types";
 import { applyCorrection } from "../facts/corrections";
+import { isCoreFact, isFactIncluded } from "../facts/inclusion";
 import { contextOf, sameArt } from "../versions/versions";
-import { STYLES, styleOf, type StyleId } from "../stub/svg/style";
-import { templateById } from "../stub/svg/templates";
 
 export type Selectable = "title" | "subtitle" | "facts" | "art";
 
@@ -40,45 +40,16 @@ export function setEdition(stub: Stub, edition: Edition): Stub {
   return { ...stub, versions: [...stub.versions, v], currentVersionId: v.id };
 }
 
-/** The edition and template a style id stands for. */
-function styleFields(cur: DesignVersion, style: StyleId): Pick<DesignVersion, "edition" | "template"> {
-  return templateById(style) ? { edition: cur.edition, template: style } : { edition: style as Edition, template: undefined };
-}
-
-function findStyleVersion(stub: Stub, style: StyleId, art: ArtLayer): DesignVersion | undefined {
-  return stub.versions.find((v) => styleOf(v) === style && sameArt(v.art, art));
-}
-
-/** The same stub, viewed in another style with the current art (for the style grid). */
-export function previewStyle(stub: Stub, style: StyleId): Stub {
-  const cur = currentVersion(stub);
-  const existing = findStyleVersion(stub, style, cur.art);
-  if (existing) return atVersion(stub, existing.id);
-  const v: DesignVersion = { ...cur, id: `preview-${style}`, ...styleFields(cur, style) };
-  return { ...stub, versions: [...stub.versions, v], currentVersionId: v.id };
-}
-
-/** Switch style (an SVG template, or a legacy edition), keeping the data and the art. Reuses a matching version. */
-export function setStyle(stub: Stub, style: StyleId): Stub {
-  const cur = currentVersion(stub);
-  if (styleOf(cur) === style) return stub;
-  const existing = findStyleVersion(stub, style, cur.art);
-  if (existing) return atVersion(stub, existing.id);
-  const v: DesignVersion = { id: uid(), parentId: cur.id, ...styleFields(cur, style), art: cur.art, createdAt: new Date().toISOString(), context: contextOf(stub) };
-  return { ...stub, versions: [...stub.versions, v], currentVersionId: v.id };
-}
-
-/** Next / previous style in the picker order. A legacy edition steps into the template catalogue. */
 export function stepEdition(stub: Stub, dir: 1 | -1): Stub {
-  const i = STYLES.indexOf(styleOf(currentVersion(stub)));
-  const next = i < 0 ? STYLES[dir > 0 ? 0 : STYLES.length - 1] : STYLES[(i + dir + STYLES.length) % STYLES.length];
-  return setStyle(stub, next);
+  const i = EDITIONS.indexOf(currentVersion(stub).edition);
+  const next = EDITIONS[(i + dir + EDITIONS.length) % EDITIONS.length];
+  return setEdition(stub, next);
 }
 
 /** An art change is always a new design version. */
 export function addArtVersion(stub: Stub, art: ArtLayer): Stub {
   const cur = currentVersion(stub);
-  const v: DesignVersion = { id: uid(), parentId: cur.id, edition: cur.edition, template: cur.template, art, createdAt: new Date().toISOString(), context: contextOf(stub) };
+  const v: DesignVersion = { id: uid(), parentId: cur.id, edition: cur.edition, art, createdAt: new Date().toISOString(), context: contextOf(stub) };
   return { ...stub, versions: [...stub.versions, v], currentVersionId: v.id };
 }
 
@@ -104,8 +75,18 @@ export function setFactValue(stub: Stub, factId: string, value: string, reason?:
 }
 
 export function toggleKept(stub: Stub, factId: string): Stub {
-  const facts = stub.event.facts.map((f) => (f.id === factId ? { ...f, kept: !f.kept } : f));
-  return { ...stub, event: { ...stub.event, facts } };
+  const target = resolveFact(stub.event.facts, factId);
+  if (!target) return stub;
+  if (isCoreFact(target) || target.provenance === "pending" || !target.value.trim()) return stub;
+  const adding = !isFactIncluded(stub, target);
+  const facts = stub.event.facts.map((f) => (f === target ? { ...f, kept: adding } : f));
+  const hiddenFields = adding ? stub.personal.hiddenFields.filter((id) => id !== factKey(target) && id !== target.id && id !== "facts") : stub.personal.hiddenFields;
+  return { ...stub, event: { ...stub.event, facts }, personal: { ...stub.personal, hiddenFields } };
+}
+
+/** Resolve queued UI actions against the current project, rather than a rendered snapshot. */
+export function toggleProjectFact(current: Stub, projectId: string, factId: string): Stub {
+  return current.id === projectId ? toggleKept(current, factId) : current;
 }
 
 export function setHidden(stub: Stub, field: string, hidden: boolean): Stub {
@@ -195,14 +176,14 @@ export function canHide(sel: Selectable): boolean {
 export function hideSelection(stub: Stub, sel: Selectable): Stub {
   if (sel === "subtitle") return setHidden(stub, "subtitle", true);
   if (sel === "facts") {
-    const ids = stub.event.facts.map((f) => f.id);
+    const ids = stub.event.facts.map(factKey);
     const rest = stub.personal.hiddenFields.filter((h) => !ids.includes(h));
     return { ...stub, personal: { ...stub.personal, hiddenFields: [...rest, ...ids] } };
   }
   return stub;
 }
 export function hiddenLabel(stub: Stub, key: string): string {
-  return stub.event.facts.find((f) => f.id === key)?.label ?? key;
+  return resolveFact(stub.event.facts, key)?.label ?? key;
 }
 
 /** A committed studio change, in the analytics catalog's words. */
@@ -232,8 +213,8 @@ export function editChanges(prev: Stub, next: Stub): EditChange[] {
   const added = (next.corrections ?? []).slice((prev.corrections ?? []).length);
   for (const c of added) out.push(c.kind === "undo" ? "fact_undo" : c.kind === "confirm" ? "fact_confirm" : "fact_correct");
   if (!added.length) {
-    const keptBefore = new Map(prev.event.facts.map((f) => [f.id, !!f.kept]));
-    if (next.event.facts.some((f) => keptBefore.has(f.id) && keptBefore.get(f.id) !== !!f.kept)) out.push("fact_kept");
+    const keptBefore = new Map(prev.event.facts.map((f) => [factKey(f), !!f.kept]));
+    if (next.event.facts.some((f) => keptBefore.has(factKey(f)) && keptBefore.get(factKey(f)) !== !!f.kept)) out.push("fact_kept");
   }
   return out;
 }

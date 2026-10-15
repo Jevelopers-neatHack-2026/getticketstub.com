@@ -34,6 +34,7 @@ export type Settled = { handled: false } | { handled: true; status: OrderPayment
  */
 export async function settlePayment(p: ProviderPayment, req: Request): Promise<Settled> {
   let held: "amount" | "currency" | "late" | null = null;
+  let receiptOrigin: string | undefined;
   const result = await getStorage().updateOrderPayment(p.orderId, (order) => {
     const cur = order.payment;
     if (!cur || cur.provider !== p.provider || p.status === "pending") return null;
@@ -54,6 +55,9 @@ export async function settlePayment(p: ProviderPayment, req: Request): Promise<S
       held = currencyOk ? "amount" : "currency";
       return { ...next, status: "needs_review", chargedMinor };
     }
+    // Resolve link authority before consuming the paid transition. A throw rolls back this transaction,
+    // leaving the callback retryable; held, failed and no-op branches never depend on receipt authority.
+    receiptOrigin = appOrigin(req);
     return { ...next, status: "paid", chargedMinor };
   });
   const orderRef = refOf(p.orderId);
@@ -65,7 +69,7 @@ export async function settlePayment(p: ProviderPayment, req: Request): Promise<S
     await recordEvent(req, "order_paid", { order: orderRef, totalMinor: result.after.payment.chargedMinor ?? result.after.payment.amountMinor, provider: p.provider });
     const row = await getStorage().getOrder(p.orderId);
     const email = row?.email ?? result.after.email;
-    if (email) await sendReceipt(result.after, row?.accountId ?? null, email, appOrigin(req));
+    if (email && receiptOrigin) await sendReceipt(result.after, row?.accountId ?? null, email, receiptOrigin);
   }
   return { handled: true, status: result.after.payment?.status ?? p.status };
 }

@@ -14,6 +14,10 @@ import type { Account, AccountState, ApprovalRow, ArtQuota, ArtQuotaResult, Clai
 type Row = Record<string, unknown>;
 
 const newId = (prefix: string) => `${prefix}_${randomBytes(12).toString("base64url")}`;
+// Both ordinary ownership checks and the final session snapshot use this
+// storage-owned predicate. The account expression is a literal owned by this module.
+const stubOwnership = (account: "?" | "a.id") => `(EXISTS(SELECT 1 FROM shares WHERE owner_key = ${account} AND stub_id = ?)
+  OR EXISTS(SELECT 1 FROM wall_stubs WHERE account_id = ${account} AND stub_id = ? AND deleted = 0))`;
 
 export function openDatabase(file: string): DatabaseSync {
   if (file !== ":memory:") mkdirSync(dirname(resolve(file)), { recursive: true });
@@ -192,6 +196,19 @@ export class SqliteStorage implements Storage {
       account: { id: r.id as string, email: r.email as string, membershipRevision: Number(r.membership_revision), isStaff: Number(r.is_staff) === 1 },
       sessionRef: (r.token_hash as string).slice(0, 24),
     };
+  }
+
+  readCreativeDispatchState(tokenHash: string, stubId: string, now: number): { account: AccountState; sessionRef: string; ownsStub: boolean } | null {
+    // DatabaseSync.isTransaction is present on the pinned Node22 runtime;
+    // @types/node20 cannot express it. Missing support fails closed.
+    if ((this.db as DatabaseSync & { readonly isTransaction?: boolean }).isTransaction !== false || !Number.isFinite(now)) return null;
+    const r = this.get(`SELECT s.token_hash, a.id, a.email, a.membership_revision, a.is_staff,
+      ${stubOwnership("a.id")} AS owns_stub
+      FROM sessions s JOIN accounts a ON a.id = s.account_id WHERE s.token_hash = ? AND s.expires_at > ?`,
+      stubId, stubId, tokenHash, now);
+    if (!r || !safeEqual(r.token_hash as string, tokenHash)) return null;
+    return { account: { id: r.id as string, email: r.email as string, membershipRevision: Number(r.membership_revision), isStaff: Number(r.is_staff) === 1 },
+      sessionRef: (r.token_hash as string).slice(0, 24), ownsStub: Number(r.owns_stub) === 1 };
   }
 
   async isSessionLive(sessionRef: string, now: number): Promise<boolean> {
@@ -648,8 +665,7 @@ export class SqliteStorage implements Storage {
   }
 
   async ownsStub(tenantId: string, stubId: string): Promise<boolean> {
-    if (this.get("SELECT 1 AS x FROM shares WHERE owner_key = ? AND stub_id = ?", tenantId, stubId)) return true;
-    return !!this.get("SELECT 1 AS x FROM wall_stubs WHERE account_id = ? AND stub_id = ? AND deleted = 0", tenantId, stubId);
+    return Number(this.get(`SELECT ${stubOwnership("?")} AS owned`, tenantId, stubId, tenantId, stubId)?.owned) === 1;
   }
 
   async getEventCaptain(eventId: string): Promise<string | null> {

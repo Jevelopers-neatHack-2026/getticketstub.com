@@ -384,3 +384,8 @@
     transition-duration: 0.01ms;
   }
 }
+
+/* The landing switch uses the same resting feed pose as the OS preference. */
+.section[data-reduced-motion] .feeding .ticket {
+  transform: none;
+}

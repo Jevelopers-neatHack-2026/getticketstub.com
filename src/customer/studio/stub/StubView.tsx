@@ -1,4 +1,5 @@
 "use client";
+import { factKey } from "../facts/identity";
 // The stub. Three layers per face:
 //   ART       currentVersion(stub).art (image, or procedural from seed). Never contains text.
 //   LIVE TYPE title / subtitle / place+date / kept facts as a fact line / unsure facts as pulsing chips.
@@ -7,15 +8,13 @@
 /* eslint-disable @next/next/no-img-element */
 import { useCallback, useId, useMemo, useRef, type CSSProperties, type MouseEvent, type ReactNode } from "react";
 import { activeCorrection } from "../facts/corrections";
+import { includedExtraFacts } from "../facts/inclusion";
 import { currentVersion, type ArtLayer, type Edition, type Fact, type Stub } from "../types";
 import { EDITION_META, type EditionMeta } from "./editions";
 import { Foil, foilTextClass } from "./Foil";
 import { proceduralArt } from "./proceduralArt";
 import { hashSeed, rng } from "./rng";
 import { useTilt } from "./useTilt";
-import { SvgStub } from "./svg/SvgStub";
-import { stubData } from "./svg/style";
-import { templateById } from "./svg/templates";
 import s from "./StubView.module.css";
 
 export type StubElement = "title" | "subtitle" | "facts" | "art";
@@ -100,8 +99,7 @@ interface Ctx {
   meta: EditionMeta;
   date: DateParts | null;
   place: string;
-  kept: Fact[];
-  unsure: Fact[];
+  facts: Fact[];
   show: (key: string) => boolean;
   foilTitle: boolean;
   selected?: string | null;
@@ -160,7 +158,7 @@ function Admit({ c, className }: { c: Ctx; className?: string }) {
 function Chip({ c, f }: { c: Ctx; f: Fact }) {
   if (!c.onChipTap)
     return (
-      <span className={s.chip}>
+      <span className={s.chip} data-fact-id={factKey(f)}>
         {f.label}
         <span className={s.chipQ} aria-hidden="true">?</span>
       </span>
@@ -169,10 +167,11 @@ function Chip({ c, f }: { c: Ctx; f: Fact }) {
     <button
       type="button"
       className={s.chip}
+      data-fact-id={factKey(f)}
       aria-label={`Unsure: ${f.label}. Tap to check.`}
       onClick={(e) => {
         e.stopPropagation();
-        c.onChipTap?.(f.id);
+        c.onChipTap?.(factKey(f));
       }}
     >
       {f.label}
@@ -185,7 +184,7 @@ function Chip({ c, f }: { c: Ctx; f: Fact }) {
 // "live" matters: demo and pending weather also name Open-Meteo as their source. A value the person typed over the
 // research is theirs, not Open-Meteo's. Public projections carry no correction history, so there it stays credited.
 const fromOpenMeteo = (stub: Stub) => (f: Fact) =>
-  f.id === "weather" && f.provenance === "live" && f.source.startsWith("Open-Meteo") && activeCorrection(stub, f.id)?.kind !== "correct";
+  f.id === "weather" && f.provenance === "live" && f.source.startsWith("Open-Meteo") && activeCorrection(stub, factKey(f))?.kind !== "correct";
 
 function WeatherCredit() {
   return <span className={s.weatherCredit}>Weather data by Open-Meteo.com</span>;
@@ -193,23 +192,29 @@ function WeatherCredit() {
 
 function Facts({ c, className, sep = " · ", upper }: { c: Ctx; className?: string; sep?: string; upper?: boolean }) {
   if (!c.show("facts")) return null;
-  const line = c.kept.map((f) => f.label).join(sep);
-  if (!line && !c.unsure.length) return null;
+  if (!c.facts.length) return null;
+  // Keep contiguous runs in source order; uncertainty changes presentation, not position.
+  const runs: { sure: boolean; facts: Fact[] }[] = [];
+  for (const fact of c.facts) {
+    const sure = fact.confidence >= 0.8;
+    const last = runs[runs.length - 1];
+    if (last?.sure === sure) last.facts.push(fact);
+    else runs.push({ sure, facts: [fact] });
+  }
   return (
     <div className={cx(s.facts, className)}>
-      {line && (
-        <Pick c={c} el="facts" className={s.factLine}>
-          {upper ? line.toUpperCase() : line}
+      {runs.map((run) => run.sure ? (
+        <Pick key={factKey(run.facts[0])} c={c} el="facts" className={s.factLine}>
+          {run.facts.map((f, i) => <span key={factKey(f)} data-fact-id={factKey(f)}>{i > 0 ? sep : ""}{upper ? f.label.toUpperCase() : f.label}</span>)}
         </Pick>
-      )}
-      {c.unsure.length > 0 && (
-        <span className={s.chips}>
-          {c.unsure.map((f) => (
-            <Chip key={f.id} c={c} f={f} />
+      ) : (
+        <span key={factKey(run.facts[0])} className={s.chips}>
+          {run.facts.map((f) => (
+            <Chip key={factKey(f)} c={c} f={f} />
           ))}
         </span>
-      )}
-      {[...c.kept, ...c.unsure].some(fromOpenMeteo(c.stub)) && <WeatherCredit />}
+      ))}
+      {c.facts.some(fromOpenMeteo(c.stub)) && <WeatherCredit />}
     </div>
   );
 }
@@ -219,7 +224,7 @@ function Facts({ c, className, sep = " · ", upper }: { c: Ctx; className?: stri
 
 function ArtLayers({ art, edition }: { art: ArtLayer; edition: Edition }) {
   if (art.kind === "image" && art.src) {
-    const img = <img className={s.artImg} src={art.src} alt="" draggable={false} decoding="async" />;
+    const img = <img className={s.artImg} src={art.src} alt="" draggable={false} decoding="sync" />;
     if (edition === "risograph")
       return (
         <>
@@ -511,7 +516,7 @@ function BackList({ c }: { c: Ctx }) {
       </ul>
     );
   }
-  const shown = e.programme?.length ? [] : e.facts.filter((f) => c.show(f.id));
+  const shown = e.programme?.length ? [] : includedExtraFacts(c.stub);
   // The list clips at its last row, so the credit takes a row of the cap rather than overflowing. Weather that would
   // land in that last row, with no room left for its credit, is left off the back instead.
   const om = fromOpenMeteo(c.stub);
@@ -521,9 +526,9 @@ function BackList({ c }: { c: Ctx }) {
   return (
     <ul className={s.backList}>
       {items.map((p, i) => (
-        <li key={i}>
+        <li key={!e.programme?.length && listed[i] ? factKey(listed[i]) : i}>
           <span className={s.backIdx}>·</span>
-          <span>{p}</span>
+          <span data-fact-id={!e.programme?.length ? (listed[i] ? factKey(listed[i]) : undefined) : undefined}>{p}</span>
         </li>
       ))}
       {credited && (
@@ -600,23 +605,18 @@ export function StubView({ stub, flipped = false, still, tilt = false, size = "m
   const edition: Edition = version?.edition ?? "researched";
   const meta = EDITION_META[edition];
   const e = stub.event;
-  const template = version?.template ? templateById(version.template) : undefined;
-  const templateId = template?.id;
-  const artSrc = version?.art.kind === "image" ? version.art.src : undefined;
-  const svgData = useMemo(() => (templateId ? stubData(stub, artSrc) : null), [templateId, stub, artSrc]);
 
   const c: Ctx = useMemo(() => {
     const hidden = new Set(stub.personal.hiddenFields);
     const show = (k: string) => !hidden.has(k);
-    const facts = e.facts.filter((f) => show(f.id));
+    const facts = includedExtraFacts(stub);
     return {
       stub,
       edition,
       meta,
       date: parseDate(e.dateISO),
       place: [e.venue, e.city].filter(Boolean).join(", "),
-      kept: facts.filter((f) => f.kept && f.confidence >= 0.8),
-      unsure: facts.filter((f) => f.confidence < 0.8),
+      facts,
       show,
       foilTitle: stub.personal.foilTitle,
       selected,
@@ -630,13 +630,11 @@ export function StubView({ stub, flipped = false, still, tilt = false, size = "m
     if (typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches) void requestGyro();
   }, [tilt, requestGyro]);
 
-
   const Front = FRONTS[edition];
   const titleFont = meta.fontPairs[stub.personal.titleFont] ?? meta.fontPairs[0];
-  const orientation = template?.orientation ?? meta.orientation;
   const vars = {
-    "--w": `${WIDTHS[orientation][size]}px`,
-    "--aspect": template ? `${template.width} / ${template.height}` : ASPECT[edition],
+    "--w": `${WIDTHS[meta.orientation][size]}px`,
+    "--aspect": ASPECT[edition],
     "--paper": meta.paper,
     "--ink": meta.ink,
     "--accent": meta.accent,
@@ -646,15 +644,16 @@ export function StubView({ stub, flipped = false, still, tilt = false, size = "m
   } as CSSProperties;
 
   // The name is short (what it is); the description carries the rest (when, where, which facts, how it is finished).
-  const label = `${e.title}, ${template?.name ?? meta.label} ${template ? "style" : "edition"} stub${flipped || still === "back" ? ", back" : ""}`;
+  const label = `${e.title}, ${meta.label} edition stub${flipped || still === "back" ? ", back" : ""}`;
+  const unsureCount = c.facts.filter((f) => !(f.confidence >= 0.8)).length;
   const description = [
     e.subtitle,
     e.venue,
     e.city,
     c.date?.long,
     stub.personal.guestName ? `Admits ${stub.personal.guestName}` : undefined,
-    c.kept.length ? `Facts on the stub: ${c.kept.map((f) => f.label).join(", ")}` : undefined,
-    c.unsure.length ? `${c.unsure.length} unsure ${c.unsure.length === 1 ? "fact" : "facts"} to check` : undefined,
+    c.facts.length ? `Facts on the stub: ${c.facts.map((f) => f.label).join(", ")}` : undefined,
+    unsureCount ? `${unsureCount} unsure ${unsureCount === 1 ? "fact" : "facts"} to check` : undefined,
     `${stub.finish} finish`,
     flipped || still === "back" ? "Showing the back" : "Showing the front",
   ]
@@ -664,11 +663,11 @@ export function StubView({ stub, flipped = false, still, tilt = false, size = "m
 
   return (
     <figure
-      className={cx(s.stub, template ? s.svgStub : s[edition], s[orientation], flipped && !still && s.flipped, still && s.still, still === "back" && s.stillBack, className)}
+      className={cx(s.stub, s[edition], s[meta.orientation], flipped && !still && s.flipped, still && s.still, still === "back" && s.stillBack, className)}
       style={vars}
       aria-label={label}
       aria-describedby={descId}
-      data-edition={template?.id ?? edition}
+      data-edition={edition}
       data-size={size}
       data-guest={stub.personal.guestName ? "" : undefined}
       onClick={onClick}
@@ -678,37 +677,22 @@ export function StubView({ stub, flipped = false, still, tilt = false, size = "m
       </span>
       <div ref={tiltRef} className={s.tilt}>
         <div className={s.flipper}>
-          {template && svgData ? (
-            <>
-              {/* SVG template: paper, art, type, foil, holo and the die-cut are all in the file; its foil and holo
-                  follow the tilt vars. No CSS paper, grain or glare: they would paint outside the die-cut. */}
-              <div className={cx(s.face, s.front, s.svgFace)} aria-hidden={flipped || undefined}>
-                <SvgStub template={template.id} face="front" data={svgData} className={s.svgHost} />
-              </div>
-              <div className={cx(s.face, s.back, s.svgFace)} aria-hidden={!flipped || undefined}>
-                <SvgStub template={template.id} face="back" data={svgData} className={s.svgHost} />
-              </div>
-            </>
-          ) : (
-            <>
-              <div className={cx(s.face, s.front)} aria-hidden={flipped || undefined}>
-                <div className={s.paper} />
-                <Front c={c} />
-                <div className={s.grain} aria-hidden="true">
-                  {still && <GrainNoise />}
-                </div>
-                <Foil finish={stub.finish} seed={stub.id} />
-              </div>
-              <div className={cx(s.face, s.back)} aria-hidden={!flipped || undefined}>
-                <div className={s.paper} />
-                <Back c={c} />
-                <div className={s.grain} aria-hidden="true">
-                  {still && <GrainNoise />}
-                </div>
-                <Foil finish="matte" seed={stub.id + ":back"} />
-              </div>
-            </>
-          )}
+          <div className={cx(s.face, s.front)} aria-hidden={flipped || undefined}>
+            <div className={s.paper} />
+            <Front c={c} />
+            <div className={s.grain} aria-hidden="true">
+              {still && <GrainNoise />}
+            </div>
+            <Foil finish={stub.finish} seed={stub.id} />
+          </div>
+          <div className={cx(s.face, s.back)} aria-hidden={!flipped || undefined}>
+            <div className={s.paper} />
+            <Back c={c} />
+            <div className={s.grain} aria-hidden="true">
+              {still && <GrainNoise />}
+            </div>
+            <Foil finish="matte" seed={stub.id + ":back"} />
+          </div>
         </div>
       </div>
     </figure>

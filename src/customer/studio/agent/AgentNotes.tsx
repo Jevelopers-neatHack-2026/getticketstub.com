@@ -1,4 +1,6 @@
 "use client";
+import { questionKey } from "../facts/corrections";
+import { factKey, resolveFact } from "../facts/identity";
 // The agent as notes. It writes short notes about the stub: one card under it on a phone, and on the
 // desktop one small taped card pinned in the corner of the cutting mat (it folds to a tab while the
 // camera is away from fit). Each note asks one thing and has one-tap answers; "‹ ›" step through them.
@@ -9,7 +11,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { Fact, Provenance, Stub } from "../types";
 import { currentVersion } from "../types";
 import { remixArt } from "../research/client";
-import { styleLabel, styleOf } from "@/customer/studio/stub/svg/style";
+import { EDITION_META } from "@/customer/studio/stub/editions";
 import { haptic, play } from "@/customer/studio/feedback";
 import { MarkLegend, SourceMark, Tag, Tags } from "@/customer/desk/Desk";
 import { CloseIcon } from "@/customer/desk/icons";
@@ -110,16 +112,16 @@ export function AgentNotes({ stub, onChange, onAsk, onShowBack, variant, folded 
   };
 
   const ev = stub.event;
-  const styleName = styleLabel(styleOf(currentVersion(stub)));
+  const edition = EDITION_META[currentVersion(stub).edition];
   const kept = ev.facts.filter((f) => f.kept && f.confidence >= 0.8).slice(0, 3);
   const notes: Note[] = [];
 
   // 1. Facts I need an answer for come first: the same short question the Facts panel asks. It closes everywhere once answered.
   if (!skipQuestions) {
     openQuestions(stub).forEach((q) => {
-      const f = ev.facts.find((x) => x.id === q.factId);
+      const f = resolveFact(ev.facts, questionKey(q));
       notes.push({
-        id: `unsure-${q.factId}`,
+        id: `unsure-${questionKey(q)}`,
         body: f && f.provenance !== "pending" ? (
           <>
             I&apos;m not sure about the {q.label}: <FactMark f={f} />. {q.text}
@@ -138,8 +140,8 @@ export function AgentNotes({ stub, onChange, onAsk, onShowBack, variant, folded 
     id: "intro",
     body: (
       <>
-        I set up your {styleName} stub for {ev.title}. The date and place are on the front
-        {kept.length ? <>, with {list(kept.map((f) => <FactMark key={f.id} f={f} />))}</> : null}.
+        I set up your {edition?.label ?? "first"} stub for {ev.title}. The date and place are on the front
+        {kept.length ? <>, with {list(kept.map((f) => <FactMark key={factKey(f)} f={f} />))}</> : null}.
       </>
     ),
     answers: [
@@ -192,7 +194,7 @@ export function AgentNotes({ stub, onChange, onAsk, onShowBack, variant, folded 
     .filter((f) => !f.kept && f.provenance !== "pending" && f.confidence >= 0.8)
     .slice(0, 2)
     .forEach((f) => {
-      const id = `keep-${f.id}`;
+      const id = `keep-${factKey(f)}`;
       notes.push({
         id,
         body: (
@@ -201,7 +203,7 @@ export function AgentNotes({ stub, onChange, onAsk, onShowBack, variant, folded 
           </>
         ),
         answers: [
-          { label: "Keep it", run: answer(id, () => commit(toggleKept(stub, f.id))) },
+          { label: "Keep it", run: answer(id, () => commit(toggleKept(stub, factKey(f)))) },
           { label: "Skip", run: answer(id, () => {}) },
         ],
       });

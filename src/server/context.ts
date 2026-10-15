@@ -22,6 +22,7 @@ import { ModeMappingError, resolveEnvironment, resolveModes } from "./context-mo
 import { hashToken, newToken } from "./crypto";
 import { HttpError } from "./http";
 import { getStorage, storageAvailable } from "./index";
+import type { AccountState } from "./storage";
 
 // Who is asking, and what they may do. The context is derived here, on the server, from the session
 // cookie (or the guest device cookie) and the storage records. A body field, a query string, a URL token
@@ -79,60 +80,53 @@ const sessionRefs = new WeakMap<RequestContext, string>();
 /** The issuer's own staff decision for a context, for the /2 finance grants. Never serialized. */
 const staffFlags = new WeakMap<RequestContext, boolean>();
 
+type SessionState = { account: AccountState; sessionRef: string } | null;
+function identityFor(cookieHeader: string | null, sess: SessionState): { actor: RequestContext["actor"]; tenant: string; staff: boolean } {
+  if (sess) return { actor: { kind: "account", id: sess.account.id }, tenant: sess.account.id, staff: isStaffEmail(sess.account.email) };
+  const device = readCookie(cookieHeader, DEVICE_COOKIE);
+  if (device && DEVICE_RE.test(device)) { const tenant = guestTenant(device); return { actor: { kind: "guest", id: tenant.slice("guest:".length) }, tenant, staff: false }; }
+  return { actor: { kind: "anonymous" }, tenant: "anonymous", staff: false };
+}
+
+function contextFromState({ identity, sess, sessionCookie, project, validProject, projectOwned, revision, now }: {
+  identity: ReturnType<typeof identityFor>; sess: SessionState; sessionCookie: string | null; project?: Project; validProject?: Project;
+  projectOwned: boolean; revision: number; now: number;
+}): RequestContext {
+  const { actor, tenant, staff } = identity;
+  const role: Role = validProject ? (projectOwned ? (validProject.kind === "stub" ? "owner" : "captain") : "none")
+    : actor.kind === "account" ? (staff ? "staff" : "owner") : "none";
+  const ctx: RequestContext = {
+    schema: CONTEXT_SCHEMA, actor, tenant: { id: tenant },
+    ...(project ? { project: validProject ?? { id: String(project.id).slice(0, 128), kind: project.kind } } : {}),
+    role, capabilities: capabilitiesFor(actor.kind, role, validProject, staff), membershipRevision: revision,
+    revoked: !!sessionCookie && !sess, environment: environment(), mode: isLiveRuntime() && contextSecret() ? "live" : "sandbox",
+    issuedAt: new Date(now).toISOString(), expiresAt: new Date(now + TOKEN_TTL_MS).toISOString(),
+  };
+  if (sess) sessionRefs.set(ctx, sess.sessionRef);
+  staffFlags.set(ctx, staff);
+  return ctx;
+}
+
 async function derive(cookieHeader: string | null, project?: Project): Promise<RequestContext> {
   const now = Date.now();
   // With storage off there are no sessions to look up: every caller is a guest or anonymous, and no project is theirs.
   const storage = storageAvailable() ? getStorage() : null;
   const sessionCookie = storage ? readCookie(cookieHeader, COOKIE) : null;
   const sess = storage && sessionCookie && sessionCookie.length <= 200 ? await storage.getSessionState(hashToken(sessionCookie), now) : null;
-  const device = readCookie(cookieHeader, DEVICE_COOKIE);
   const validProject = project && PROJECT_ID.test(project.id) && (project.kind === "stub" || project.kind === "event") ? project : undefined;
-
-  let actor: RequestContext["actor"] = { kind: "anonymous" };
-  let tenant = "anonymous";
-  let revision = 0;
-  let staff = false;
-  if (sess) {
-    actor = { kind: "account", id: sess.account.id };
-    tenant = sess.account.id;
-    staff = isStaffEmail(sess.account.email);
-    // Gaining or losing the staff list is a membership change: tokens issued before it go stale.
-    revision = staff === sess.account.isStaff ? sess.account.membershipRevision : await storage!.syncStaff(sess.account.id, staff);
-  } else if (device && DEVICE_RE.test(device)) {
-    tenant = guestTenant(device);
-    actor = { kind: "guest", id: tenant.slice("guest:".length) };
-  }
-
-  let role: Role = "none";
+  const identity = identityFor(cookieHeader, sess);
+  const { actor, tenant, staff } = identity;
+  // Gaining or losing the staff list is a membership change: tokens issued before it go stale.
+  const revision = sess ? (staff === sess.account.isStaff ? sess.account.membershipRevision : await storage!.syncStaff(sess.account.id, staff)) : 0;
+  let projectOwned = false;
   if (validProject && storage) {
     // A project the caller can't prove is theirs is role "none", exactly as if it did not exist.
-    const found =
+    projectOwned =
       validProject.kind === "stub"
         ? actor.kind !== "anonymous" && (await storage.ownsStub(tenant, validProject.id))
         : actor.kind === "account" && (await storage.getEventCaptain(validProject.id)) === tenant;
-    if (found) role = validProject.kind === "stub" ? "owner" : "captain";
-  } else if (!validProject && actor.kind === "account") {
-    role = staff ? "staff" : "owner"; // owner of their own tenant
   }
-
-  const ctx: RequestContext = {
-    schema: CONTEXT_SCHEMA,
-    actor,
-    tenant: { id: tenant },
-    ...(project ? { project: validProject ?? { id: String(project.id).slice(0, 128), kind: project.kind } } : {}),
-    role,
-    capabilities: capabilitiesFor(actor.kind, role, validProject, staff),
-    membershipRevision: revision,
-    // A session cookie that no longer resolves is a revoked session; the caller is handled as anonymous.
-    revoked: !!sessionCookie && !sess,
-    environment: environment(),
-    mode: isLiveRuntime() && contextSecret() ? "live" : "sandbox",
-    issuedAt: new Date(now).toISOString(),
-    expiresAt: new Date(now + TOKEN_TTL_MS).toISOString(),
-  };
-  if (sess) sessionRefs.set(ctx, sess.sessionRef);
-  staffFlags.set(ctx, staff);
-  return ctx;
+  return contextFromState({ identity, sess, sessionCookie, project, validProject, projectOwned, revision, now });
 }
 
 export function getRequestContext(req: Request, project?: Project): Promise<RequestContext> {
@@ -156,6 +150,50 @@ export function requireCapability(ctx: RequestContext, cap: string): void {
   throw new HttpError(403, "forbidden", "You can't do that here.");
 }
 
+/** Commissioning uses the issuer's existing capability and economic-mode rules. */
+export function requireCreativeCommissioningContext(platform: RequestContext, scoped: RequestContext): void {
+  requireCapability(platform, "admin.view");
+  requireCapability(scoped, "stub.write");
+  if (platform.revoked || scoped.revoked || platform.actor.kind !== "account" || scoped.actor.kind !== "account" ||
+      platform.actor.id !== scoped.actor.id || platform.tenant.id !== scoped.tenant.id) {
+    throw new HttpError(403, "permission_denied", "This account cannot commission creative execution.");
+  }
+  const finance = issueContextV2(platform).context;
+  if (!finance.capabilities.includes("finance.command.reservation") || !["live", "paid_test"].includes(finance.economicMode)) {
+    throw new HttpError(403, "permission_denied", "This account cannot commission creative execution.");
+  }
+}
+
+/** The last provider-send fence: a fresh storage-owned synchronous session,
+ * membership and ownership snapshot, followed by the same issuer rules. */
+export function assertCreativeCommissioningCurrent(req: Request, admitted: { platform: RequestContext; scoped: RequestContext }): void {
+  const now = Date.now(); const project = admitted.scoped.project;
+  const sessionCookie = readCookie(req.headers.get("cookie"), COOKIE);
+  if (req.signal.aborted || !storageAvailable() || !sessionCookie || sessionCookie.length > 200 ||
+      !project || project.kind !== "stub" || !PROJECT_ID.test(project.id) ||
+      Date.parse(admitted.platform.expiresAt) <= now || Date.parse(admitted.scoped.expiresAt) <= now) {
+    throw new HttpError(403, "permission_denied", "Current creative authority could not be confirmed.");
+  }
+  const storage = getStorage();
+  if (typeof storage.readCreativeDispatchState !== "function") throw new HttpError(503, "context_unavailable", "Current creative authority could not be confirmed.");
+  const state = storage.readCreativeDispatchState(hashToken(sessionCookie), project.id, now);
+  if (!state || state.account.isStaff !== isStaffEmail(state.account.email)) {
+    throw new HttpError(403, "permission_denied", "Current creative authority could not be confirmed.");
+  }
+  const identity = identityFor(req.headers.get("cookie"), state);
+  const common = { identity, sess: state, sessionCookie, revision: state.account.membershipRevision, now };
+  const platform = contextFromState({ ...common, projectOwned: false });
+  const scoped = contextFromState({ ...common, project, validProject: project, projectOwned: state.ownsStub });
+  requireCreativeCommissioningContext(platform, scoped);
+  for (const [current, expected] of [[platform, admitted.platform], [scoped, admitted.scoped]]) {
+    if (current.actor.kind !== "account" || expected.actor.kind !== "account" || current.actor.id !== expected.actor.id ||
+        current.tenant.id !== expected.tenant.id || current.membershipRevision !== expected.membershipRevision ||
+        current.environment !== expected.environment || current.mode !== expected.mode) {
+      throw new HttpError(403, "permission_denied", "Current creative authority could not be confirmed.");
+    }
+  }
+}
+
 /** The signed-in account behind a context that already passed an account capability. 401 when there is none. */
 export async function accountOf(ctx: RequestContext): Promise<{ id: string; email: string }> {
   const acct = ctx.actor.kind === "account" ? await getStorage().getAccountState(ctx.actor.id) : null;
@@ -171,7 +209,8 @@ export async function requireStaff(headers: Headers): Promise<RequestContext> {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Signing. CONTEXT_SECRET keys the HMAC. Outside live mode a missing secret falls back to a random
+// Signing. CONTEXT_SECRET keys the HMAC of context tokens, and nothing else: it is one key with no kid, because a
+// five-minute token gains little from rotation overlap (decision 0003 K4). Outside live mode a missing secret falls back to a random
 // per-process key and the context says mode "sandbox", so nobody mistakes it for a live issuer.
 // ---------------------------------------------------------------------------------------------
 
@@ -190,15 +229,8 @@ function signingKey(): string {
   return (g.__ticketstubContextKey ??= newToken(32));
 }
 
-/** The HMAC key for every token this server signs (context and approval). Throws 503 in live mode without CONTEXT_SECRET. */
-export function tokenSigningKey(): string {
-  return signingKey();
-}
-
-/** "live" only when CONTEXT_SECRET is set and the runtime is live; otherwise "sandbox". */
-export function signingMode(): "sandbox" | "live" {
-  return contextSecret() && isLiveRuntime() ? "live" : "sandbox";
-}
+// signingKey() is not exported: artwork approvals and order authorizations sign with their own key sets
+// (signing-keys.ts, decision 0003 K4), never with CONTEXT_SECRET.
 
 /** The deployment environment, as the context reports it. */
 export const contextEnvironment = environment;

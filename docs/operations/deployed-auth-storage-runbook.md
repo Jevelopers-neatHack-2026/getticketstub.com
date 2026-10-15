@@ -2,11 +2,11 @@
 
 What CI and a local build already prove is in the `mail-off` and `backup-drill` suites of `npm run verify:product` (see the README). The steps below need the host's settings, the live site or the private disk, so only the deploy owner can do them. Do them on Preview first, then Publish. Record only pass/fail, counts and hashes, never row contents, tokens or addresses.
 
-Before you start: `https://getticketstub.com/api/health` should answer `{"ok":true,...,"storage":"ok","persistence":"configured"}`. On 2026-10-12 it did, with `"mode":"live"`. Its `commit` field is the running build's SHA; confirm it matches the commit you deployed.
+Before you start: `https://getticketstub.com/api/health` should answer `{"ok":true,...,"storage":"ok","persistence":"configured"}`. On 2026-10-12 it did, with `"mode":"live"`. Its `commit` field is the build identifier reported by the running application; compare it with the deployed revision as a consistency check, but it is not an independent source attestation.
 
 ## 1. No sandbox sign-in links (tracker item c)
 
-- [ ] In the host's environment settings, for **Preview** and for **Publish**, `TICKETSTUB_SANDBOX_MAIL` is not set at all. Only the exact value `1` turns it on, but delete it rather than setting it to `0`.
+- [ ] Confirm the deployed Preview and Publish processes run with `NODE_ENV=production` (the documented production `npm start` path sets this), and remove `TICKETSTUB_SANDBOX_MAIL` from both environments. Only `NODE_ENV !== "production"` or the exact setting `TICKETSTUB_SANDBOX_MAIL=1` enables sandbox-link display; leaving the variable unset does not disable it in a non-production process.
 - [ ] Redeploy, so the running process has the new environment.
 - [ ] Until Resend is set up (no `RESEND_API_KEY`): on the live site, open sign-in and enter your own address. The sign-in sheet should say "Email isn't switched on for this preview, so we can't send a link. Come back soon." and show **no** "Open the link" button. In the browser's network panel, `POST /api/auth/link` answers 503 with code `mail_unavailable` and the API message "Email isn't set up on this server yet." (the page shows the first text, not this one), and its body has no `devLink`.
 - [ ] In the host's logs, search for `signin/confirm?token=`, `sandbox sign-in link` and `sandbox email-change link`. There should be no match. The expected line is `[mail] no RESEND_API_KEY, not sent: sign-in link to y***@domain`.

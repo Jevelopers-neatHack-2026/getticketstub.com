@@ -1,6 +1,7 @@
 import "server-only";
 // The storage interface. Routes and auth only talk to this, so Postgres can replace SQLite later by
-// implementing it. Every method is async for that reason, even though node:sqlite is synchronous.
+// implementing it. Ordinary methods are async. A backend that supports a final
+// synchronous provider fence must additionally implement the optional owned snapshot below.
 import type { Order, OrderPayment } from "@/customer/pages/commerce";
 import type { Stub } from "@/customer/studio/types";
 import type { StoredEvent, TicketstubEvent } from "./events";
@@ -196,6 +197,9 @@ export interface Storage {
   deleteSession(tokenHash: string): Promise<void>;
   /** The account behind a live session, with its membership revision and a non-secret reference to the session. Null when unknown, expired or signed out. */
   getSessionState(tokenHash: string, now: number): Promise<{ account: AccountState; sessionRef: string } | null>;
+  /** One current owner snapshot for the final synchronous creative send fence.
+   * No cached context, Promise or borrowed transaction may stand in for this read. */
+  readCreativeDispatchState?(tokenHash: string, stubId: string, now: number): { account: AccountState; sessionRef: string; ownsStub: boolean } | null;
   /** True while the session behind a sessionRef still exists and has not expired. */
   isSessionLive(sessionRef: string, now: number): Promise<boolean>;
   /** The current state of an account, or null once it is deleted. */
