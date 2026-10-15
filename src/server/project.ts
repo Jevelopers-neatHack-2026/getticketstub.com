@@ -13,6 +13,8 @@ const strs = (v: unknown, max = 100): string[] => (Array.isArray(v) ? v.filter((
 function fact(f: Fact): Fact {
   return {
     id: String(f.id).slice(0, 128),
+    // App-owned share DTO retains display identity, never a canonical fact ID.
+    ...(typeof f.clientEntityKey === "string" && /^ce_[a-zA-Z0-9-]{1,80}$/.test(f.clientEntityKey) ? { clientEntityKey: f.clientEntityKey } : {}),
     label: String(f.label ?? "").slice(0, 200),
     value: String(f.value ?? "").slice(0, 500),
     source: String(f.source ?? "").slice(0, 200),

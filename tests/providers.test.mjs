@@ -50,6 +50,16 @@ const originalEnv = { ...process.env };
 afterEach(() => { globalThis.fetch = originalFetch; process.env = { ...originalEnv }; });
 const response = (body, status = 200) => Response.json(body, { status });
 const event = { type: "concert", title: "Offline Test", facts: [] };
+test("art rejects oversized declared and streamed UTF-8 bodies before provider dispatch", async () => {
+  process.env.TICKETSTUB_RUNTIME_MODE = "live";
+  globalThis.fetch = () => assert.fail("oversized art body dispatched a provider");
+  const body = JSON.stringify({ event, unused: "é".repeat(140000) });
+  for (const headers of [{ "content-length": String(Buffer.byteLength(body)) }, {}]) {
+    const res = await art.POST(new Request("http://localhost/api/art", { method: "POST", headers, body }));
+    assert.equal(res.status, 413);
+    assert.equal((await res.json()).error.code, "too_large");
+  }
+});
 const req = (body, signal) => new Request("http://localhost/api", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), signal });
 const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aY1cAAAAASUVORK5CYII=";
 function configure(capability = "agent", model = "anthropic/test-model") {
@@ -230,6 +240,22 @@ test("research rejects malformed enrichment with a safe provider error", async (
     : response(textResponse("[null]"));
   const result = await research.POST(req({ url: "https://example.com/test-event" }));
   assert.equal(result.status, 502); assert.equal((await result.json()).error.code, "invalid_provider_response");
+});
+
+test("research enrichment and browser ingestion keep repeated categories independently addressable", async () => {
+  configure("research");
+  const items = ["other", "other", "run", "run"].map((id, i) => ({ id, label: `Extra ${i}`, value: `Value ${i}`, evidence: "offline evidence", confidence: .9 }));
+  globalThis.fetch = async url => url === "https://example.com/test-event"
+    ? new Response('<script type="application/ld+json">{"@type":"MusicEvent","name":"Offline Test"}</script><p>offline evidence</p>')
+    : response(textResponse(JSON.stringify(items)));
+  const result = await research.POST(req({ url: "https://example.com/test-event" }));
+  assert.equal(result.status, 200);
+  const event = client.pickEvent(await result.json());
+  const extras = event.facts.filter((f) => f.label.startsWith("Extra "));
+  assert.equal(extras.length, 4);
+  assert.equal(new Set(event.facts.map((f) => f.clientEntityKey)).size, event.facts.length);
+  assert.deepEqual(extras.map(f => f.id), ["note", "note", "run", "run"]);
+  assert.deepEqual(extras.map((f) => f.label), items.map((f) => f.label));
 });
 
 test("optional direct text simulates but live art requires server API credentials", async () => {

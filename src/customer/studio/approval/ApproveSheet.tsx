@@ -9,9 +9,10 @@ import { messageFor } from "@/customer/feedback-messages/messages";
 import { PaperButton, PaperSheet, SourceMark, Stamp, type MarkKind } from "@/customer/desk/Desk";
 import { SIZE_COPY, TIER_SIZES, type PrintSize } from "@/customer/pages/capabilities";
 import { StubView } from "../stub/StubView";
+import { useFactFit } from "../facts/fitProof";
 import { currentVersion, type Stub } from "../types";
 import { versionHash } from "../versions/versions";
-import { changesSince, compositionParts, printedLines, valueWords, type ChangeSource, type Composition } from "./printed";
+import { changesSince, compositionParts, printedLines, printedRowKeys, valueWords, type ChangeSource, type Composition } from "./printed";
 import styles from "./ApproveSheet.module.css";
 
 interface Props {
@@ -32,6 +33,8 @@ const asSource = (a: ApprovalInfo): ChangeSource => ({ id: a.approval.id, status
 
 /** The sheet's body. It exists only while the sheet is open, so every opening starts from a fresh read of the history. */
 function Review({ stub, onClose, onApproved }: Omit<Props, "open">) {
+  const factFit = useFactFit(stub);
+  const factFitBlocked = !factFit || factFit.some((f) => f.state === "blocked");
   const [history, setHistory] = useState<ApprovalInfo[] | "loading" | "failed">("loading");
   const [said, setSaid] = useState("");
   const [busy, setBusy] = useState(false);
@@ -51,6 +54,7 @@ function Review({ stub, onClose, onApproved }: Omit<Props, "open">) {
   }, [stubId, stub.updatedAt]);
 
   const approve = async () => {
+    if (factFitBlocked) return;
     setBusy(true);
     try {
       await api.approve(stubId, stub.currentVersionId);
@@ -66,6 +70,7 @@ function Review({ stub, onClose, onApproved }: Omit<Props, "open">) {
   };
 
   const lines = printedLines(stub);
+  const rowKeys = printedRowKeys(stub);
   const comp = compositionNow(stub);
   const v = currentVersion(stub);
   const last = Array.isArray(history) ? history.find((a) => a.approval.purpose === "print.compose") : undefined;
@@ -119,8 +124,8 @@ function Review({ stub, onClose, onApproved }: Omit<Props, "open">) {
             Printed facts
           </h3>
           <ul className={styles.facts}>
-            {lines.map((l) => (
-              <li key={l.key}>
+            {lines.map((l, i) => (
+              <li key={rowKeys[i]}>
                 <span className={styles.k}>{l.label}</span>
                 <span className={styles.val}>
                   {valueWords(l)}
@@ -156,7 +161,8 @@ function Review({ stub, onClose, onApproved }: Omit<Props, "open">) {
         {said}
       </p>
       <div className={styles.actions}>
-        <Stamp block disabled={busy || history === "loading"} onClick={approve}>
+        {factFitBlocked && <p role="status">Check Facts before approving: selected facts must fit completely on the local proof.</p>}
+        <Stamp block disabled={busy || history === "loading" || factFitBlocked} onClick={approve}>
           Approve this version
         </Stamp>
         <PaperButton block onClick={onClose}>

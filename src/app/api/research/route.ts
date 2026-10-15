@@ -4,6 +4,7 @@ import { errorJson, HttpError, readJson, route } from "@/server/http";
 import { generateText, ProviderError, providerFailure } from "@/server/ai/providers";
 import { HARBOUR_GAME, NEATHACK, PALE_HOURS } from "@/customer/studio/fixtures";
 import type { EventData, EventType, Fact } from "@/customer/studio/types";
+import { uniqueFacts } from "@/customer/studio/facts/identity";
 import { lookupTicketmaster, parseTicketmasterUrl, type TicketmasterUrl, type TmLookupMiss, type TmLookupOk } from "@/customer/studio/research/ticketmaster";
 import { buildEventIntelligencePackage } from "@/customer/studio/research/ticketmasterPackage";
 import { BlockedDestinationError, fetchPublic, INTAKE_LIMITS, parseIntakeUrl, readCapped, UNSUPPORTED_FIELDS, type IntakeRejection } from "@/server/intake-url";
@@ -370,14 +371,14 @@ ${text.slice(0, 6000)}`;
     const items = JSON.parse(json) as { id?: string; label?: string; value?: string; evidence?: string; confidence?: number }[];
     if (!Array.isArray(items) || items.some((i) => !i || typeof i !== "object" || typeof i.label !== "string" || typeof i.value !== "string" || (i.evidence !== undefined && typeof i.evidence !== "string"))) throw new ProviderError("invalid_provider_response");
     const lowerText = text.toLowerCase();
-    return items
+    return uniqueFacts(items
       .filter((i) => i.label && i.value)
       .slice(0, 4)
-      .map((i, n) => {
+      .map((i) => {
         // Only trust as "live" when the quoted evidence really appears on the fetched page.
         const grounded = typeof i.evidence === "string" && i.evidence.trim().length > 0 && i.evidence.length <= 2000 && lowerText.includes(i.evidence.toLowerCase());
         return {
-          id: `${i.id && i.id !== "other" ? i.id : "note"}${event.facts.some((f) => f.id === i.id) ? `-${n}` : ""}`,
+          id: i.id && ["opener", "tour", "run"].includes(i.id) ? i.id : "note",
           label: String(i.label).slice(0, 40),
           value: String(i.value),
           source: `event page (read by ${result.metadata.requestedModel})`,
@@ -385,7 +386,7 @@ ${text.slice(0, 6000)}`;
           confidence: Math.min(grounded ? 0.85 : 0.5, typeof i.confidence === "number" ? i.confidence : 0.6),
           provenance: grounded ? ("live" as const) : ("estimated" as const),
         };
-      });
+      }), event.facts);
   } catch (error) {
     if (process.env.TICKETSTUB_RESEARCH_PROVIDER === "openrouter" || (error instanceof ProviderError && error.code === "invalid_provider_configuration")) throw error instanceof ProviderError ? error : new ProviderError("invalid_provider_response");
     annotate({ fallback: "no_enrichment", code: error instanceof ProviderError ? error.code : "invalid_provider_response" });

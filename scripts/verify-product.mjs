@@ -60,6 +60,7 @@ const SUITES = {
   agent: { server: true, needs: [".next/BUILD_ID", "scripts/check-agent.mjs", "scripts/lib/cdp.mjs", "src/customer/studio/agent/protocol.ts"], run: (ctx) => script("scripts/check-agent.mjs", [ctx.base, evidenceDir]) },
   // The exact stub download (#16): the real Download button in headless Chrome, the PNG against the on-screen stub (needs Chrome or Edge, or CHROME_PATH).
   download: { server: true, needs: [".next/BUILD_ID", "scripts/check-download.mjs", "scripts/lib/cdp.mjs"], run: (ctx) => script("scripts/check-download.mjs", [ctx.base, evidenceDir]) },
+  facts: { server: true, needs: [".next/BUILD_ID", "scripts/check-facts.mjs", "scripts/lib/cdp.mjs", "tests/analytics-hooks.mjs"], run: (ctx) => script("scripts/check-facts.mjs", [ctx.base, evidenceDir]) },
   production: { server: true, needs: [".next/BUILD_ID", "scripts/smoke-production.mjs"], run: (ctx) => script("scripts/smoke-production.mjs", [], { SMOKE_BASE_URL: ctx.base }) },
   // Storage that cannot be written: the server starts with TICKETSTUB_DB under a file, so every OS refuses it.
   degraded: { server: true, unwritableStorage: true, needs: [".next/BUILD_ID", "scripts/smoke-production.mjs"], run: degraded },

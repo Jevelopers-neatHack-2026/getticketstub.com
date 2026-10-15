@@ -189,3 +189,16 @@
   color: var(--desk-ink-soft);
   overflow-wrap: anywhere;
 }
+
+.inclusion {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  max-width: 100%;
+}
+.inclusion button {
+  min-height: 44px;
+  min-width: 44px;
+  white-space: normal;
+}

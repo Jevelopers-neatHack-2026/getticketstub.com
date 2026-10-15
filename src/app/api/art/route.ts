@@ -6,7 +6,7 @@ import { ensureDevice, getRequestContext, requireCapability } from "@/server/con
 import { requestIdOf } from "@/server/events";
 import { hashToken } from "@/server/crypto";
 import { recordEvent } from "@/server/event-log";
-import { HttpError, clientIp, errorJson, errorResponse, foreignOrigin } from "@/server/http";
+import { HttpError, clientIp, errorJson, errorResponse, foreignOrigin, readJson } from "@/server/http";
 import { getStorage, storageAvailable } from "@/server/index";
 import { annotate, observeRoute, providerObserver } from "@/server/observability/measure";
 import type { ArtQuota } from "@/server/storage";
@@ -39,7 +39,7 @@ const str = (v: unknown, max = 300): string | undefined => (typeof v === "string
 /** The validated subset of a request event that buildArtPrompt reads; anything malformed is dropped, not thrown on. */
 function promptEvent(raw: EventData): EventData {
   const facts = Array.isArray(raw.facts)
-    ? raw.facts.filter((f): f is Fact => !!f && typeof f === "object" && typeof f.id === "string" && typeof f.label === "string" && typeof f.value === "string").slice(0, 200)
+    ? raw.facts.filter((f): f is Fact => !!f && typeof f === "object" && typeof f.id === "string" && typeof f.label === "string" && typeof f.value === "string").slice(0, 200).map(f => ({ id: f.id, label: f.label, value: f.value, source: f.source, confidence: f.confidence, provenance: f.provenance }))
     : [];
   return {
     type: EVENT_TYPES.has(raw.type) ? raw.type : "generic",
@@ -71,8 +71,12 @@ export const POST = observeRoute("art", async (req: Request) => {
   }
   let body: ArtRequest;
   try {
-    body = (await req.json()) as ArtRequest;
-  } catch {
+    body = (await readJson(req, 256 * 1024)) as ArtRequest;
+  } catch (error) {
+    if (error instanceof HttpError) {
+      annotate({ code: error.code });
+      return errorResponse(error);
+    }
     annotate({ code: "bad_request" });
     return errorJson(400, "bad_request", "Send the event to remix.");
   }

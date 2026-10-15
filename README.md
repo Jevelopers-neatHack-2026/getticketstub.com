@@ -170,6 +170,7 @@ npm run verify:product -- --suite foundation --mode fixture --evidence-dir out/e
 | `approval`, `order-auth`, `finance-context` | Production-build fixture checks for approval records, order claims/revalidation and context/finance-scope handling; their standalone fixture verifiers are documented above |
 | `review`, `capabilities`, `messages` | Source/fixture checks for immutable review versions, the product capability map and user-facing progress/error copy |
 | `pay-signin`, `agent`, `download` | Chrome fixture journeys for checkout sign-in, typed agent actions and rendered PNG export; these require a production build |
+| `facts` | Chrome fixtures for independent fact inclusion and legacy-ID repair, keyboard focus, 320/375/640/1280 px layouts, all five editions with 0/1/5/6/10 facts, and explicit overflow/PNG refusal |
 | `a11y` | GT-11: axe-core on eight pages at 390 and 1280 px, overflow at 320, 640 and 200% zoom, a keyboard walk of the critical path with dialog focus, reduced motion, and the desk colours against WCAG AA, in a real headless Chrome (needs Chrome or Edge, or `CHROME_PATH`). `accessibility` is an alias. See `docs/product/accessibility.md` |
 | `production` | `scripts/smoke-production.mjs` against a production server |
 | `degraded` | a production server whose `TICKETSTUB_DB` and `TICKETSTUB_FILES` sit under a file, so storage can't be written: the 503s, the health fields, every page rendering 200, and `smoke:production` still passing |

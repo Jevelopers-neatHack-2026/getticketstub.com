@@ -61,6 +61,14 @@ export function printedLines(stub: Pick<Stub, "event">): PrintedLine[] {
   return lines;
 }
 
+/** UI-only row identity, deliberately separate from the source/content-only approval summary DTO. */
+export function printedRowKeys(stub: Pick<Stub, "event">): string[] {
+  const lines = printedLines(stub);
+  const facts = [...(stub.event.facts ?? [])].filter(f => f.kept).sort((a,b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+  const offset = lines.length - facts.length;
+  return lines.map((line,i) => i < offset ? line.key : (facts[i-offset].clientEntityKey ?? facts[i-offset].id));
+}
+
 export const printedSummary = (stub: Pick<Stub, "event">): ApprovalSummary => ({ printed: printedLines(stub) });
 
 export function parseSummary(json: string | null): ApprovalSummary | null {

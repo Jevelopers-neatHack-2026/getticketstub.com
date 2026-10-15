@@ -40,6 +40,59 @@ const { renderToStaticMarkup } = await import("react-dom/server");
 const { StubView } = await import("../src/customer/studio/stub/StubView.tsx");
 const { newStub } = await import("../src/customer/studio/fixtures.ts");
 const { EDITIONS } = await import("../src/customer/studio/types.ts");
+const { toggleKept } = await import("../src/customer/studio/editor/ops.ts");
+const { isFactIncluded, includedExtraFacts } = await import("../src/customer/studio/facts/inclusion.ts");
+const { FactInclusion } = await import("../src/customer/studio/facts/FactsReview.tsx");
+
+test("mixed confidence A/B/C preserves identity and source order on each face of every edition", () => {
+  const facts = [
+    { id: "A", label: "Alpha", confidence: .9 },
+    { id: "B", label: "Beta", confidence: .5 },
+    { id: "C", label: "Charlie", confidence: .95 },
+  ].map((f) => ({ ...f, value: f.label, source: "fixture", provenance: "simulated", kept: true }));
+  for (const edition of EDITIONS) {
+    const stub = newStub(event(facts, { type: "generic", setlist: undefined }), "ordered");
+    stub.versions[0].edition = edition;
+    for (const side of ["front", "back"]) {
+      const html = renderToStaticMarkup(createElement(StubView, { stub, still: side, onChipTap() {} }));
+      const face = html.split(`class="face ${side}"`)[1].split(side === "front" ? 'class="face back"' : "</figure>")[0];
+      assert.deepEqual([...face.matchAll(/data-fact-id="([^"]+)"/g)].map((m) => m[1]), stub.event.facts.map(f => f.clientEntityKey), `${edition}/${side}`);
+      if (side === "front") assert.match(face, /aria-label="Unsure: Beta/);
+    }
+  }
+});
+
+test("inclusion actions agree with rendered faces and preserve uncertainty, source and history", () => {
+  for (const confidence of [.5, .9]) for (const edition of EDITIONS) {
+    let stub = newStub(event([weather({ confidence, kept: false })], { type: "generic", setlist: undefined }), "include");
+    stub.versions[0].edition = edition;
+    stub.personal.hiddenFields = ["weather", "facts"];
+    const before = structuredClone(stub.event.facts[0]);
+    const action = () => renderToStaticMarkup(createElement(FactInclusion, { stub, fact: stub.event.facts[0], onToggleFact() {} }));
+    assert.match(action(), /Add to stub: 17/);
+    assert.doesNotMatch(action(), /aria-pressed/);
+    stub = toggleKept(stub, "weather");
+    assert.equal(isFactIncluded(stub, stub.event.facts[0]), true);
+    assert.equal(includedExtraFacts(stub).length, 1);
+    assert.match(action(), /Remove from stub: 17/);
+    assert.match(action(), /Selected for stub/);
+    assert.match(renderToStaticMarkup(createElement(StubView, { stub })), /17°C|17°C/i);
+    assert.deepEqual({ ...stub.event.facts[0], kept: false }, before);
+    stub = toggleKept(stub, "weather");
+    assert.equal(includedExtraFacts(stub).length, 0);
+    assert.doesNotMatch(renderToStaticMarkup(createElement(StubView, { stub })), /17°C/);
+  }
+});
+
+test("core details have no ineffective inclusion button or duplicate optional line", () => {
+  const f = { id: "venue", label: "Venue fact label", value: "Hall", confidence: .9, source: "fixture", provenance: "simulated", kept: true };
+  const stub = newStub(event([f]), "core");
+  const html = renderToStaticMarkup(createElement(FactInclusion, { stub, fact: f, onToggleFact() {} }));
+  assert.match(html, /Included by default/);
+  assert.doesNotMatch(html, /<button/);
+  assert.equal(toggleKept(stub, "venue"), stub);
+  assert.doesNotMatch(renderToStaticMarkup(createElement(StubView, { stub })), /Venue fact label/);
+});
 
 const CREDIT = "Weather data by Open-Meteo.com";
 const weather = (over = {}) => ({ id: "weather", label: "17°C · rain", value: "17.4°C max, 4 mm rain in Berlin", source: "Open-Meteo.com · place: GeoNames", sourceUrl: "https://open-meteo.com/", confidence: 0.9, provenance: "live", kept: true, ...over });
@@ -64,7 +117,8 @@ test("every edition prints the credit right after the kept live weather on the f
 });
 
 test("an unsure live weather chip also carries the credit", () => {
-  assert.equal(count(render(event([weather({ confidence: 0.75, kept: false })]), "researched")), 1);
+  assert.equal(count(render(event([weather({ confidence: 0.75, kept: true })]), "researched")), 1);
+  assert.equal(count(render(event([weather({ confidence: 0.75, kept: false })]), "researched")), 0);
 });
 
 test("no credit without Open-Meteo weather on the stub: simulated, pending, hidden, or not kept", () => {
@@ -91,16 +145,16 @@ test("a weather value the person corrected is not credited to Open-Meteo; a conf
 
 test("the back's fact list credits the weather it lists, and not a programme", () => {
   const generic = { type: "generic", setlist: undefined };
-  assert.equal(count(render(event([weather({ kept: false })], generic), "researched", true)), 1); // listed on the back only
+  assert.equal(count(render(event([weather({ kept: false })], generic), "researched", true)), 0); // excluded from both faces
   assert.equal(count(render(event([weather()], generic), "researched", true)), 2); // and on the front once kept
   assert.equal(count(render(event([weather({ kept: false })], { ...generic, programme: ["Doors", "Encore"] }), "researched", true)), 0);
   // A full list gives up its last row to the credit instead of clipping it (portrait cap 9).
-  const many = Array.from({ length: 9 }, (_, i) => ({ id: `f${i}`, label: `Fact ${i}`, value: `Fact ${i}`, source: "event page", confidence: 0.9, provenance: "live" }));
-  const html = render(event([weather({ kept: false }), ...many], generic), "researched", true);
+  const many = Array.from({ length: 9 }, (_, i) => ({ id: `f${i}`, label: `Fact ${i}`, value: `Fact ${i}`, source: "event page", confidence: 0.9, provenance: "live", kept: true }));
+  const html = render(event([weather(), ...many], generic), "researched", true).split('class="face back"')[1];
   assert.equal(count(html), 1);
   assert.ok(html.includes("Fact 6") && !html.includes("Fact 7"), "eight facts plus the credit");
   // Weather that would take the last row, with no room for its credit, stays off the back.
-  const last = render(event([...many.slice(0, 8), weather({ kept: false })], generic), "researched", true);
+  const last = render(event([...many.slice(0, 8), weather()], generic), "researched", true).split('class="face back"')[1];
   assert.equal(count(last), 0);
   assert.ok(!last.includes("17°C · rain") && last.includes("Fact 7"), "eight facts, no uncredited weather");
 });
