@@ -1,7 +1,9 @@
 // Pure stub edits used by the studio editor. Every function returns a new Stub; callers persist with upsertStub.
+import { factKey, resolveFact } from "../facts/identity";
 import { EDITIONS, currentVersion } from "../types";
 import type { ArtLayer, DesignVersion, Edition, Finish, Material, Stub } from "../types";
 import { applyCorrection } from "../facts/corrections";
+import { isCoreFact, isFactIncluded } from "../facts/inclusion";
 import { contextOf, sameArt } from "../versions/versions";
 
 export type Selectable = "title" | "subtitle" | "facts" | "art";
@@ -73,8 +75,18 @@ export function setFactValue(stub: Stub, factId: string, value: string, reason?:
 }
 
 export function toggleKept(stub: Stub, factId: string): Stub {
-  const facts = stub.event.facts.map((f) => (f.id === factId ? { ...f, kept: !f.kept } : f));
-  return { ...stub, event: { ...stub.event, facts } };
+  const target = resolveFact(stub.event.facts, factId);
+  if (!target) return stub;
+  if (isCoreFact(target) || target.provenance === "pending" || !target.value.trim()) return stub;
+  const adding = !isFactIncluded(stub, target);
+  const facts = stub.event.facts.map((f) => (f === target ? { ...f, kept: adding } : f));
+  const hiddenFields = adding ? stub.personal.hiddenFields.filter((id) => id !== factKey(target) && id !== target.id && id !== "facts") : stub.personal.hiddenFields;
+  return { ...stub, event: { ...stub.event, facts }, personal: { ...stub.personal, hiddenFields } };
+}
+
+/** Resolve queued UI actions against the current project, rather than a rendered snapshot. */
+export function toggleProjectFact(current: Stub, projectId: string, factId: string): Stub {
+  return current.id === projectId ? toggleKept(current, factId) : current;
 }
 
 export function setHidden(stub: Stub, field: string, hidden: boolean): Stub {
@@ -164,14 +176,14 @@ export function canHide(sel: Selectable): boolean {
 export function hideSelection(stub: Stub, sel: Selectable): Stub {
   if (sel === "subtitle") return setHidden(stub, "subtitle", true);
   if (sel === "facts") {
-    const ids = stub.event.facts.map((f) => f.id);
+    const ids = stub.event.facts.map(factKey);
     const rest = stub.personal.hiddenFields.filter((h) => !ids.includes(h));
     return { ...stub, personal: { ...stub.personal, hiddenFields: [...rest, ...ids] } };
   }
   return stub;
 }
 export function hiddenLabel(stub: Stub, key: string): string {
-  return stub.event.facts.find((f) => f.id === key)?.label ?? key;
+  return resolveFact(stub.event.facts, key)?.label ?? key;
 }
 
 /** A committed studio change, in the analytics catalog's words. */
@@ -201,8 +213,8 @@ export function editChanges(prev: Stub, next: Stub): EditChange[] {
   const added = (next.corrections ?? []).slice((prev.corrections ?? []).length);
   for (const c of added) out.push(c.kind === "undo" ? "fact_undo" : c.kind === "confirm" ? "fact_confirm" : "fact_correct");
   if (!added.length) {
-    const keptBefore = new Map(prev.event.facts.map((f) => [f.id, !!f.kept]));
-    if (next.event.facts.some((f) => keptBefore.has(f.id) && keptBefore.get(f.id) !== !!f.kept)) out.push("fact_kept");
+    const keptBefore = new Map(prev.event.facts.map((f) => [factKey(f), !!f.kept]));
+    if (next.event.facts.some((f) => keptBefore.has(factKey(f)) && keptBefore.get(factKey(f)) !== !!f.kept)) out.push("fact_kept");
   }
   return out;
 }

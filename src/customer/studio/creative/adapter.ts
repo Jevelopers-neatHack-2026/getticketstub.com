@@ -1,3 +1,4 @@
+import { requireSourceIdentity, sourceReference, sourceHiddenFields } from "../facts/identity";
 // Pure mapping between the studio's types/edits and creative-engine v1.0 contracts. No I/O, no runtime calls.
 // Swapping /api/art to creative-engine later means /api/art/route.ts calls toArtEditRequest() and fromDesignVersion().
 // Anything the engine needs that we cannot supply yet is a PENDING_ placeholder (see contracts.ts), never a fake value.
@@ -82,6 +83,7 @@ const sourceRefsOf = (stub: Stub) => sourcesOf(stub).map((s) => `source:${s.sour
 const isVerified = (f: Stub["event"]["facts"][number]) => f.confidence >= 0.8 && f.provenance !== "pending";
 
 export function toCreativeBrief(stub: Stub, scope: CreativeScope): CreativeBrief {
+  requireSourceIdentity(stub);
   const verified: CreativeBrief["facts"]["verified"] = [];
   const unresolved: CreativeBrief["facts"]["unresolved"] = [];
   const core: [string, string | undefined][] = [
@@ -138,6 +140,7 @@ export function toCreativeBrief(stub: Stub, scope: CreativeScope): CreativeBrief
 
 /** What brief.create accepts. Verified facts and permissions can never be sent; the engine reads them from its trusted research port. */
 export function toBriefCreatePayload(stub: Stub): BriefCreatePayload {
+  requireSourceIdentity(stub);
   const cur = currentVersion(stub);
   const prefs: NonNullable<BriefCreatePayload["customer_preferences"]> = [{ preference_id: "edition", value: cur.edition }];
   if (cur.art.vibe && cur.art.vibe !== "photo") prefs.push({ preference_id: "art_vibe", value: cur.art.vibe });
@@ -237,12 +240,14 @@ export function toEditPlan(stub: Stub, op: StudioOp, scope: CreativeScope): Mapp
       return compose("finish", op.finish);
     }
     case "toggleKept": {
+      const target = sourceReference(stub, op.factId);
       const kept = stub.event.facts.filter((f) => f.kept).map((f) => f.id);
-      return compose("kept_facts", kept.includes(op.factId) ? kept.filter((k) => k !== op.factId) : [...kept, op.factId]);
+      return compose("kept_facts", kept.includes(target) ? kept.filter((k) => k !== target) : [...kept, target]);
     }
     case "setHidden": {
-      const rest = stub.personal.hiddenFields.filter((h) => h !== op.field);
-      return compose("hidden_facts", op.hidden ? [...rest, op.field] : rest);
+      const field = ["subtitle", "facts", "title", "art"].includes(op.field) ? op.field : sourceReference(stub, op.field);
+      const rest = sourceHiddenFields(stub).filter(h => h !== field);
+      return compose("hidden_facts", op.hidden ? [...rest, field] : rest);
     }
     case "setNote": return compose("note", op.note);
     case "setMaterial":
@@ -253,7 +258,7 @@ export function toEditPlan(stub: Stub, op: StudioOp, scope: CreativeScope): Mapp
       unmapped.push({ field: "evidence_refs", reason: "The customer confirming a value is not source evidence; the engine will want a research-owner correction handoff (correction.apply returns unavailable upstream)." });
       return planFor(stub, scope, {
         action: "correction.apply",
-        parameters: { design_version_id: versionId, fact_id: op.factId, replacement_value: op.value, evidence_refs: [pending("evidence_ref")] },
+        parameters: { design_version_id: versionId, fact_id: sourceReference(stub, op.factId), replacement_value: op.value, evidence_refs: [pending("evidence_ref")] },
       }, unmapped);
     case "remixArt": {
       if (op.seed !== undefined) unmapped.push({ field: "seed", reason: "No seed parameter in generate/edit steps; the engine's output is not reproducible from our seed." });

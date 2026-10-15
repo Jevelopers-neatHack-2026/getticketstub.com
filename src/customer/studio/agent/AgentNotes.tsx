@@ -1,4 +1,6 @@
 "use client";
+import { questionKey } from "../facts/corrections";
+import { factKey, resolveFact } from "../facts/identity";
 // The agent as notes. It writes short notes about the stub: one card under it on a phone, and on the
 // desktop one small taped card pinned in the corner of the cutting mat (it folds to a tab while the
 // camera is away from fit). Each note asks one thing and has one-tap answers; "‹ ›" step through them.
@@ -117,9 +119,9 @@ export function AgentNotes({ stub, onChange, onAsk, onShowBack, variant, folded 
   // 1. Facts I need an answer for come first: the same short question the Facts panel asks. It closes everywhere once answered.
   if (!skipQuestions) {
     openQuestions(stub).forEach((q) => {
-      const f = ev.facts.find((x) => x.id === q.factId);
+      const f = resolveFact(ev.facts, questionKey(q));
       notes.push({
-        id: `unsure-${q.factId}`,
+        id: `unsure-${questionKey(q)}`,
         body: f && f.provenance !== "pending" ? (
           <>
             I&apos;m not sure about the {q.label}: <FactMark f={f} />. {q.text}
@@ -139,7 +141,7 @@ export function AgentNotes({ stub, onChange, onAsk, onShowBack, variant, folded 
     body: (
       <>
         I set up your {edition?.label ?? "first"} stub for {ev.title}. The date and place are on the front
-        {kept.length ? <>, with {list(kept.map((f) => <FactMark key={f.id} f={f} />))}</> : null}.
+        {kept.length ? <>, with {list(kept.map((f) => <FactMark key={factKey(f)} f={f} />))}</> : null}.
       </>
     ),
     answers: [
@@ -192,7 +194,7 @@ export function AgentNotes({ stub, onChange, onAsk, onShowBack, variant, folded 
     .filter((f) => !f.kept && f.provenance !== "pending" && f.confidence >= 0.8)
     .slice(0, 2)
     .forEach((f) => {
-      const id = `keep-${f.id}`;
+      const id = `keep-${factKey(f)}`;
       notes.push({
         id,
         body: (
@@ -201,7 +203,7 @@ export function AgentNotes({ stub, onChange, onAsk, onShowBack, variant, folded 
           </>
         ),
         answers: [
-          { label: "Keep it", run: answer(id, () => commit(toggleKept(stub, f.id))) },
+          { label: "Keep it", run: answer(id, () => commit(toggleKept(stub, factKey(f)))) },
           { label: "Skip", run: answer(id, () => {}) },
         ],
       });

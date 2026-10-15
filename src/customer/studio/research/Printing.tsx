@@ -1,4 +1,5 @@
 "use client";
+import { factKey, normalizeEventFacts } from "../facts/identity";
 // The printing reveal, shared by /new and the start section. It paints no ground of its own: the parent
 // supplies the paper desk (desk-surface). The stub feeds out of the printer slot with a slight curl and
 // the ink settles, while researched facts arrive as receipt lines. Tap a line to stamp it "Kept".
@@ -6,7 +7,7 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { newStub } from "../fixtures";
-import type { EventData, Fact } from "../types";
+import type { EventData } from "../types";
 import { StubView } from "@/customer/studio/stub/StubView";
 import { haptic, play, stopPrint, type PrintBurst } from "@/customer/studio/feedback";
 import { MarkLegend, SourceMark, Stamped, TearLink } from "@/customer/desk/Desk";
@@ -28,7 +29,7 @@ const SETTLE_MS = 750;
 /** Verified first, then what is in doubt, then what we could not find. Nothing is corrected yet while the stub is still printing. */
 const RECEIPT_ORDER: FactGroup[] = ["source", "unsure", "missing"];
 
-const keyOf = (f: Fact, i: number) => `${f.id}-${i}`;
+const keyOf = factKey;
 
 /** The paper leaves a thermal printer in runs, one per printed band, with short rests between. */
 function feedSchedule(seed: string): PrintBurst[] {
@@ -106,10 +107,10 @@ export function Printing(props: {
   const entry = props.entry ?? "new_page";
   const source = input.event ? (props.picked ? "picked" : "demo") : input.url ? "link" : "query";
   const reduced = useReducedMotion();
-  const [event, setEvent] = useState<EventData | undefined>(input.event);
+  const [event, setEvent] = useState<EventData | undefined>(() => input.event ? normalizeEventFacts(input.event) : undefined);
   const [staggered, setShown] = useState(0);
   const [kept, setKept] = useState<Record<string, boolean>>(() =>
-    Object.fromEntries((input.event?.facts ?? []).map((f, i) => [keyOf(f, i), !!f.kept])),
+    Object.fromEntries((event?.facts ?? []).map(f => [keyOf(f), !!f.kept])),
   );
   const [showSkip, setShowSkip] = useState(false);
   const [touched, setTouched] = useState<Record<string, boolean>>({});
@@ -171,7 +172,7 @@ export function Printing(props: {
       setSettling(true);
       const final: EventData = {
         ...ev,
-        facts: ev.facts.map((f, i) => ({ ...f, kept: !!keptRef.current[keyOf(f, i)] })),
+        facts: ev.facts.map((f) => ({ ...f, kept: !!keptRef.current[keyOf(f)] })),
       };
       // the reveal runs from when the facts were in hand (research done, or handed in) to the ink settling
       flow("reveal_complete", { entry, skipped: skipRef.current, duration_ms: since(researchedAt.current ?? begunRef.current ?? clock()), fact_count: final.facts.length, kept_count: final.facts.filter((f) => f.kept).length });
@@ -233,7 +234,7 @@ export function Printing(props: {
         if (cancelled) return;
         researchedAt.current = clock();
         flow("research_complete", { entry, input_source: url ? "link" : "query", result: "success", duration_ms: since(asked), fact_count: ev.facts.length });
-        setKept(Object.fromEntries(ev.facts.map((f, i) => [keyOf(f, i), !!f.kept])));
+        setKept(Object.fromEntries(ev.facts.map((f) => [keyOf(f), !!f.kept])));
         setEvent(ev);
       })
       .catch((err: unknown) => {
@@ -288,15 +289,15 @@ export function Printing(props: {
 
   const preview = useMemo(() => {
     if (!event) return undefined;
-    return newStub({ ...event, facts: event.facts.map((f, i) => ({ ...f, kept: !!kept[keyOf(f, i)] })) }, props.stubId ?? "printing-preview");
+    return newStub({ ...event, facts: event.facts.map((f) => ({ ...f, kept: !!kept[keyOf(f)] })) }, props.stubId ?? "printing-preview");
   }, [event, kept, props.stubId]);
 
-  const lines = (event?.facts ?? []).slice(0, shown).map((f, i) => ({ f, i, k: keyOf(f, i) }));
+  const lines = (event?.facts ?? []).slice(0, shown).map((f, i) => ({ f, i, k: keyOf(f) }));
   const marks = [...new Set(lines.map((l) => l.f.provenance))];
   const grouped = useMemo(() => {
     const out: Record<string, FactGroup> = {};
-    (event?.facts ?? []).forEach((f, i) => {
-      out[keyOf(f, i)] = factGroup({}, f);
+    (event?.facts ?? []).forEach((f) => {
+      out[keyOf(f)] = factGroup({}, f);
     });
     return out;
   }, [event]);

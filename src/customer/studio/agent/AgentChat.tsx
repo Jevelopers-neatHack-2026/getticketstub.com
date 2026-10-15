@@ -1,4 +1,5 @@
 "use client";
+import { factKey, resolveFact } from "../facts/identity";
 // Research agent chat. Opens only when the person taps Ask or types to the margin notes. Narrates facts
 // with a source mark, lets the person keep or fix them, and turns a request into typed actions
 // (ticketstub.agent-action/1) the owner applies one at a time or all at once. Applying runs the same edit paths the
@@ -117,21 +118,22 @@ export function AgentChat(props: {
     onChangeRef.current(next);
   };
 
-  const updateFact = (index: number, patch: Partial<Fact>) => {
+  const updateFact = (ref: string, patch: Partial<Fact>) => {
     const s = stubRef.current;
-    const facts = s.event.facts.map((f, i) => (i === index ? { ...f, ...patch } : f));
-    const target = s.event.facts[index];
+    const target = resolveFact(s.event.facts, ref);
+    if (!target) return;
+    const facts = s.event.facts.map(f => f === target ? { ...f, ...patch } : f);
     const event = { ...s.event, facts };
     if (target?.id === "date" && patch.value && /^\d{4}-\d{2}-\d{2}$/.test(patch.value)) event.dateISO = patch.value;
     commit({ ...s, event });
   };
 
-  const pickAlternative = (index: number, alt: string) => {
+  const pickAlternative = (ref: string, alt: string) => {
     const current = stubRef.current;
-    const f = current.event.facts[index];
+    const f = resolveFact(current.event.facts, ref);
     if (!f) return;
     const value = alt.trim();
-    const next = applyCorrection(current, { factId: f.id, value });
+    const next = applyCorrection(current, { factId: factKey(f), value });
     if (next === current) {
       say(f.id === "date" ? "That date was not changed. Choose a real calendar date." : "That answer was not changed. Choose a non-empty answer.");
       return;
@@ -235,7 +237,7 @@ export function AgentChat(props: {
       say("No weather for this date yet. It stays pending until we can confirm it.", "simulated", "pending");
       return;
     }
-    updateFact(i, { kept: true });
+    updateFact(factKey(facts[i]), { kept: true });
     flow("agent_message", { intent: "weather", result: "rules" });
     say(`Added the weather: ${f.label}. Source: ${f.source}.`, "simulated", f.provenance);
   };
@@ -310,16 +312,16 @@ export function AgentChat(props: {
                     : `No facts found for ${stub.event.title} yet.`}
                 </p>
                 <ul className={styles.facts}>
-                  {facts.map((f, i) => {
-                    const unsure = f.confidence < 0.8 && f.provenance !== "pending" && !activeCorrection(stub, f.id);
+                  {facts.map((f) => {
+                    const unsure = f.confidence < 0.8 && f.provenance !== "pending" && !activeCorrection(stub, factKey(f));
                     return (
-                      <li key={`${f.id}-${i}`} className={styles.fact} data-unsure={unsure || undefined}>
+                      <li key={factKey(f)} className={styles.fact} data-unsure={unsure || undefined}>
                         <div className={styles.factRow}>
                           <span className={styles.factLabel}>
                             {f.label}
                             <SourceMark p={f.provenance} />
                           </span>
-                          <Tag pressed={!!f.kept} disabled={f.provenance === "pending"} onClick={() => updateFact(i, { kept: !f.kept })}>
+                          <Tag pressed={!!f.kept} disabled={f.provenance === "pending"} onClick={() => updateFact(factKey(f), { kept: !f.kept })}>
                             {f.kept ? "Kept" : "Keep on stub"}
                           </Tag>
                         </div>
@@ -340,7 +342,7 @@ export function AgentChat(props: {
                                 {f.alternatives.map((alt) => {
                                   const isDate = f.id === "date" && isIsoDate(alt);
                                   return (
-                                    <Tag key={alt} pressed={f.value === alt && !!activeCorrection(stub, f.id)} onClick={() => pickAlternative(i, alt)}>
+                                    <Tag key={alt} pressed={f.value === alt && !!activeCorrection(stub, factKey(f))} onClick={() => pickAlternative(factKey(f), alt)}>
                                       {isDate ? shortDate(alt) : alt}
                                     </Tag>
                                   );
@@ -348,7 +350,7 @@ export function AgentChat(props: {
                               </Tags>
                             ) : (
                               <Tags>
-                                <Tag onClick={() => commit(applyCorrection(stubRef.current, { factId: f.id, value: f.value }))}>Yes, keep it</Tag>
+                                <Tag onClick={() => commit(applyCorrection(stubRef.current, { factId: factKey(f), value: f.value }))}>Yes, keep it</Tag>
                               </Tags>
                             )}
                           </>
