@@ -44,6 +44,24 @@ const { toggleKept } = await import("../src/customer/studio/editor/ops.ts");
 const { isFactIncluded, includedExtraFacts } = await import("../src/customer/studio/facts/inclusion.ts");
 const { FactInclusion } = await import("../src/customer/studio/facts/FactsReview.tsx");
 
+test("mixed confidence A/B/C preserves identity and source order on each face of every edition", () => {
+  const facts = [
+    { id: "A", label: "Alpha", confidence: .9 },
+    { id: "B", label: "Beta", confidence: .5 },
+    { id: "C", label: "Charlie", confidence: .95 },
+  ].map((f) => ({ ...f, value: f.label, source: "fixture", provenance: "simulated", kept: true }));
+  for (const edition of EDITIONS) {
+    const stub = newStub(event(facts, { type: "generic", setlist: undefined }), "ordered");
+    stub.versions[0].edition = edition;
+    for (const side of ["front", "back"]) {
+      const html = renderToStaticMarkup(createElement(StubView, { stub, still: side, onChipTap() {} }));
+      const face = html.split(`class="face ${side}"`)[1].split(side === "front" ? 'class="face back"' : "</figure>")[0];
+      assert.deepEqual([...face.matchAll(/data-fact-id="([^"]+)"/g)].map((m) => m[1]), ["A", "B", "C"], `${edition}/${side}`);
+      if (side === "front") assert.match(face, /aria-label="Unsure: Beta/);
+    }
+  }
+});
+
 test("inclusion actions agree with rendered faces and preserve uncertainty, source and history", () => {
   for (const confidence of [.5, .9]) for (const edition of EDITIONS) {
     let stub = newStub(event([weather({ confidence, kept: false })], { type: "generic", setlist: undefined }), "include");

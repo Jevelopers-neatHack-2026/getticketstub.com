@@ -10,6 +10,8 @@ import { isSavingOff } from "./saving";
 import { errorCode, flow } from "@/customer/flows/events";
 
 export const WALL_SYNCED = "ticketstub:wall-synced";
+/** Every completed round trip, including background failures. Contains no account/project content. */
+export const WALL_SYNC_RESULT = "ticketstub:wall-sync-result";
 const DEBOUNCE_MS = 1500;
 
 const at = (s: Stub) => s.updatedAt ?? 0;
@@ -94,7 +96,10 @@ export function syncNow(): Promise<SyncResult> {
       lastSynced = false;
       return { ok: false, count: local.length };
     }
-  })().finally(() => {
+  })().then((result) => {
+    window.dispatchEvent(new CustomEvent<SyncResult>(WALL_SYNC_RESULT, { detail: result }));
+    return result;
+  }).finally(() => {
     running = null;
     if (again) {
       again = false;

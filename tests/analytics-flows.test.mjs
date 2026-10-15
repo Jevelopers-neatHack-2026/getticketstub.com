@@ -450,6 +450,41 @@ describe("account outcomes", () => {
     }
   });
 
+  test("signed-in focus/change schedules publish persistence failures and successful recovery", async (t) => {
+    const previousDocument = globalThis.document;
+    globalThis.document = Object.assign(new EventTarget(), { visibilityState: "visible" });
+    store.upsertStub(privateStub());
+    reply = () => ({ status: 200, body: { stubs: [], deleted: [], now: 4 } });
+    const results = [];
+    const onResult = (e) => results.push(e.detail);
+    window.addEventListener(sync.WALL_SYNC_RESULT, onResult);
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const stop = sync.startSync();
+    try {
+      for (const [event, delay] of [["focus", 300], [store.WALL_CHANGED, 1500]]) {
+        localStorage.mode = "quota";
+        window.dispatchEvent(new Event(event));
+        t.mock.timers.tick(delay);
+        await flush();
+        assert.equal(results.at(-1).localPersistenceFailed, true, event);
+        assert.equal(results.at(-1).ok, false, event);
+        localStorage.mode = "ok";
+        window.dispatchEvent(new Event("focus"));
+        t.mock.timers.tick(300);
+        await flush();
+        assert.equal(results.at(-1).ok, true, `${event} recovery`);
+      }
+      assert.equal(results.length, 4);
+    } finally {
+      stop();
+      t.mock.timers.reset();
+      localStorage.mode = "ok";
+      window.removeEventListener(sync.WALL_SYNC_RESULT, onResult);
+      if (previousDocument === undefined) delete globalThis.document;
+      else globalThis.document = previousDocument;
+    }
+  });
+
   test("opening the sign-in sheet is a choice, once per opening; 'not now' is a skip; neither is a login", () => {
     signin.openSignIn({ reason: "claim", email: SEEDS.email, returnTo: `/claim/g/${SEEDS.token}` });
     signin.updateSignIn({ sent: { email: SEEDS.email } });

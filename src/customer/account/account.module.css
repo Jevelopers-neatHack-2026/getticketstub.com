@@ -94,6 +94,13 @@
   font: var(--type-ui);
   font-variant-numeric: tabular-nums;
 }
+.toast[data-persistence="true"] {
+  flex-wrap: wrap;
+}
+.toast[data-persistence="true"] button {
+  max-width: 100%;
+  white-space: normal;
+}
 @keyframes slipIn {
   from {
     opacity: 0;

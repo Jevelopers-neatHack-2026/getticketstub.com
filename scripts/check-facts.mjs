@@ -63,11 +63,53 @@ try {
     if (!count) check(`${edition}/0: no selected-fact overflow`, await page.eval(`!document.body.textContent.includes('These facts do not fit completely:')`));
     if (count) check(`${edition}/${count}: local fit result available`, await page.waitFor(`document.body.textContent.includes('Selected extra facts fit') || document.body.textContent.includes('These facts do not fit completely')`,10000));
   }
+  const mixed = newStub({ type: 'generic', title: 'Ordered facts', venue: 'Hall', dateISO: '2026-10-10', facts: ['A','B','C'].map((id,i)=>({id,label:id,value:id,source:'fixture',confidence:i===1?.5:.9,provenance:'simulated',kept:true})) }, 'fact-browser');
+  mixed.versions[0].edition = 'minimal';
+  await page.eval(`localStorage.setItem('ticketstub.wall.v1', ${JSON.stringify(JSON.stringify([mixed]))})`);
+  await page.goto(base + '/studio/fact-browser');
+  check('mixed-confidence identities stay A/B/C on both rendered faces', await page.waitFor(`(() => { const figures=[...document.querySelectorAll('figure[data-edition="minimal"]')].sort((a,b)=>b.getBoundingClientRect().width-a.getBoundingClientRect().width); const ids=[...figures[0]?.querySelectorAll('[data-fact-id]')||[]].map(e=>e.dataset.factId); return ids.join(',')==='A,B,C,A,B,C'; })()`,10000));
   await seed(10, 'minimal', true);
   check('long selected facts produce explicit blocked identities', await page.waitFor(`document.body.textContent.includes('These facts do not fit completely:')`, 10000));
   await click('Download PNG');
   check('clipped selected facts block PNG export with recovery guidance', await page.waitFor(`document.body.textContent.includes('Some selected facts do not fit completely.')`,10000));
   if (evidenceDir) await page.screenshot(join(evidenceDir, 'overflow-refused.png'));
+  // Real production React account UI, with explicit synthetic auth/sync transport and a failed browser cache.
+  const accountPage = await browser.newPage({ width: 1280, height: 900 });
+  await accountPage.send('Page.addScriptToEvaluateOnNewDocument', { source: `
+    localStorage.removeItem('ticketstub.wall.v1');
+    window.__syncFault = true;
+    const originalSet = Storage.prototype.setItem;
+    Storage.prototype.setItem = function(k,v) {
+      if(k==='ticketstub.wall.v1' && window.__syncFault) throw new DOMException('synthetic storage fault','QuotaExceededError');
+      return originalSet.call(this,k,v);
+    };
+    const originalFetch = window.fetch.bind(window);
+    window.fetch = async (input,init) => {
+      const path = new URL(typeof input==='string'?input:input.url,location.href).pathname;
+      if(path==='/api/auth/me') return Response.json({account:{id:'synthetic-account',email:'fixture@example.test'}});
+      if(path==='/api/wall/sync') return Response.json({stubs:[],deleted:[],now:Date.now()});
+      return originalFetch(input,init);
+    };
+  ` });
+  await accountPage.goto(base + '/make');
+  const warning = `document.body.textContent.includes("this browser couldn't save the updated copy")`;
+  check('normal signed-in mount surfaces failed local persistence without sign-in return parameters', await accountPage.waitFor(warning,10000) && await accountPage.eval(`location.search===''`));
+  await accountPage.eval(`new Promise(r=>setTimeout(r,5100))`);
+  check('local persistence warning stays until recovery', await accountPage.eval(warning));
+  await accountPage.eval(`window.__syncFault=false; [...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='Retry saving on this device').focus()`);
+  await accountPage.key('Enter');
+  check('visible retry recovers and clears the warning', await accountPage.waitFor(`!(${warning})`,10000));
+  for (const event of ['focus','ticketstub:wall-changed']) {
+    await accountPage.eval(`window.__syncFault=true; window.dispatchEvent(new Event(${JSON.stringify(event)}))`);
+    check(`signed-in ${event} surfaces failed scheduled persistence`, await accountPage.waitFor(warning,10000));
+    await accountPage.eval(`window.__syncFault=false; window.dispatchEvent(new Event('focus'))`);
+    check(`signed-in ${event} recovery clears the warning`, await accountPage.waitFor(`!(${warning})`,10000));
+  }
+  await accountPage.resize(320, 900);
+  await accountPage.eval(`window.__syncFault=true; window.dispatchEvent(new Event('focus'))`);
+  check('phone background persistence warning remains visible', await accountPage.waitFor(warning,10000));
+  check('phone warning and recovery control fit within the viewport', await accountPage.eval(`(() => { const button=[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='Retry saving on this device'); const r=button.getBoundingClientRect(); return document.documentElement.scrollWidth<=innerWidth+1 && r.left>=0 && r.right<=innerWidth+1; })()`));
+  await accountPage.close();
   await page.close();
 } finally { await browser.close(); }
 console.log(`${passed} passed, 0 failed`);

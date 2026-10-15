@@ -98,8 +98,7 @@ interface Ctx {
   meta: EditionMeta;
   date: DateParts | null;
   place: string;
-  kept: Fact[];
-  unsure: Fact[];
+  facts: Fact[];
   show: (key: string) => boolean;
   foilTitle: boolean;
   selected?: string | null;
@@ -192,23 +191,29 @@ function WeatherCredit() {
 
 function Facts({ c, className, sep = " · ", upper }: { c: Ctx; className?: string; sep?: string; upper?: boolean }) {
   if (!c.show("facts")) return null;
-  const line = c.kept.map((f) => f.label).join(sep);
-  if (!line && !c.unsure.length) return null;
+  if (!c.facts.length) return null;
+  // Keep contiguous runs in source order; uncertainty changes presentation, not position.
+  const runs: { sure: boolean; facts: Fact[] }[] = [];
+  for (const fact of c.facts) {
+    const sure = fact.confidence >= 0.8;
+    const last = runs[runs.length - 1];
+    if (last?.sure === sure) last.facts.push(fact);
+    else runs.push({ sure, facts: [fact] });
+  }
   return (
     <div className={cx(s.facts, className)}>
-      {line && (
-        <Pick c={c} el="facts" className={s.factLine}>
-          {c.kept.map((f, i) => <span key={f.id} data-fact-id={f.id}>{i > 0 ? sep : ""}{upper ? f.label.toUpperCase() : f.label}</span>)}
+      {runs.map((run) => run.sure ? (
+        <Pick key={run.facts[0].id} c={c} el="facts" className={s.factLine}>
+          {run.facts.map((f, i) => <span key={f.id} data-fact-id={f.id}>{i > 0 ? sep : ""}{upper ? f.label.toUpperCase() : f.label}</span>)}
         </Pick>
-      )}
-      {c.unsure.length > 0 && (
-        <span className={s.chips}>
-          {c.unsure.map((f) => (
+      ) : (
+        <span key={run.facts[0].id} className={s.chips}>
+          {run.facts.map((f) => (
             <Chip key={f.id} c={c} f={f} />
           ))}
         </span>
-      )}
-      {[...c.kept, ...c.unsure].some(fromOpenMeteo(c.stub)) && <WeatherCredit />}
+      ))}
+      {c.facts.some(fromOpenMeteo(c.stub)) && <WeatherCredit />}
     </div>
   );
 }
@@ -610,8 +615,7 @@ export function StubView({ stub, flipped = false, still, tilt = false, size = "m
       meta,
       date: parseDate(e.dateISO),
       place: [e.venue, e.city].filter(Boolean).join(", "),
-      kept: facts.filter((f) => f.confidence >= 0.8),
-      unsure: facts.filter((f) => !(f.confidence >= 0.8)),
+      facts,
       show,
       foilTitle: stub.personal.foilTitle,
       selected,
@@ -640,14 +644,15 @@ export function StubView({ stub, flipped = false, still, tilt = false, size = "m
 
   // The name is short (what it is); the description carries the rest (when, where, which facts, how it is finished).
   const label = `${e.title}, ${meta.label} edition stub${flipped || still === "back" ? ", back" : ""}`;
+  const unsureCount = c.facts.filter((f) => !(f.confidence >= 0.8)).length;
   const description = [
     e.subtitle,
     e.venue,
     e.city,
     c.date?.long,
     stub.personal.guestName ? `Admits ${stub.personal.guestName}` : undefined,
-    c.kept.length ? `Facts on the stub: ${c.kept.map((f) => f.label).join(", ")}` : undefined,
-    c.unsure.length ? `${c.unsure.length} unsure ${c.unsure.length === 1 ? "fact" : "facts"} to check` : undefined,
+    c.facts.length ? `Facts on the stub: ${c.facts.map((f) => f.label).join(", ")}` : undefined,
+    unsureCount ? `${unsureCount} unsure ${unsureCount === 1 ? "fact" : "facts"} to check` : undefined,
     `${stub.finish} finish`,
     flipped || still === "back" ? "Showing the back" : "Showing the front",
   ]
