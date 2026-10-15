@@ -44,7 +44,8 @@ try {
  await page.close();
  const wall=await browser.newPage({width:1280,height:900});
  await wall.send('Page.addScriptToEvaluateOnNewDocument',{source:`
- window.__deleteFault=false;
+ window.__deleteFault=false;window.__recoveryFault=false;
+ const originalRemove=Storage.prototype.removeItem;Storage.prototype.removeItem=function(k){if(k==='ticketstub.wall.mutation.v1'&&window.__recoveryFault)throw new DOMException('fixture recovery fault','SecurityError');return originalRemove.call(this,k);};
  const originalSet=Storage.prototype.setItem;Storage.prototype.setItem=function(k,v){if(k==='ticketstub.wall.deleted.v1'&&window.__deleteFault)throw new DOMException('fixture fault','SecurityError');return originalSet.call(this,k,v);};
  const originalFetch=window.fetch.bind(window);window.fetch=async(input,init)=>new URL(typeof input==='string'?input:input.url,location.href).pathname==='/api/auth/me'?Response.json({account:null}):originalFetch(input,init);
  `});
@@ -61,6 +62,22 @@ try {
  check('failed native delete restores exact persisted wall and keeps tombstones unchanged',await wall.eval(`localStorage.getItem('ticketstub.wall.v1')===window.__beforeWall && localStorage.getItem('ticketstub.wall.deleted.v1')==='[]'`));
  await wall.eval(`window.__deleteFault=false;[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='Retry taking it down').focus()`);await wall.key('Enter');
  check('keyboard retry removes card only after durable deletion succeeds',await wall.waitFor(`!document.querySelector('[data-stub-id="delete-fixture"]') && JSON.parse(localStorage.getItem('ticketstub.wall.v1')).length===0 && JSON.parse(localStorage.getItem('ticketstub.wall.deleted.v1')).includes('delete-fixture')`,10000));
+ // Exact interrupted preparation survives a reload; neither elapsed time nor ordinary retry resolves it.
+ const before=JSON.stringify([seeded]);
+ await wall.eval(`localStorage.setItem('ticketstub.wall.v1',${JSON.stringify(before)});localStorage.setItem('ticketstub.wall.deleted.v1','[]');localStorage.setItem('ticketstub.wall.mutation.v1',${JSON.stringify(JSON.stringify({phase:'prepared',beforeWall:before,beforeDeleted:'[]',afterWall:'[]',afterDeleted:'["delete-fixture"]'}))})`);
+ await wall.goto((process.argv[2]??'http://127.0.0.1:4317')+'/wall');
+ check('reloaded guest sees explicit interrupted-save recovery without inventing an empty wall',await wall.waitFor(`!!document.querySelector('[aria-label="Recover interrupted wall save"]')`,10000));
+ check('restoration requires affirmative exclusive-use confirmation',await wall.eval(`[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='Restore previous saved wall').disabled && !!localStorage.getItem('ticketstub.wall.mutation.v1')`));
+ await wall.eval(`document.querySelector('[aria-label="Recover interrupted wall save"] input').focus()`);await wall.key(' ');
+ await wall.eval(`window.__deleteFault=false;window.__recoveryFault=true;[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='Restore previous saved wall').focus()`);await wall.key('Enter');
+ check('failed explicit restore announces truthful failure and retains blocked journal',await wall.waitFor(`document.querySelector('[aria-label="Recover interrupted wall save"]').textContent.includes('Could not restore safely') && !!localStorage.getItem('ticketstub.wall.mutation.v1')`,10000));
+ await wall.eval(`window.__recoveryFault=false;document.querySelector('[aria-label="Recover interrupted wall save"] input').focus()`);await wall.key(' ');
+ await wall.eval(`[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='Restore previous saved wall').focus()`);await wall.key('Enter');
+ check('confirmed native recovery reloads restored card and clears preparation',await wall.waitFor(`!localStorage.getItem('ticketstub.wall.mutation.v1') && !!document.querySelector('[data-stub-id="delete-fixture"]') && !document.querySelector('[aria-label="Recover interrupted wall save"]')`,10000));
+ const diverged=JSON.stringify([{...seeded,id:'peer-fixture'}]);
+ await wall.eval(`localStorage.setItem('ticketstub.wall.v1',${JSON.stringify(diverged)});localStorage.setItem('ticketstub.wall.mutation.v1',${JSON.stringify(JSON.stringify({phase:'prepared',beforeWall:before,beforeDeleted:'[]',afterWall:'[]',afterDeleted:'["delete-fixture"]'}))});window.dispatchEvent(new Event('focus'))`);
+ check('diverged peer data has truthful blocked message and no rollback action',await wall.waitFor(`document.body.textContent.includes('Saved data differs from the interrupted save record') && ![...document.querySelectorAll('button')].some(b=>b.textContent.trim()==='Restore previous saved wall')`,10000));
+ check('diverged recovery inspection preserves peer bytes and journal',await wall.eval(`localStorage.getItem('ticketstub.wall.v1')===${JSON.stringify(diverged)} && !!localStorage.getItem('ticketstub.wall.mutation.v1')`));
  await wall.close();
 }finally{await browser.close();}
 console.log(`${passed} passed, 0 failed`);

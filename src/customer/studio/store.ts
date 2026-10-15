@@ -101,9 +101,10 @@ function restoreValue(key: string, raw: string | null): void {
 }
 /** Recover only this prepared write's known byte states. A differing peer value stays unknown, never overwritten.
  * This read/compare/compensate sequence is not a cross-process fence or transaction. */
-function recoverPreparedMutation(ownedFailedPreparation?: string): boolean {
+function recoverPreparedMutation(ownedFailedPreparation?: string, expected?: WallRecoverySnapshot): boolean {
   try {
     const raw = localStorage.getItem(WALL_MUTATION_KEY);
+    if (expected && (raw !== expected.journal || localStorage.getItem(KEY) !== expected.wall || localStorage.getItem(DELETED_KEY) !== expected.deleted)) return false;
     if (raw === null) return true;
     const p = preparedValue(raw);
     if (!p || p.phase === "prepared" && raw !== ownedFailedPreparation || !ownWallValue(localStorage.getItem(KEY), p)) return false;
@@ -118,6 +119,34 @@ function recoverPreparedMutation(ownedFailedPreparation?: string): boolean {
 }
 /** An observed in-flight preparation is unknown, not permission to roll back another participant. */
 export function recoverWallMutation(): boolean { return recoverPreparedMutation(); }
+/** Opaque exact snapshot for an explicit, user-authorized exclusive-use recovery. Never sent to an API. */
+export type WallRecoverySnapshot = { journal: string; wall: string | null; deleted: string | null };
+export type WallRecoveryInspection = { status: "none" } | { status: "unknown" } | { status: "diverged" } | { status: "recoverable"; snapshot: WallRecoverySnapshot };
+export function inspectWallRecoveryState(): WallRecoveryInspection {
+  try {
+    const journal = localStorage.getItem(WALL_MUTATION_KEY);
+    if (journal === null) return { status: "none" };
+    const p = preparedValue(journal);
+    const wall = localStorage.getItem(KEY), deleted = localStorage.getItem(DELETED_KEY);
+    return p && ownWallValue(wall, p) && (deleted === p.beforeDeleted || deleted === p.afterDeleted)
+      ? { status: "recoverable", snapshot: { journal, wall, deleted } } : { status: "diverged" };
+  } catch { return { status: "unknown" }; }
+}
+export function inspectWallRecovery(): WallRecoverySnapshot | null {
+  const state = inspectWallRecoveryState();
+  return state.status === "recoverable" ? state.snapshot : null;
+}
+/** Only after the person explicitly confirms other Ticketstub tabs/windows are closed.
+ * No timeout or ordinary retry infers abandonment. Changed bytes invalidate the authorization.
+ * The caller must not invoke this automatically: exclusive use is a human precondition, not a lock. */
+export function restoreInterruptedWall(snapshot: WallRecoverySnapshot, exclusiveUseConfirmed: boolean): boolean {
+  if (!exclusiveUseConfirmed) return false;
+  const current = inspectWallRecovery();
+  if (!current || current.journal !== snapshot.journal || current.wall !== snapshot.wall || current.deleted !== snapshot.deleted) return false;
+  const ok = recoverPreparedMutation(snapshot.journal, snapshot);
+  if (ok) changed();
+  return ok;
+}
 /** Reserve recovery bytes BEFORE either primary key changes. If reservation fails, change neither key. */
 function writeWallAndDeleted(stubs: Stub[], ids: string[]): boolean {
   try {

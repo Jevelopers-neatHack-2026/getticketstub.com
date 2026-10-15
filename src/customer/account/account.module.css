@@ -179,3 +179,17 @@
   outline: 2px solid var(--desk-ink);
   outline-offset: 2px;
 }
+
+.recovery {
+  position: relative;
+  z-index: 100;
+  padding: 20px;
+  margin: 12px;
+  max-width: 42rem;
+  background: var(--desk-paper, #fff9ed);
+  color: var(--desk-ink, #251f1c);
+  border: 2px solid currentColor;
+  overflow-wrap: anywhere;
+}
+.recovery p { margin: 0 0 12px; }
+.recovery label { display: block; margin-bottom: 12px; }

@@ -11,6 +11,7 @@ import { startSync, syncNow, WALL_SYNC_RESULT, type SyncResult } from "./sync";
 import { getAccountState, refreshAccount, useAccount } from "./useAccount";
 import { flow } from "@/customer/flows/events";
 import s from "./account.module.css";
+import { WallRecovery } from "./WallRecovery";
 
 /** The emailed link's return is reported once per page load, even when a remount (Strict Mode) runs the effect again. */
 let returnReported = false;
@@ -125,6 +126,7 @@ export function AccountRoot() {
   return (
     <>
       <SignInSheet request={request} />
+      <WallRecovery />
       {slip ? (
         <div className={s.toast} data-leaving={leaving} key={slip.id}>
           {slip.kind === "saved" ? (

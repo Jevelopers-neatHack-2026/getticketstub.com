@@ -77,3 +77,38 @@ test("an in-flight or unclassified preparation is held, never inferred failed by
  assert.equal(store.readWall().status,"unknown");assert.equal(readGenerationStorage("x").status,"unknown");
  assert.equal((await sync.syncNow()).ok,false);assert.deepEqual(requests,[]);assert.ok(bytes.has(JOURNAL));
 });
+
+for(const phase of ['before-primary','after-wall','after-deleted'])test(`interrupted ${phase}: reload holds prepared state until explicit exclusive-use recovery, then actual SQLite sync remains coherent`,async()=>{
+ const beforeWall=JSON.stringify([stub('x')]),beforeDeleted='[]';
+ const p={phase:'prepared',beforeWall,beforeDeleted,afterWall:'[]',afterDeleted:'["x"]'};
+ bytes.set(WALL,phase==='before-primary'?beforeWall:p.afterWall);bytes.set(DELETED,phase==='after-deleted'?p.afterDeleted:beforeDeleted);bytes.set(JOURNAL,JSON.stringify(p));
+ globalThis.localStorage=storage();
+ assert.equal(store.readWall().status,'unknown');assert.equal(store.readDeleted().status,'unknown');assert.equal(store.readStoredStub('x').status,'unknown');assert.equal(store.recoverWallMutation(),false);
+ assert.equal((await sync.syncNow()).ok,false);assert.deepEqual(requests,[]);
+ const snapshot=store.inspectWallRecovery();assert.ok(snapshot);
+ assert.equal(store.restoreInterruptedWall(snapshot,false),false);assert.equal(bytes.get(JOURNAL),JSON.stringify(p));assert.deepEqual(events,[]);
+ assert.equal(store.restoreInterruptedWall(snapshot,true),true);assert.equal(bytes.get(WALL),beforeWall);assert.equal(bytes.get(DELETED),beforeDeleted);assert.equal(bytes.has(JOURNAL),false);
+ assert.deepEqual(events,[store.WALL_CHANGED]);assert.equal(store.readStoredStub('x').status,'present');
+ assert.equal((await sync.syncNow()).ok,true);assert.equal((await row())[0].id,'x');
+ assert.equal(store.removeStub('x'),true);assert.equal((await sync.syncNow()).ok,true);assert.deepEqual(await row(),[]);
+});
+test('explicit recovery authorization expires on changed primary or journal bytes, and malformed records remain untouched',()=>{
+ const p={phase:'prepared',beforeWall:'[]',beforeDeleted:'[]',afterWall:JSON.stringify([stub('x')]),afterDeleted:'[]'};
+ bytes.set(WALL,'[]');bytes.set(DELETED,'[]');bytes.set(JOURNAL,JSON.stringify(p));const snapshot=store.inspectWallRecovery();assert.ok(snapshot);
+ bytes.set(WALL,p.afterWall);assert.equal(store.restoreInterruptedWall(snapshot,true),false);assert.equal(bytes.get(WALL),p.afterWall);
+ bytes.set(WALL,JSON.stringify([stub('peer')]));assert.equal(store.inspectWallRecoveryState().status,'diverged');assert.equal(store.inspectWallRecovery(),null);assert.equal(store.restoreInterruptedWall(snapshot,true),false);
+ bytes.set(WALL,'[]');bytes.set(JOURNAL,JSON.stringify({...p,phase:'failed'}));assert.equal(store.restoreInterruptedWall(snapshot,true),false);
+ bytes.set(JOURNAL,'{}');assert.equal(store.inspectWallRecovery(),null);assert.equal(store.restoreInterruptedWall(snapshot,true),false);assert.equal(bytes.get(JOURNAL),'{}');assert.deepEqual(events,[]);
+});
+test('explicit interrupted recovery retains first-use null absence and failed recovery remains safely retryable',()=>{
+ const p={phase:'prepared',beforeWall:null,beforeDeleted:null,afterWall:JSON.stringify([stub('x')]),afterDeleted:'[]'};
+ bytes.set(WALL,p.afterWall);bytes.set(DELETED,'[]');bytes.set(JOURNAL,JSON.stringify(p));const snapshot=store.inspectWallRecovery();
+ blockClear=true;assert.equal(store.restoreInterruptedWall(snapshot,true),false);assert.equal(bytes.has(WALL),false);assert.equal(bytes.has(DELETED),false);assert.equal(store.readWall().status,'unknown');assert.deepEqual(events,[]);
+ blockClear=false;assert.equal(store.restoreInterruptedWall(store.inspectWallRecovery(),true),true);assert.equal(bytes.has(WALL),false);assert.equal(bytes.has(DELETED),false);assert.equal(store.readWall().status,'known');assert.equal(bytes.has(JOURNAL),false);
+});
+test('explicit recovery rechecks journal identity inside restoration before touching primary keys',()=>{
+ const p={phase:'prepared',beforeWall:'[]',beforeDeleted:'[]',afterWall:JSON.stringify([stub('x')]),afterDeleted:'[]'};
+ bytes.set(WALL,p.afterWall);bytes.set(DELETED,'[]');bytes.set(JOURNAL,JSON.stringify(p));const snapshot=store.inspectWallRecovery();
+ const replacement=JSON.stringify({...p,phase:'failed'});let journalReads=0;const normal=storage();globalThis.localStorage={...normal,getItem(k){if(k===JOURNAL&&++journalReads===2)bytes.set(JOURNAL,replacement);return normal.getItem(k);}};
+ assert.equal(store.restoreInterruptedWall(snapshot,true),false);assert.equal(bytes.get(WALL),p.afterWall);assert.equal(bytes.get(JOURNAL),replacement);assert.deepEqual(events,[]);
+});
