@@ -1,0 +1,14 @@
+{
+  "checked_on": "2026-10-15",
+  "mode": "offline_local_archive",
+  "historical_capture_date": "2026-10-14",
+  "historical_issue_count": 68,
+  "provider_support_count": 67,
+  "bulk_paste_count": 1,
+  "body_hash_matches": 68,
+  "title_state_label_matches": 68,
+  "all_captured_priority_P2": true,
+  "all_captured_required_for_v1_no": true,
+  "provider_geography_section_count_one": 67,
+  "live_remote_check_performed": false
+}
