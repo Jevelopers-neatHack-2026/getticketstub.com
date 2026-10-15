@@ -39,7 +39,7 @@ const str = (v: unknown, max = 300): string | undefined => (typeof v === "string
 /** The validated subset of a request event that buildArtPrompt reads; anything malformed is dropped, not thrown on. */
 function promptEvent(raw: EventData): EventData {
   const facts = Array.isArray(raw.facts)
-    ? raw.facts.filter((f): f is Fact => !!f && typeof f === "object" && typeof f.id === "string" && typeof f.label === "string" && typeof f.value === "string").slice(0, 200)
+    ? raw.facts.filter((f): f is Fact => !!f && typeof f === "object" && typeof f.id === "string" && typeof f.label === "string" && typeof f.value === "string").slice(0, 200).map(f => ({ id: f.id, label: f.label, value: f.value, source: f.source, confidence: f.confidence, provenance: f.provenance }))
     : [];
   return {
     type: EVENT_TYPES.has(raw.type) ? raw.type : "generic",

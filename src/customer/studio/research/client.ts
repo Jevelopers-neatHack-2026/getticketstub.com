@@ -1,3 +1,4 @@
+import { sourceEvent } from "../facts/identity";
 // Browser-side calls to the research, art and agent routes. Errors carry user-facing copy.
 import type { ArtLayer, EventData, Stub } from "../types";
 import { currentVersion } from "../types";
@@ -180,7 +181,7 @@ export async function remixArtNoted(stub: Stub, vibe?: string, opts: { simulate?
     res = await fetch("/api/art", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ event: stub.event, vibe, seed, edition: v?.edition, first: false, ...(opts.simulate ? { simulate: opts.simulate } : {}) }),
+      body: JSON.stringify({ event: sourceEvent(stub.event), vibe, seed, edition: v?.edition, first: false, ...(opts.simulate ? { simulate: opts.simulate } : {}) }),
     });
   } catch {
     reportCall("art", started, { result: "failure" });
@@ -221,7 +222,7 @@ export async function askAgent(stub: Stub, message: string): Promise<{ reply: st
     res = await fetch("/api/agent", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ event: stub.event, message }),
+      body: JSON.stringify({ event: sourceEvent(stub.event), message }),
     });
   } catch {
     reportCall("agent", started, { result: "failure" });

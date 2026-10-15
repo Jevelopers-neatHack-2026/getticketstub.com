@@ -1,4 +1,6 @@
 "use client";
+import { questionKey } from "../facts/corrections";
+import { factKey, resolveFact } from "../facts/identity";
 import type { Stub } from "../types";
 import { PaperSheet, SourceMark } from "@/customer/desk/Desk";
 import { FactInclusion, FactQuestion, SourceLine } from "../facts/FactsReview";
@@ -15,9 +17,9 @@ interface Props {
 
 /** Tapping a chip on the stub: where the fact came from, and the short question when it needs an answer. The same question the Facts panel asks. */
 export function ChipPopover({ stub, factId, onChange, onToggleFact, onClose }: Props) {
-  const fact = factId ? stub.event.facts.find((f) => f.id === factId) : undefined;
-  const question = fact ? openQuestions(stub).find((q) => q.factId === fact.id) : undefined;
-  const mine = fact ? activeCorrection(stub, fact.id) : undefined;
+  const fact = factId ? resolveFact(stub.event.facts, factId) : undefined;
+  const question = fact ? openQuestions(stub).find((q) => questionKey(q) === factKey(fact)) : undefined;
+  const mine = fact ? activeCorrection(stub, factKey(fact)) : undefined;
 
   return (
     <PaperSheet title={fact ? (question ? question.text : fact.label) : "Fact"} open={!!fact} onClose={onClose}>

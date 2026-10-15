@@ -378,7 +378,7 @@ export function summarize(stub: Stub): StateSummary {
   const v = currentVersion(stub);
   const out: StateSummary = {
     title: clip(ev.title || "Untitled", LIMITS.title),
-    facts: ev.facts.slice(0, LIMITS.facts).map((f) => ({
+    facts: ev.facts.filter(f => !f.id.startsWith("ce_") && ev.facts.filter(x => x.id === f.id).length === 1).slice(0, LIMITS.facts).map((f) => ({
       id: /^[A-Za-z0-9_-]{1,40}$/.test(f.id) ? f.id : "fact",
       label: clip(f.label || "fact", LIMITS.label),
       value: clip(f.value ?? "", LIMITS.value),

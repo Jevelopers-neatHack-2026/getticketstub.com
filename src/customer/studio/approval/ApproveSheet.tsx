@@ -12,7 +12,7 @@ import { StubView } from "../stub/StubView";
 import { useFactFit } from "../facts/fitProof";
 import { currentVersion, type Stub } from "../types";
 import { versionHash } from "../versions/versions";
-import { changesSince, compositionParts, printedLines, valueWords, type ChangeSource, type Composition } from "./printed";
+import { changesSince, compositionParts, printedLines, printedRowKeys, valueWords, type ChangeSource, type Composition } from "./printed";
 import styles from "./ApproveSheet.module.css";
 
 interface Props {
@@ -70,6 +70,7 @@ function Review({ stub, onClose, onApproved }: Omit<Props, "open">) {
   };
 
   const lines = printedLines(stub);
+  const rowKeys = printedRowKeys(stub);
   const comp = compositionNow(stub);
   const v = currentVersion(stub);
   const last = Array.isArray(history) ? history.find((a) => a.approval.purpose === "print.compose") : undefined;
@@ -123,8 +124,8 @@ function Review({ stub, onClose, onApproved }: Omit<Props, "open">) {
             Printed facts
           </h3>
           <ul className={styles.facts}>
-            {lines.map((l) => (
-              <li key={l.key}>
+            {lines.map((l, i) => (
+              <li key={rowKeys[i]}>
                 <span className={styles.k}>{l.label}</span>
                 <span className={styles.val}>
                   {valueWords(l)}

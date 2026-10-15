@@ -1,4 +1,5 @@
 "use client";
+import { factKey } from "./identity";
 import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
 import { useEffect, useState } from "react";
@@ -22,7 +23,7 @@ export async function checkFactFit(stub: Stub): Promise<FactFit[]> {
     await document.fonts.ready;
     const figures = Array.from(host.children) as HTMLElement[];
     const reports = figures.map((figure) => measureFactFit(figure, requested));
-    return requested.map((f, i) => ({ id: f.id, label: f.label, state: reports.some((r) => r[i].state === "visible") ? "visible" : "blocked" }));
+    return requested.map((f, i) => ({ id: factKey(f), label: f.label, state: reports.some((r) => r[i].state === "visible") ? "visible" : "blocked" }));
   } finally {
     root.unmount();
     host.remove();
@@ -34,7 +35,7 @@ export function useFactFit(stub: Stub): FactFit[] | null {
   useEffect(() => {
     let live = true;
     void checkFactFit(stub).then((result) => { if (live) setChecked({ stub, result }); }, () => {
-      if (live) setChecked({ stub, result: includedExtraFacts(stub).map((f) => ({ id: f.id, label: f.label, state: "blocked" })) });
+      if (live) setChecked({ stub, result: includedExtraFacts(stub).map((f) => ({ id: factKey(f), label: f.label, state: "blocked" })) });
     });
     return () => { live = false; };
   }, [stub]);

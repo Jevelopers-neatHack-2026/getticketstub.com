@@ -19,13 +19,13 @@ try {
     const facts = Array.from({ length: count }, (_, i) => ({ id: `f${i}`, label: long ? `Fact ${i} ${'long text '.repeat(100)}` : `Fact ${i}`, value: `Value ${i}`, source: 'offline fixture', confidence: .9, provenance: 'simulated', kept: true }));
     const stub = newStub({ type: 'concert', title: 'Offline fit test', venue: 'Hall', dateISO: '2026-10-10', setlist: [{ title: 'Occupied back' }], facts }, 'fact-browser');
     stub.versions[0].edition = edition;
-    if (collision) stub.event.facts[1].id = stub.event.facts[0].id;
+    if (collision) { stub.event.facts[1].id = stub.event.facts[0].id; stub.event.facts.forEach(f=>delete f.clientEntityKey); }
     await page.eval(`localStorage.setItem('ticketstub.wall.v1', ${JSON.stringify(JSON.stringify([stub]))})`);
     await page.goto(base + '/studio/fact-browser');
     await page.waitFor(`document.querySelector('figure[data-edition]')`, 10000);
   };
-  const click = async (prefix) => {
-    const rect = await page.eval(`(async () => { const b = [...document.querySelectorAll('button')].find(b => (b.getAttribute('aria-label') || b.textContent.trim()).startsWith(${JSON.stringify(prefix)}) && b.getClientRects().length && getComputedStyle(b).visibility !== 'hidden'); if (!b) return null; b.scrollIntoView({block:'center'}); await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))); const r=b.getBoundingClientRect(); return {x:r.x+r.width/2,y:r.y+r.height/2}; })()`);
+  const click = async (prefix, selector = "button") => {
+    const rect = await page.eval(`(async () => { const b = [...document.querySelectorAll(${JSON.stringify(selector)})].find(b => (b.getAttribute('aria-label') || b.textContent.trim()).startsWith(${JSON.stringify(prefix)}) && b.getClientRects().length && getComputedStyle(b).visibility !== 'hidden'); if (!b) return null; b.scrollIntoView({block:'center'}); await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))); const r=b.getBoundingClientRect(); return {x:r.x+r.width/2,y:r.y+r.height/2}; })()`);
     assert.ok(rect, `visible button ${prefix}`);
     await page.click(rect.x, rect.y);
   };
@@ -52,7 +52,7 @@ try {
   await page.resize(1280, 900);
   await seed(2, 'minimal', false, true);
   await click('Remove from stub: Fact 1');
-  check('legacy duplicate IDs normalize and target only the second fact', await page.eval(`(() => { const fs=JSON.parse(localStorage.getItem('ticketstub.wall.v1'))[0].event.facts; return fs[0].id !== fs[1].id && fs[0].kept && !fs[1].kept; })()`));
+  check('legacy duplicate IDs normalize and target only the second fact', await page.eval(`(() => { const fs=JSON.parse(localStorage.getItem('ticketstub.wall.v1'))[0].event.facts; return fs[0].id === fs[1].id && fs[0].clientEntityKey !== fs[1].clientEntityKey && fs[0].kept && !fs[1].kept; })()`));
   await page.goto(base + '/studio/fact-browser');
   check('independent legacy choice survives reload', await page.waitFor(`!!document.querySelector('button[aria-label="Add to stub: Fact 1"]')`,10000));
   await page.eval(`document.querySelector('button[aria-label="Add to stub: Fact 1"]').focus()`);
@@ -67,7 +67,21 @@ try {
   mixed.versions[0].edition = 'minimal';
   await page.eval(`localStorage.setItem('ticketstub.wall.v1', ${JSON.stringify(JSON.stringify([mixed]))})`);
   await page.goto(base + '/studio/fact-browser');
-  check('mixed-confidence identities stay A/B/C on both rendered faces', await page.waitFor(`(() => { const figures=[...document.querySelectorAll('figure[data-edition="minimal"]')].sort((a,b)=>b.getBoundingClientRect().width-a.getBoundingClientRect().width); const ids=[...figures[0]?.querySelectorAll('[data-fact-id]')||[]].map(e=>e.dataset.factId); return ids.join(',')==='A,B,C,A,B,C'; })()`,10000));
+  check('mixed-confidence identities stay A/B/C on both rendered faces', await page.waitFor(`(() => { const figures=[...document.querySelectorAll('figure[data-edition="minimal"]')].sort((a,b)=>b.getBoundingClientRect().width-a.getBoundingClientRect().width); const ids=[...figures[0]?.querySelectorAll('[data-fact-id]')||[]].map(e=>e.dataset.factId); const fs=JSON.parse(localStorage.getItem('ticketstub.wall.v1'))[0].event.facts; return ids.join(',')===[...fs,...fs].map(f=>f.clientEntityKey).join(',') && fs.map(f=>f.id).join(',')==='A,B,C'; })()`,10000));
+  const duplicate = newStub({ type:'generic',title:'Duplicate source facts',venue:'Hall',dateISO:'2026-10-10',facts:[{id:'note',label:'Alpha',value:'original A',source:'offline fixture',confidence:.9,provenance:'simulated',kept:true},{id:'note',label:'Beta',value:'original B',source:'offline fixture',confidence:.5,provenance:'simulated',kept:true}] },'fact-browser');
+  duplicate.versions[0].edition='minimal';
+  await page.eval(`localStorage.setItem('ticketstub.wall.v1', ${JSON.stringify(JSON.stringify([duplicate]))})`);
+  await page.goto(base + '/studio/fact-browser');
+  await page.waitFor(`!!document.querySelector('button[aria-label^="Unsure: Beta"]')`,10000);
+  await click('Unsure: Beta');
+  await click("None of these", '[role="dialog"] button');
+  await page.type('Corrected Beta');
+  await click('Use this', '[role="dialog"] button');
+  check('native correction of duplicate source second row preserves both source IDs and targets its persisted entity',await page.waitFor(`(() => { const s=JSON.parse(localStorage.getItem('ticketstub.wall.v1'))[0]; return s.event.facts[0].id==='note' && s.event.facts[1].id==='note' && s.event.facts[0].value==='original A' && s.event.facts[1].value==='Corrected Beta' && s.corrections[0].factId==='note' && s.corrections[0].clientEntityKey===s.event.facts[1].clientEntityKey; })()`));
+  await page.goto(base + '/studio/fact-browser');
+  check('duplicate source correction renders with separate persisted identities on both faces after reopen',await page.waitFor(`(() => { const fs=JSON.parse(localStorage.getItem('ticketstub.wall.v1'))[0].event.facts; const fig=[...document.querySelectorAll('figure[data-edition="minimal"]')].sort((a,b)=>b.getBoundingClientRect().width-a.getBoundingClientRect().width)[0]; return fig && [...fig.querySelectorAll('[data-fact-id]')].map(e=>e.dataset.factId).join(',')===[...fs,...fs].map(f=>f.clientEntityKey).join(',') && fig.textContent.toLowerCase().includes('corrected beta'); })()`,10000));
+  await click('Undo your change to Corrected Beta');
+  check('native second-row undo preserves source identity and append-only targeting',await page.waitFor(`(() => { const s=JSON.parse(localStorage.getItem('ticketstub.wall.v1'))[0]; return s.event.facts[0].value==='original A' && s.event.facts[1].value==='original B' && s.corrections.length===2 && s.corrections[1].clientEntityKey===s.event.facts[1].clientEntityKey; })()`));
   await seed(10, 'minimal', true);
   check('long selected facts produce explicit blocked identities', await page.waitFor(`document.body.textContent.includes('These facts do not fit completely:')`, 10000));
   await click('Download PNG');

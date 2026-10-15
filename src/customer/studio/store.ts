@@ -44,10 +44,17 @@ export function saveDeleted(ids: string[]): boolean {
   }
 }
 
+// Keep newly allocated keys stable in this session even when storage refuses migration.
+let cachedRaw: string | null | undefined;
+let cachedWall: Stub[] = [];
 export function loadWall(): Stub[] {
   try {
     const raw = localStorage.getItem(KEY);
-    return raw ? (JSON.parse(raw) as Stub[]).map(normalizeStubFacts) : [];
+    if (raw !== cachedRaw) {
+      cachedWall = raw ? (JSON.parse(raw) as Stub[]).map(normalizeStubFacts) : [];
+      cachedRaw = raw;
+    }
+    return structuredClone(cachedWall);
   } catch (e) {
     storageFailure("wall", "read", e);
     return [];
@@ -161,7 +168,7 @@ export function decodeStub(token: string): Stub | undefined {
   try {
     const b64 = token.replace(/-/g, "+").replace(/_/g, "/");
     const json = typeof window === "undefined" ? Buffer.from(b64, "base64").toString("utf-8") : decodeURIComponent(escape(atob(b64)));
-    return JSON.parse(json) as Stub;
+    return normalizeStubFacts(JSON.parse(json) as Stub);
   } catch {
     return undefined;
   }

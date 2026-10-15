@@ -56,7 +56,7 @@ test("mixed confidence A/B/C preserves identity and source order on each face of
     for (const side of ["front", "back"]) {
       const html = renderToStaticMarkup(createElement(StubView, { stub, still: side, onChipTap() {} }));
       const face = html.split(`class="face ${side}"`)[1].split(side === "front" ? 'class="face back"' : "</figure>")[0];
-      assert.deepEqual([...face.matchAll(/data-fact-id="([^"]+)"/g)].map((m) => m[1]), ["A", "B", "C"], `${edition}/${side}`);
+      assert.deepEqual([...face.matchAll(/data-fact-id="([^"]+)"/g)].map((m) => m[1]), stub.event.facts.map(f => f.clientEntityKey), `${edition}/${side}`);
       if (side === "front") assert.match(face, /aria-label="Unsure: Beta/);
     }
   }

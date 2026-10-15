@@ -253,7 +253,8 @@ test("research enrichment and browser ingestion keep repeated categories indepen
   const event = client.pickEvent(await result.json());
   const extras = event.facts.filter((f) => f.label.startsWith("Extra "));
   assert.equal(extras.length, 4);
-  assert.equal(new Set(event.facts.map((f) => f.id)).size, event.facts.length);
+  assert.equal(new Set(event.facts.map((f) => f.clientEntityKey)).size, event.facts.length);
+  assert.deepEqual(extras.map(f => f.id), ["note", "note", "run", "run"]);
   assert.deepEqual(extras.map((f) => f.label), items.map((f) => f.label));
 });
 

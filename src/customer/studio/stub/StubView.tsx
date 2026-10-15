@@ -1,4 +1,5 @@
 "use client";
+import { factKey } from "../facts/identity";
 // The stub. Three layers per face:
 //   ART       currentVersion(stub).art (image, or procedural from seed). Never contains text.
 //   LIVE TYPE title / subtitle / place+date / kept facts as a fact line / unsure facts as pulsing chips.
@@ -157,7 +158,7 @@ function Admit({ c, className }: { c: Ctx; className?: string }) {
 function Chip({ c, f }: { c: Ctx; f: Fact }) {
   if (!c.onChipTap)
     return (
-      <span className={s.chip} data-fact-id={f.id}>
+      <span className={s.chip} data-fact-id={factKey(f)}>
         {f.label}
         <span className={s.chipQ} aria-hidden="true">?</span>
       </span>
@@ -166,11 +167,11 @@ function Chip({ c, f }: { c: Ctx; f: Fact }) {
     <button
       type="button"
       className={s.chip}
-      data-fact-id={f.id}
+      data-fact-id={factKey(f)}
       aria-label={`Unsure: ${f.label}. Tap to check.`}
       onClick={(e) => {
         e.stopPropagation();
-        c.onChipTap?.(f.id);
+        c.onChipTap?.(factKey(f));
       }}
     >
       {f.label}
@@ -183,7 +184,7 @@ function Chip({ c, f }: { c: Ctx; f: Fact }) {
 // "live" matters: demo and pending weather also name Open-Meteo as their source. A value the person typed over the
 // research is theirs, not Open-Meteo's. Public projections carry no correction history, so there it stays credited.
 const fromOpenMeteo = (stub: Stub) => (f: Fact) =>
-  f.id === "weather" && f.provenance === "live" && f.source.startsWith("Open-Meteo") && activeCorrection(stub, f.id)?.kind !== "correct";
+  f.id === "weather" && f.provenance === "live" && f.source.startsWith("Open-Meteo") && activeCorrection(stub, factKey(f))?.kind !== "correct";
 
 function WeatherCredit() {
   return <span className={s.weatherCredit}>Weather data by Open-Meteo.com</span>;
@@ -203,13 +204,13 @@ function Facts({ c, className, sep = " · ", upper }: { c: Ctx; className?: stri
   return (
     <div className={cx(s.facts, className)}>
       {runs.map((run) => run.sure ? (
-        <Pick key={run.facts[0].id} c={c} el="facts" className={s.factLine}>
-          {run.facts.map((f, i) => <span key={f.id} data-fact-id={f.id}>{i > 0 ? sep : ""}{upper ? f.label.toUpperCase() : f.label}</span>)}
+        <Pick key={factKey(run.facts[0])} c={c} el="facts" className={s.factLine}>
+          {run.facts.map((f, i) => <span key={factKey(f)} data-fact-id={factKey(f)}>{i > 0 ? sep : ""}{upper ? f.label.toUpperCase() : f.label}</span>)}
         </Pick>
       ) : (
-        <span key={run.facts[0].id} className={s.chips}>
+        <span key={factKey(run.facts[0])} className={s.chips}>
           {run.facts.map((f) => (
-            <Chip key={f.id} c={c} f={f} />
+            <Chip key={factKey(f)} c={c} f={f} />
           ))}
         </span>
       ))}
@@ -525,9 +526,9 @@ function BackList({ c }: { c: Ctx }) {
   return (
     <ul className={s.backList}>
       {items.map((p, i) => (
-        <li key={i}>
+        <li key={!e.programme?.length && listed[i] ? factKey(listed[i]) : i}>
           <span className={s.backIdx}>·</span>
-          <span data-fact-id={!e.programme?.length ? listed[i]?.id : undefined}>{p}</span>
+          <span data-fact-id={!e.programme?.length ? (listed[i] ? factKey(listed[i]) : undefined) : undefined}>{p}</span>
         </li>
       ))}
       {credited && (

@@ -1,3 +1,4 @@
+import { factKey } from "./identity";
 import type { Fact } from "../types";
 
 export interface FactFit { id: string; label: string; state: "visible" | "blocked" }
@@ -5,8 +6,8 @@ export interface FactFit { id: string; label: string; state: "visible" | "blocke
 /** Check actual laid-out text against every clipping ancestor. DOM presence alone is insufficient. */
 export function measureFactFit(root: HTMLElement, requested: Fact[]): FactFit[] {
   const copies = Array.from(root.querySelectorAll<HTMLElement>("[data-fact-id]"));
-  return requested.map((fact) => ({ id: fact.id, label: fact.label, state: copies.some((el) => {
-    if (el.dataset.factId !== fact.id) return false;
+  return requested.map((fact) => ({ id: factKey(fact), label: fact.label, state: copies.some((el) => {
+    if (el.dataset.factId !== factKey(fact)) return false;
     const range = document.createRange();
     range.selectNodeContents(el);
     const rects = Array.from(range.getClientRects());

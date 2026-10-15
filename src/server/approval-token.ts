@@ -109,7 +109,7 @@ export const hashJson = (v: unknown): string => sha256Hex(canonicalJson(v));
 // A structural slice of the studio's Stub: only what is printed or composed. Photos, friends, wall position and
 // timestamps are not bound (they do not change the printed stub), so editing them does not stale an approval.
 export interface BindableStub {
-  event: { type?: string; title?: string; subtitle?: string; venue?: string; city?: string; dateISO?: string; seat?: string; facts?: { id: string; label: string; value: string; source: string; provenance: string; kept?: boolean }[] };
+  event: { type?: string; title?: string; subtitle?: string; venue?: string; city?: string; dateISO?: string; seat?: string; facts?: { clientEntityKey?: string; id: string; label: string; value: string; source: string; provenance: string; kept?: boolean }[] };
   versions: { id: string; edition: string; art: { kind: string; seed?: number; src?: string; vibe?: string } }[];
   currentVersionId: string;
   personal: { titleFont: number; titleColor: string; foilTitle: boolean; hiddenFields: string[]; note?: string; guestName?: string };
@@ -135,12 +135,25 @@ export function bindStub(stub: BindableStub, size: string, art: { hash: string; 
   const e = stub.event;
   const composition = { edition: version.edition, material: stub.material, finish: stub.finish, size };
   const p = stub.personal;
+  const hiddenProjection = (refs: string[]) => refs.map(ref => {
+    const matches = (e.facts ?? []).filter(f => f.clientEntityKey === ref);
+    if (matches.length !== 1) return ref.startsWith("ce_") ? "unresolved-fact" : ref;
+    const f = matches[0];
+    // Preserve the existing binding for unambiguous legacy source references.
+    if ((e.facts ?? []).filter(other => other.id === f.id).length === 1) return f.id;
+    return `fact:${hashJson({ id: f.id, label: f.label, value: f.value, source: f.source })}`;
+  }).sort();
+  // Do not let client identity in an app-owned version-history snapshot enter the signed design hash.
+  const snapshot = version as typeof version & { context?: { personal?: { hiddenFields?: string[] } } };
+  const design = snapshot.context?.personal?.hiddenFields?.some(ref => ref.startsWith("ce_"))
+    ? { ...snapshot, context: { ...snapshot.context, personal: { ...snapshot.context.personal, hiddenFields: hiddenProjection(snapshot.context.personal.hiddenFields) } } }
+    : version;
   return {
     hashAlg: "sha256",
     versionId: version.id,
     artSource: art.source,
     artHash: art.hash,
-    designHash: hashJson(version),
+    designHash: hashJson(design),
     factsHash: hashJson({
       event: { type: e.type, title: e.title, subtitle: e.subtitle, venue: e.venue, city: e.city, dateISO: e.dateISO, seat: e.seat },
       kept: (e.facts ?? [])
@@ -151,7 +164,7 @@ export function bindStub(stub: BindableStub, size: string, art: { hash: string; 
     composition,
     compositionHash: hashJson({
       composition,
-      personal: { titleFont: p.titleFont, titleColor: p.titleColor, foilTitle: p.foilTitle, hiddenFields: [...p.hiddenFields].sort(), note: p.note, guestName: p.guestName },
+      personal: { titleFont: p.titleFont, titleColor: p.titleColor, foilTitle: p.foilTitle, hiddenFields: hiddenProjection(p.hiddenFields), note: p.note, guestName: p.guestName },
     }),
   };
 }
