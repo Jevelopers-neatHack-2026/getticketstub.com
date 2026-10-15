@@ -19,8 +19,8 @@ type Slip = { id: number; kind: "saved"; text: string } | { id: number; kind: "e
 
 const localFailure = (r: SyncResult): boolean => !!(r.localReadFailed || r.localPersistenceFailed);
 const localMessage = (r: SyncResult): string => r.remoteAcknowledged
-  ? "The server acknowledged your wall, but this browser could not save its updated copy. Keep this page open and retry."
-  : "This browser’s saved wall could not be read. Nothing was sent to the server. Keep this page open and retry.";
+  ? "The server acknowledged your wall, but this browser could not safely update its saved data. Keep this page open and retry."
+  : "Some saved data on this browser could not be read. Nothing was sent to the server. Keep this page open and retry.";
 
 const stubs = (n: number) => `${n} ${n === 1 ? "stub" : "stubs"}`;
 

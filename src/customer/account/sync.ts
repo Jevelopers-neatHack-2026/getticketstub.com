@@ -3,7 +3,7 @@
 // signed-out mode; signed in, every change goes up (debounced) and the merged wall comes back down.
 // Failed requests do not write a local result. A remote acknowledgement and local persistence are distinct outcomes;
 // neither localStorage reads nor multi-key writes establish a cross-tab transaction.
-import { WALL_CHANGED, readDeleted, readWall, readableWall, saveDeleted, writeWall } from "@/customer/studio/store";
+import { WALL_CHANGED, readDeleted, readWall, readableWall, recoverWallMutation, saveDeleted, writeWall } from "@/customer/studio/store";
 import type { Stub } from "@/customer/studio/types";
 import { retainArt } from "@/customer/studio/versions/retention";
 import { api } from "./api";
@@ -71,6 +71,7 @@ export function syncNow(): Promise<SyncResult> {
   }
   running = (async (): Promise<SyncResult> => {
     const sentAt = Date.now();
+    const recovered = recoverWallMutation();
     const initial = readWall();
     const tombstones = readDeleted();
     const local = initial.status === "known" ? initial.stubs : [];
@@ -80,7 +81,7 @@ export function syncNow(): Promise<SyncResult> {
       lastSynced = false;
       return { ok: false, count, ...(remoteAcknowledged ? { remoteAcknowledged: true } : {}), ...(readFailed ? { localReadFailed: true } : { localPersistenceFailed: true }) };
     };
-    if (initial.status !== "known" || tombstones.status !== "known") return failLocal(true, local.length);
+    if (!recovered || initial.status !== "known" || tombstones.status !== "known") return failLocal(true, local.length);
     const deleted = tombstones.ids;
     try {
       const reply = await api.sync(local, deleted);

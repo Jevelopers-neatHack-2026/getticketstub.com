@@ -1,5 +1,7 @@
 // Offline production React consumer check; synthetic auth/sync and Storage faults only.
 import assert from 'node:assert/strict';
+import '../tests/analytics-hooks.mjs';
+const {newStub,PALE_HOURS}=await import('../src/customer/studio/fixtures.ts');
 import { launchBrowser } from './lib/cdp.mjs';
 const browser=await launchBrowser();let passed=0;
 const check=(name,ok)=>{assert.ok(ok,name);passed++;console.log(`PASS ${name}`);};
@@ -15,7 +17,7 @@ try {
  if(path==='/api/wall/sync'){window.__syncCalls++;return Response.json({stubs:[],deleted:[],now:Date.now()});}return originalFetch(input,init);};
  `});
  await page.goto((process.argv[2]??'http://127.0.0.1:4317')+'/make');
- const warning=`document.body.textContent.includes('server acknowledged your wall, but this browser could not save')`;
+ const warning=`document.body.textContent.includes('server acknowledged your wall, but this browser could not safely update')`;
  check('normal signed-in mount exposes remote acknowledgement with failed local save',await page.waitFor(warning,10000));
  await page.eval(`new Promise(r=>setTimeout(r,5100))`);
  check('local warning persists until recovery',await page.eval(warning));
@@ -34,6 +36,31 @@ try {
  await page.eval(`window.__fault=false;localStorage.setItem('ticketstub.wall.v1','[null]');window.__before=window.__syncCalls;window.dispatchEvent(new Event('focus'))`);
  check('unreadable wall shows distinct nothing-sent message',await page.waitFor(`document.body.textContent.includes('Nothing was sent to the server')`,10000));
  check('unreadable wall has no remote request and retains original bytes',await page.eval(`window.__syncCalls===window.__before && localStorage.getItem('ticketstub.wall.v1')==='[null]'`));
+ await page.eval(`localStorage.setItem('ticketstub.wall.v1','[]');localStorage.setItem('ticketstub.wall.deleted.v1','[]');window.dispatchEvent(new Event('focus'))`);
+ check('readable local data recovers before deletion-queue negative',await page.waitFor(`!document.body.textContent.includes('Nothing was sent to the server')`,10000));
+ await page.eval(`localStorage.setItem('ticketstub.wall.deleted.v1','{}');window.__before=window.__syncCalls;window.dispatchEvent(new Event('focus'))`);
+ check('malformed deletion history gets accurate saved-data message, not unreadable-wall claim',await page.waitFor(`document.body.textContent.includes('Some saved data on this browser could not be read')`,10000));
+ check('unknown deletion queue sends nothing and preserves both keys',await page.eval(`window.__syncCalls===window.__before && localStorage.getItem('ticketstub.wall.v1')==='[]' && localStorage.getItem('ticketstub.wall.deleted.v1')==='{}'`));
  await page.close();
+ const wall=await browser.newPage({width:1280,height:900});
+ await wall.send('Page.addScriptToEvaluateOnNewDocument',{source:`
+ window.__deleteFault=false;
+ const originalSet=Storage.prototype.setItem;Storage.prototype.setItem=function(k,v){if(k==='ticketstub.wall.deleted.v1'&&window.__deleteFault)throw new DOMException('fixture fault','SecurityError');return originalSet.call(this,k,v);};
+ const originalFetch=window.fetch.bind(window);window.fetch=async(input,init)=>new URL(typeof input==='string'?input:input.url,location.href).pathname==='/api/auth/me'?Response.json({account:null}):originalFetch(input,init);
+ `});
+ await wall.goto((process.argv[2]??'http://127.0.0.1:4317')+'/make');
+ const seeded=newStub(structuredClone(PALE_HOURS),'delete-fixture');seeded.wallX=100;seeded.wallY=100;
+ await wall.eval(`localStorage.setItem('ticketstub.wall.v1',${JSON.stringify(JSON.stringify([seeded]))});localStorage.setItem('ticketstub.wall.deleted.v1','[]')`);
+ await wall.goto((process.argv[2]??'http://127.0.0.1:4317')+'/wall');
+ check('deletion fixture card is visible',await wall.waitFor(`!!document.querySelector('[data-stub-id="delete-fixture"]')`,10000));
+ const click=async prefix=>{const rect=await wall.eval(`(()=>{const b=[...document.querySelectorAll('button')].find(b=>(b.getAttribute('aria-label')||b.textContent.trim()).startsWith(${JSON.stringify(prefix)})&&b.getClientRects().length);if(!b)return null;b.scrollIntoView({block:'center'});const r=b.getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2};})()`);assert.ok(rect,prefix);await wall.click(rect.x,rect.y);};
+ await click('Lift ');await wall.waitFor(`!!document.querySelector('[role="dialog"]')`,10000);
+ await wall.eval(`window.__deleteFault=true;window.__beforeWall=localStorage.getItem('ticketstub.wall.v1')`);
+ await click('Take it down');await click('Tap again to take it down');
+ check('failed native delete retains card and exposes announced retry',await wall.waitFor(`!!document.querySelector('[data-stub-id="delete-fixture"]') && document.querySelector('[role="dialog"]').textContent.includes('Could not save this removal') && [...document.querySelectorAll('button')].some(b=>b.textContent.trim()==='Retry taking it down')`,10000));
+ check('failed native delete restores exact persisted wall and keeps tombstones unchanged',await wall.eval(`localStorage.getItem('ticketstub.wall.v1')===window.__beforeWall && localStorage.getItem('ticketstub.wall.deleted.v1')==='[]'`));
+ await wall.eval(`window.__deleteFault=false;[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='Retry taking it down').focus()`);await wall.key('Enter');
+ check('keyboard retry removes card only after durable deletion succeeds',await wall.waitFor(`!document.querySelector('[data-stub-id="delete-fixture"]') && JSON.parse(localStorage.getItem('ticketstub.wall.v1')).length===0 && JSON.parse(localStorage.getItem('ticketstub.wall.deleted.v1')).includes('delete-fixture')`,10000));
+ await wall.close();
 }finally{await browser.close();}
 console.log(`${passed} passed, 0 failed`);

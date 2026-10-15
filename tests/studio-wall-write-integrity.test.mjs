@@ -10,7 +10,7 @@ let bytes, writes, events, readsThrow, blocked, reply, requests;
 const stub = id => { const s = newStub(structuredClone(PALE_HOURS),id); s.createdAt="2026-10-12T00:00:00.000Z"; s.versions[0].createdAt=s.createdAt; s.wallAngle=0; return s; };
 beforeEach(()=>{
   bytes=new Map(); writes=[]; events=[]; readsThrow=false; blocked=new Set(); requests=[];
-  globalThis.localStorage={getItem(k){if(readsThrow)throw new DOMException("denied","SecurityError");return bytes.get(k)??null;},setItem(k,v){writes.push(k);if(blocked.has(k))throw new DOMException("full","QuotaExceededError");bytes.set(k,String(v));}};
+  globalThis.localStorage={getItem(k){if(readsThrow)throw new DOMException("denied","SecurityError");return bytes.get(k)??null;},setItem(k,v){writes.push(k);if(blocked.has(k))throw new DOMException("full","QuotaExceededError");bytes.set(k,String(v));},removeItem(k){bytes.delete(k);}};
   globalThis.window=new EventTarget();
   for(const e of [store.WALL_CHANGED,sync.WALL_SYNCED,"ticketstub:wall-sync-result"])window.addEventListener(e,ev=>events.push({type:e,detail:ev.detail}));
   reply=async body=>({stubs:body.stubs,deleted:body.deleted,now:1});
