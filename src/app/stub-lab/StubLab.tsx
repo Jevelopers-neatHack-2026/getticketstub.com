@@ -21,16 +21,17 @@ export function StubLab() {
   const t = q.get("t");
   if (t) {
     const meta = templateById(t);
-    const w = Number(q.get("w") ?? (meta?.orientation === "landscape" ? 1100 : 480));
+    if (!meta) return <main><h1>Template not found</h1><p>Choose one of the design studies in the <a href="/stub-lab">stub lab</a>.</p></main>;
+    const w = Math.max(120, Math.min(1600, Number(q.get("w")) || (meta.orientation === "landscape" ? 1100 : 480)));
     const h = meta ? (w * meta.height) / meta.width : w * 2;
     return (
       <main style={{ margin: 0, padding: 24, background: q.get("bg") ?? "#1a1a1a", minHeight: "100vh", boxSizing: "border-box", ...lightVars(q.get("light") ?? "rest") }}>
         <div id="stub" style={{ width: w, height: h, filter: "drop-shadow(0 18px 30px rgb(0 0 0 / 0.45))" }}>
           <SvgStub
             template={t}
-            face={(q.get("face") as "front" | "back") ?? "front"}
+            face={q.get("face") === "back" ? "back" : "front"}
             data={SAMPLES[q.get("data") ?? "concert"] ?? SAMPLES.concert}
-            mode={(q.get("mode") as StubMode) ?? "screen"}
+            mode={q.get("mode") === "print" ? "print" : "screen"}
             className="lab-stub"
             onReady={() => document.body.setAttribute("data-stub-ready", "1")}
           />
