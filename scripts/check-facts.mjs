@@ -1,10 +1,14 @@
 // Offline production-browser checks for fact identities, inclusion and measured local layout.
 // Start a demo server, then: node scripts/check-facts.mjs http://127.0.0.1:4317
 import assert from 'node:assert/strict';
+import { mkdirSync } from 'node:fs';
+import { join } from 'node:path';
 import '../tests/analytics-hooks.mjs';
 import { launchBrowser } from './lib/cdp.mjs';
 const { newStub } = await import('../src/customer/studio/fixtures.ts');
 const base = process.argv[2] ?? 'http://127.0.0.1:4317';
+const evidenceDir = process.argv[3] ? join(process.argv[3], 'facts') : null;
+if (evidenceDir) mkdirSync(evidenceDir, { recursive: true });
 const browser = await launchBrowser();
 let passed = 0;
 const check = (name, ok) => { assert.ok(ok, name); passed++; console.log(`PASS ${name}`); };
@@ -42,6 +46,7 @@ try {
       console.log('CONTROLS',width,edition,JSON.stringify(controls));
       check(`${width}/${edition}: action semantics and targets`, controls.length === 6 && controls.every(b=>b.pressed===null && b.minHeight>=44 && Math.round(b.height*100)/100>=44));
       check(`${width}/${edition}: no page overflow`, await page.eval(`document.documentElement.scrollWidth <= innerWidth + 1`));
+      if (evidenceDir && edition === 'minimal') await page.screenshot(join(evidenceDir, `facts-${width}.png`));
     }
   }
   await page.resize(1280, 900);
@@ -62,6 +67,7 @@ try {
   check('long selected facts produce explicit blocked identities', await page.waitFor(`document.body.textContent.includes('These facts do not fit completely:')`, 10000));
   await click('Download PNG');
   check('clipped selected facts block PNG export with recovery guidance', await page.waitFor(`document.body.textContent.includes('Some selected facts do not fit completely.')`,10000));
+  if (evidenceDir) await page.screenshot(join(evidenceDir, 'overflow-refused.png'));
   await page.close();
 } finally { await browser.close(); }
 console.log(`${passed} passed, 0 failed`);
