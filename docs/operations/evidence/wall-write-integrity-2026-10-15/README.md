@@ -1,3 +1,17 @@
+## Review correction superseding the original partial-write disposition
+
+The historical `receipt.json` below remains unchanged. Its wall-first partial-write limitation and WallClient ignore-false audit are superseded by implementation `67e4e1e43cab9b9c3f14fb24a75120ce12e7dced`; see [review-followup.json](review-followup.json). APP-WALL-REVIEW-001/002/003 were reproduced and repaired, pending independent exact-head re-review.
+
+Cross-key remove/re-create operations first reserve validated before/after bytes in `ticketstub.wall.mutation.v1`. Reservation failure changes neither primary key. A subsequent failure compensates exact original bytes; if compensation fails, durable preparation makes wall, deletion, generation reads and sync unknown rather than publishing a contradictory row/tombstone pair. Recovery refuses differing peer bytes. Only failed preparations can be recovered by later readers; an observed in-flight preparation stays blocked and requires owner-directed resolution if its owner cannot classify/compensate it. This is not a multi-key transaction or cross-process fence. Preparation needs extra storage capacity; ordinary single-key quota release remains limited to oldest unselected inline art, retaining selected art, identity/seed and same-version art.
+
+Actual in-memory SQLite deletion-wins tests cover failed re-create/delete followed by sync, successful retry, failures at preparation/wall/deletion/marker cleanup/compensation, new reader recovery, peer divergence and status-reminder failure. The exact e59 candidate fails 8 of 11 recovery tests; corrected bytes pass all 11. Focused tests pass 251; full units pass 1,052 with one default PostgreSQL skip. Build, typecheck and lint pass (existing fixture warning only). Native offline browser checks pass 18 child/20 wrapper assertions, including malformed deletion-state wording and failed-delete card retention, accessible retry and keyboard recovery. No live account/provider calls occurred.
+
+The WallClient now retains its card and lift on failed removal and announces an actionable retry. Account wording covers saved data/deletion state accurately. Remote acknowledgement remains distinct from local persistence; no remote rollback is claimed. Acknowledged tombstone cleanup failures retain queued intent without a false successful sync event. Other legacy callers are unchanged.
+
+Historical e59 hosted runtime and order-gate passes do not qualify this correction. New hosted checks and landing_candidate_review must inspect the newly published exact head. Product peer policy, canonical app-owned assembly/owner-run acceptance, unavailable historical 200% text measurements and manual GoDaddy publication isolation remain unresolved/outside this patch. No deployment, merge or issue closure occurred.
+
+---
+
 # Wall write integrity continuation
 
 Refs: #10, #97, #98. Isolated branch `fix/wall-write-integrity-20261015`, worktree `/tmp/gt-wall-write-continuation-20261015`. Exact published base: PR211 `872a5c644b624d7f55fbdaf9fb48c06e2c816a92` on `fix/generation-state-observation-20261015`. Implementation: `b02de50233215355d5e915d73fcb463be3687eed`. This branch does not merge/cherry-pick or push the original PR100/124/209/210/211 refs. The original checkout remains clean at `c7a0f5fae5bc56cefc251e1c95aabd7e119a1f34`.
