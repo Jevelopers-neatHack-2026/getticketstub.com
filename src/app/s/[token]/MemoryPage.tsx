@@ -16,6 +16,7 @@ import { PageShell, FriendlyError, OnDesk, PaperLink, StampLink, TearAnchor, ui 
 import { TearLink } from "@/customer/desk/Desk";
 import { absoluteUrl, formatDate, isStub, shareLink } from "@/customer/pages/share";
 import { errorCode, flow } from "@/customer/flows/events";
+import { DownloadStub } from "@/customer/studio/download/DownloadStub";
 import { renderStoryPng, downloadBlob, photoToDataUrl } from "@/customer/pages/storyImage";
 import { useMounted } from "@/customer/pages/useMounted";
 import { EventContent, Facts } from "./EventContent";
@@ -240,6 +241,7 @@ export default function MemoryPage({ token, gift, giftTo, giftToken, wrap = true
                     Send matching stubs to friends
                   </TearAnchor>
                 </div>
+                <DownloadStub stub={stub} context="memory" hint={false} />
                 <MarkLegend marks={["sandbox"]} />
               </div>
             ) : null}
@@ -391,7 +393,7 @@ export default function MemoryPage({ token, gift, giftTo, giftToken, wrap = true
                 </div>
                 <div className={ui.row}>
                   <PaperButton type="button" onClick={downloadStory} disabled={busy}>
-                    Download story image
+                    Story image
                   </PaperButton>
                   {confirmStop ? (
                     <span role="group" aria-label="Stop sharing this stub">

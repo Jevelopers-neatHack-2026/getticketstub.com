@@ -234,11 +234,19 @@ export function dimText(d: Dim): string {
 
 export type RuntimeMode = "live" | "demo";
 
-/** `TICKETSTUB_RUNTIME_MODE=live` is the only live mode. The browser can only see a NEXT_PUBLIC_ mirror of it. */
-export function runtimeMode(
-  env: Record<string, string | undefined> = { NEXT_PUBLIC_TICKETSTUB_RUNTIME_MODE: process.env.NEXT_PUBLIC_TICKETSTUB_RUNTIME_MODE, TICKETSTUB_RUNTIME_MODE: process.env.TICKETSTUB_RUNTIME_MODE },
-): RuntimeMode {
-  return (env.NEXT_PUBLIC_TICKETSTUB_RUNTIME_MODE ?? env.TICKETSTUB_RUNTIME_MODE) === "live" ? "live" : "demo";
+/**
+ * `TICKETSTUB_RUNTIME_MODE=live` is the only live mode. It is a runtime secret on the host, so the browser can't read it: the root
+ * layout (rendered per request) writes the server's real mode to `<html data-runtime-mode>`, and the browser reads that first.
+ * Without it the browser fell back to a build-time NEXT_PUBLIC_ mirror that the host never sets, so a live site treated previews
+ * as orderable and only the server's /api/orders refused them.
+ */
+export function runtimeMode(env?: Record<string, string | undefined>): RuntimeMode {
+  if (!env && typeof document !== "undefined") {
+    const shown = document.documentElement?.dataset.runtimeMode;
+    if (shown === "live" || shown === "demo") return shown;
+  }
+  const e = env ?? { NEXT_PUBLIC_TICKETSTUB_RUNTIME_MODE: process.env.NEXT_PUBLIC_TICKETSTUB_RUNTIME_MODE, TICKETSTUB_RUNTIME_MODE: process.env.TICKETSTUB_RUNTIME_MODE };
+  return (e.NEXT_PUBLIC_TICKETSTUB_RUNTIME_MODE ?? e.TICKETSTUB_RUNTIME_MODE) === "live" ? "live" : "demo";
 }
 
 export type OrderGate = { ok: true; sandbox: boolean } | { ok: false; reason: "unavailable" | "preview-in-live" | "unknown-variant"; message: string };

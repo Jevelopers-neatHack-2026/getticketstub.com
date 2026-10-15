@@ -1,0 +1,29 @@
+{
+  "fixture": "boundary-project-raw-128",
+  "description": "The reviewer's case: a 128-character raw event id is a 134-character ref. Refused identifier_too_long.",
+  "verifyAt": "2026-10-10T12:00:00.000Z",
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6InRpY2tldHN0dWIuY29udGV4dCJ9.eyJjdHgiOnsic2NoZW1hIjoidGlja2V0c3R1Yi5jb250ZXh0LzIiLCJpc3N1ZXIiOiJnZXR0aWNrZXRzdHViLmNvbSIsImF1ZGllbmNlIjoidGlja2V0c3R1Yi5maW5hbmNlIiwiYWN0b3IiOnsia2luZCI6ImFjY291bnQiLCJpZCI6ImFjY291bnQ6YWNjX0ZJWFRVUkVfY2FwdGFpbjEifSwidGVuYW50Ijp7ImlkIjoiYWNjb3VudDphY2NfRklYVFVSRV9jYXB0YWluMSJ9LCJwcm9qZWN0Ijp7ImtpbmQiOiJldmVudCIsImlkIjoiYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWEiLCJyZWYiOiJldmVudDphYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYSJ9LCJyb2xlIjoiY2FwdGFpbiIsImNhcGFiaWxpdGllcyI6WyJhY2NvdW50LmRlbGV0ZSIsImFjY291bnQuZW1haWwuY2hhbmdlIiwiYWNjb3VudC5yZWFkIiwiYWdlbnQudXNlIiwiYXJ0LmdlbmVyYXRlIiwiY2xhaW0ucmVkZWVtIiwiY2xhaW0udmlldyIsImNsYWltcy5yZWFkIiwiZXZlbnQuY3JlYXRlIiwiZXZlbnQucHVibGlzaCIsImV2ZW50LnJlYWQiLCJmaWxlLnJlYWQiLCJmaW5hbmNlLmV4cG9ydCIsImZpbmFuY2UucmVhZCIsIm9yZGVyLmNyZWF0ZSIsIm9yZGVyLnJlYWQiLCJzZXNzaW9uLnJldm9rZSIsInNoYXJlLmNyZWF0ZSIsInNoYXJlLnZpZXciLCJzdHViLmRyYWZ0Iiwid2FsbC5wdWJsaWMudmlldyIsIndhbGwucHVibGlzaCIsIndhbGwuc3luYyJdLCJtZW1iZXJzaGlwUmV2aXNpb24iOjMsInJldm9rZWQiOmZhbHNlLCJlbnZpcm9ubWVudCI6ImRldmVsb3BtZW50IiwiZWNvbm9taWNNb2RlIjoic2FuZGJveCIsImV2aWRlbmNlTW9kZSI6ImZpeHR1cmUiLCJpc3N1ZWRBdCI6IjIwMjYtMTAtMTBUMTI6MDA6MDAuMDAwWiIsImV4cGlyZXNBdCI6IjIwMjYtMTAtMTBUMTI6MDU6MDAuMDAwWiJ9LCJzaWQiOiJmeDAwMDAwMDAwMDAwMDAwMDAwMDAwMTAifQ.PmBfPAJGOMxcvzbIiNQbe5Hb4uC5XYbLxFEL8SiEp2A",
+  "state": {
+    "membershipRevision": 3,
+    "sessionLive": true,
+    "projectMember": true
+  },
+  "expect": {
+    "ok": true,
+    "role": "captain",
+    "tenant": "account:acc_FIXTURE_captain1",
+    "project": {
+      "kind": "event",
+      "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "ref": "event:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "financeAdapter": {
+      "ok": false,
+      "schema": "ticketstub.finance-scope-adapter/1",
+      "reason": "identifier_too_long",
+      "fields": [
+        "projectId"
+      ]
+    }
+  }
+}

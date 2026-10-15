@@ -252,6 +252,22 @@ check("live mode is TICKETSTUB_RUNTIME_MODE=live and nothing else", () => {
   assert.equal(cap.runtimeMode({ NEXT_PUBLIC_TICKETSTUB_RUNTIME_MODE: "live" }), "live");
   assert.equal(cap.runtimeMode({ TICKETSTUB_RUNTIME_MODE: "preview" }), "demo");
   assert.equal(cap.runtimeMode({}), "demo");
+  // In the browser the server's real mode arrives on <html data-runtime-mode>; it wins over the build-time mirror.
+  {
+    const saved = globalThis.document;
+    try {
+      globalThis.document = { documentElement: { dataset: { runtimeMode: "live" } } };
+      assert.equal(cap.runtimeMode(), "live", "browser reads data-runtime-mode=live");
+      globalThis.document = { documentElement: { dataset: { runtimeMode: "demo" } } };
+      assert.equal(cap.runtimeMode(), "demo", "browser reads data-runtime-mode=demo");
+      globalThis.document = { documentElement: { dataset: {} } };
+      assert.equal(cap.runtimeMode(), cap.runtimeMode({ NEXT_PUBLIC_TICKETSTUB_RUNTIME_MODE: process.env.NEXT_PUBLIC_TICKETSTUB_RUNTIME_MODE, TICKETSTUB_RUNTIME_MODE: process.env.TICKETSTUB_RUNTIME_MODE }), "no attribute falls back to env");
+      globalThis.document = { documentElement: { dataset: { runtimeMode: "live" } } };
+      assert.equal(cap.runtimeMode({}), "demo", "an explicit env (the server's call sites) ignores the page attribute");
+    } finally {
+      if (saved === undefined) delete globalThis.document; else globalThis.document = saved;
+    }
+  }
 });
 
 const legacyOrder = { id: "sbx_legacy01", mode: "sandbox", createdAt: "2026-10-09T10:00:00.000Z", stubIds: ["s1"], lines: [{ title: "Old night", material: "framed", finish: "holo", size: "framed", totalMinor: 9500 }], totalMinor: 9500, currency: "USD", quoteId: "qt_framed_holo_framed_x1", method: "card" };

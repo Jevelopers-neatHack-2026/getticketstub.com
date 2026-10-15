@@ -24,6 +24,7 @@ import { EditIcon, OpenIcon, PrintIcon, ShareIcon } from "./liftIcons";
 import { DeskPage, Pin, chrome as c } from "./chrome";
 import { Canvas, type CanvasApi } from "./Canvas";
 import { dealMissing, freshAngle, type PlacedStub } from "./placement";
+import { DownloadStub } from "@/customer/studio/download/DownloadStub";
 import s from "./wall.module.css";
 
 type Filter = "all" | "concert" | "game" | "show" | "generic";
@@ -133,6 +134,7 @@ export default function WallClient({ emailSent, pinnedId, liftId }: { emailSent:
 
   const landing = pinnedId ? (stubs.find((x) => x.id === pinnedId) ?? null) : null;
   const landingId = landing?.id;
+  const landingDate = landing?.event.dateISO ? formatDate(landing.event.dateISO) : "";
 
   // The landing: the pin presses in as the stub settles. Then the address drops its ?pinned so a reload is at rest.
   useEffect(() => {
@@ -429,7 +431,19 @@ export default function WallClient({ emailSent, pinnedId, liftId }: { emailSent:
         <div className={`${c.cork} ${s.feature}`}>
           <div className={s.landing} style={{ ["--angle" as string]: `${landing.wallAngle ?? 0}deg` } as CSSProperties}>
             <Pin seed={landing.id} press delay={LAND_MS - 160} />
-            <StubView stub={landing} size="md" />
+            {/* the stub you just pinned lifts like any other */}
+            <button
+              type="button"
+              className={s.landingBtn}
+              data-lifted={lift?.id === landing.id ? "true" : undefined}
+              aria-label={`Lift ${landing.event.title}${landingDate ? `, ${landingDate}` : ""}`}
+              aria-expanded={lift?.id === landing.id}
+              onClick={(e) => landingId && openLift(landingId, e.detail === 0 ? "keyboard" : "pointer")}
+            >
+              <span aria-hidden="true" style={{ display: "contents" }}>
+                <StubView stub={landing} size="md" />
+              </span>
+            </button>
           </div>
           <NextSteps stub={landing} />
         </div>
@@ -746,6 +760,7 @@ function Lamp({ stub, lift, onPutBack, onDelete }: { stub: Stub; lift: Lift; onP
                 <span className={s.toolPrice}>{formatMoney(printPrice(stub))}</span>
               </Tool>
             </Tools>
+            <DownloadStub stub={stub} context="lamp" hint={false} />
             <div className={s.trayFoot}>
               <p className={s.small}>Tap anywhere else, or press Escape, to pin it back.</p>
               <p className={s.small} data-announce>

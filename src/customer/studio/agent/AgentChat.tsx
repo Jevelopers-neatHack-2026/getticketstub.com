@@ -1,22 +1,36 @@
 "use client";
+import { factKey, resolveFact } from "../facts/identity";
 // Research agent chat. Opens only when the person taps Ask or types to the margin notes. Narrates facts
-// with a source mark, lets the person keep or fix them, and remixes the art (a remix pushes a new
-// DesignVersion). Rule-based unless the server has a model; the mark legend says which one it is.
+// with a source mark, lets the person keep or fix them, and turns a request into typed actions
+// (ticketstub.agent-action/1) the owner applies one at a time or all at once. Applying runs the same edit paths the
+// editor's own controls use, and what actually happened goes back to the agent for a follow-up. The planner is rule-based
+// unless the server has a model; the mark legend says which one it is.
 
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
-import type { ArtLayer, DesignVersion, Fact, Provenance, Stub } from "../types";
-import { currentVersion } from "../types";
-import { ART_LIMIT_NOTE, askAgent, failureCopy, remixArtNoted } from "../research/client";
+import type { Fact, Provenance, Stub } from "../types";
+import { failureCopy, planAgent, remixArtNoted } from "../research/client";
 import { MarkLegend, PaperButton, SourceMark, Tag, Tags } from "@/customer/desk/Desk";
 import { haptic, play } from "@/customer/studio/feedback";
-import { activeCorrection, applyCorrection } from "../facts/corrections";
+import { activeCorrection, applyCorrection, isIsoDate } from "../facts/corrections";
 import { artOutcome, clock, errorCode, flow, since } from "@/customer/flows/events";
+import { announce } from "@/customer/a11y/announce";
+import { MESSAGE_CODES } from "@/customer/feedback-messages/messages";
+import { AGENT_SCHEMA, describeAction, summarize } from "./protocol";
+import type { Action, ActionResult, PendingQuestion, ResultStatus } from "./protocol";
+import { applyToStub, proceduralArt, withArt } from "./apply";
 import styles from "./AgentChat.module.css";
 
 type Msg =
   | { id: string; role: "agent"; kind: "facts" }
-  | { id: string; role: "agent"; kind: "text"; text: string; provenance?: Provenance; by: "simulated" | "live" }
+  | { id: string; role: "agent"; kind: "text"; text: string; provenance?: Provenance; by: "simulated" | "live"; items?: PlanItem[] }
   | { id: string; role: "user"; text: string };
+
+/** One proposed action in the chat: applied only when the owner taps Apply. */
+interface PlanItem {
+  key: string;
+  action: Action;
+}
+type ItemState = { status: "applying" | ResultStatus; code?: string };
 
 const SUGGESTIONS = ["Make it moodier", "Add the weather", "Use my photo"] as const;
 const SUGGESTION_KIND = { "Make it moodier": "moodier", "Add the weather": "weather", "Use my photo": "photo" } as const satisfies Record<(typeof SUGGESTIONS)[number], string>;
@@ -53,7 +67,14 @@ function readPhoto(file: File, max = 1200): Promise<string> {
   });
 }
 
-export function AgentChat(props: { stub: Stub; onChange: (s: Stub) => void; /** A line typed into a margin note: sent as the first message. */ initial?: string }) {
+export function AgentChat(props: {
+  stub: Stub;
+  onChange: (s: Stub) => void;
+  /** Flip the editor to the back of the stub (the show_back action). */
+  onShowBack?: () => void;
+  /** A line typed into a margin note: sent as the first message. */
+  initial?: string;
+}) {
   const { stub } = props;
   const inputId = useId();
   const [messages, setMessages] = useState<Msg[]>(() => [{ id: "facts", role: "agent", kind: "facts" }]);
@@ -62,13 +83,21 @@ export function AgentChat(props: { stub: Stub; onChange: (s: Stub) => void; /** 
   const listRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const sentInitial = useRef(false);
+  const [items, setItems] = useState<Record<string, ItemState>>({});
+  const itemsRef = useRef<Record<string, ItemState>>({});
+  // what the last follow-up reported: context for the next message
+  const lastResults = useRef<ActionResult[]>([]);
+  // the question the agent is waiting on: sent with the next message, cleared once it is answered or the topic changes
+  const pendingRef = useRef<PendingQuestion | undefined>(undefined);
 
   // Latest stub/onChange for async handlers.
   const stubRef = useRef(stub);
   const onChangeRef = useRef(props.onChange);
+  const onShowBackRef = useRef(props.onShowBack);
   useLayoutEffect(() => {
     stubRef.current = stub;
     onChangeRef.current = props.onChange;
+    onShowBackRef.current = props.onShowBack;
   });
 
   useEffect(() => {
@@ -76,8 +105,12 @@ export function AgentChat(props: { stub: Stub; onChange: (s: Stub) => void; /** 
     if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
   }, [messages, busy]);
 
-  const say = (text: string, by: "simulated" | "live" = "simulated", provenance?: Provenance) =>
-    setMessages((m) => [...m, { id: rid(), role: "agent", kind: "text", text, by, provenance }]);
+  const say = (text: string, by: "simulated" | "live" = "simulated", provenance?: Provenance, plan?: Action[]) =>
+    setMessages((m) => [...m, { id: rid(), role: "agent", kind: "text", text, by, provenance, ...(plan?.length ? { items: plan.map((action) => ({ key: rid(), action })) } : {}) }]);
+  const setItem = (key: string, state: ItemState) => {
+    itemsRef.current = { ...itemsRef.current, [key]: state };
+    setItems(itemsRef.current);
+  };
   const userSays = (text: string) => setMessages((m) => [...m, { id: rid(), role: "user", text }]);
 
   const commit = (next: Stub) => {
@@ -85,58 +118,116 @@ export function AgentChat(props: { stub: Stub; onChange: (s: Stub) => void; /** 
     onChangeRef.current(next);
   };
 
-  const updateFact = (index: number, patch: Partial<Fact>) => {
+  const updateFact = (ref: string, patch: Partial<Fact>) => {
     const s = stubRef.current;
-    const facts = s.event.facts.map((f, i) => (i === index ? { ...f, ...patch } : f));
-    const target = s.event.facts[index];
+    const target = resolveFact(s.event.facts, ref);
+    if (!target) return;
+    const facts = s.event.facts.map(f => f === target ? { ...f, ...patch } : f);
     const event = { ...s.event, facts };
     if (target?.id === "date" && patch.value && /^\d{4}-\d{2}-\d{2}$/.test(patch.value)) event.dateISO = patch.value;
     commit({ ...s, event });
   };
 
-  const pickAlternative = (index: number, alt: string) => {
-    const f = stubRef.current.event.facts[index];
+  const pickAlternative = (ref: string, alt: string) => {
+    const current = stubRef.current;
+    const f = resolveFact(current.event.facts, ref);
     if (!f) return;
-    const isDate = /^\d{4}-\d{2}-\d{2}$/.test(alt);
-    commit(applyCorrection(stubRef.current, { factId: f.id, value: alt }));
-    say(`Fixed. ${isDate ? shortDate(alt) : alt} is on your stub.`);
+    const value = alt.trim();
+    const next = applyCorrection(current, { factId: factKey(f), value });
+    if (next === current) {
+      say(f.id === "date" ? "That date was not changed. Choose a real calendar date." : "That answer was not changed. Choose a non-empty answer.");
+      return;
+    }
+    commit(next);
+    say(`Fixed. ${f.id === "date" && isIsoDate(value) ? shortDate(value) : value} is on your stub.`);
   };
 
-  const remix = async (vibe: string) => {
-    setBusy("Remixing the art…");
-    // what was typed is the vibe; only "custom" is reported
-    flow("remix_request", { via: "agent", vibe: "custom" });
-    const asked = clock();
+  /** Carry out one action through the editor's own edit paths and report what actually happened. */
+  const runAction = async (action: Action): Promise<ActionResult> => {
+    const t0 = clock();
+    const done = (status: ResultStatus, code?: string): ActionResult => {
+      const known = code && (MESSAGE_CODES as readonly string[]).includes(code) ? (code as (typeof MESSAGE_CODES)[number]) : code === "invalid_value" ? "bad_request" : undefined;
+      if (action.type !== "none" && action.type !== "ask_user") flow("agent_action", { action: action.type, result: status, error_code: status === "applied" ? undefined : known, duration_ms: since(t0) });
+      play(status === "applied" ? (action.type === "remix_art" ? "remix" : "success") : "tick", { emphasis: "subtle" });
+      return { action, status, ...(code ? { code } : {}), ms: since(t0) };
+    };
+    if (action.type === "remix_art") {
+      setBusy(action.procedural ? "Adding procedural art…" : "Remixing the art…");
+      if (action.procedural) {
+        commit(withArt(stubRef.current, proceduralArt(action.vibe)));
+        return done("applied");
+      }
+      // what was typed is the vibe; only "custom" is reported
+      flow("remix_request", { via: "agent", vibe: "custom" });
+      const asked = clock();
+      try {
+        const { art, limitNote } = await remixArtNoted(stubRef.current, action.vibe, action.simulate ? { simulate: action.simulate } : {});
+        if (limitNote) {
+          // the cap is a failure for the agent: nothing was generated, and the procedural fallback is offered instead
+          flow("remix_result", { via: "agent", result: "limited", ...artOutcome(art), duration_ms: since(asked) });
+          return done("failed", "art_limit");
+        }
+        flow("remix_result", { via: "agent", result: "success", ...artOutcome(art), duration_ms: since(asked) });
+        commit(withArt(stubRef.current, art));
+        return done("applied");
+      } catch (e) {
+        flow("remix_result", { via: "agent", result: "error", duration_ms: since(asked), error_code: errorCode(e) });
+        return done("failed", errorCode(e));
+      }
+    }
+    if (action.type === "show_back") {
+      if (!onShowBackRef.current) return done("failed", "unavailable");
+      onShowBackRef.current();
+      return done("applied");
+    }
+    if (action.type === "ask_user" || action.type === "none") return done("rejected", "invalid_value");
+    const out = applyToStub(stubRef.current, action);
+    if (!out.ok) return done("rejected", out.code);
+    commit(out.stub);
+    return done("applied");
+  };
+
+  /** One agent turn: a plan for a message, or the follow-up to results. Shows the reply and its proposed actions. */
+  const turn = async (message: string | undefined, results?: ActionResult[]) => {
+    setBusy(message === undefined ? "Checking what happened…" : "Thinking…");
     try {
-      const { art, limitNote }: { art: ArtLayer; limitNote?: string } = await remixArtNoted(stubRef.current, vibe);
-      flow("remix_result", { via: "agent", result: limitNote ? "limited" : "success", ...artOutcome(art), duration_ms: since(asked) });
-      const s = stubRef.current;
-      const cur = currentVersion(s);
-      const v: DesignVersion = {
-        id: `v${s.versions.length + 1}-${rid()}`,
-        parentId: cur?.id,
-        edition: cur?.edition ?? "researched",
-        art,
-        createdAt: new Date().toISOString(),
-      };
-      commit({ ...s, versions: [...s.versions, v], currentVersionId: v.id });
-      say(
-        limitNote
-          ? `${ART_LIMIT_NOTE} Your text and edits are kept.`
-          : art.provenance === "live"
-            ? "Remixed the art. Your text and edits are kept."
-            : "Remixed the art. Your text and edits are kept. This art is a simulated preview.",
-        "simulated",
-        art.provenance,
-      );
-    } catch (e) {
-      flow("remix_result", { via: "agent", result: "error", duration_ms: since(asked), error_code: errorCode(e) });
-      say(failureCopy(e, "We couldn't remix the art. Try again in a moment."));
+      const res = await planAgent({
+        schema: AGENT_SCHEMA,
+        state: summarize(stubRef.current),
+        ...(message !== undefined ? { message } : {}),
+        ...(results?.length ? { results } : {}),
+        ...(message !== undefined && pendingRef.current ? { pending: pendingRef.current } : {}),
+      });
+      // the first typed question this reply asks becomes the pending one; anything else clears it
+      const q = res.actions.find((a): a is Extract<Action, { type: "ask_user" }> => a.type === "ask_user" && !!a.field);
+      pendingRef.current = q?.field ? { field: q.field, question: q.question, ...(q.options?.length ? { options: q.options } : {}) } : undefined;
+      if (message !== undefined) flow("agent_message", { intent: res.actions.some((a) => a.type !== "ask_user") ? "action" : "question", result: res.provenance === "live" ? "live" : "rules" });
+      say(res.reply, res.provenance === "live" ? "live" : "simulated", undefined, res.actions);
+    } catch (error) {
+      if (message !== undefined) flow("agent_message", { intent: "question", result: "error", error_code: errorCode(error) });
+      say(failureCopy(error, "The agent is unavailable. Try again in a moment."));
     } finally {
       setBusy(undefined);
     }
   };
 
+  /** Apply the chosen actions in order, then tell the agent what actually happened. */
+  const apply = async (chosen: PlanItem[]) => {
+    if (busy) return;
+    const todo = chosen.filter((it) => it.action.type !== "ask_user" && !itemsRef.current[it.key]);
+    if (!todo.length) return;
+    const results: ActionResult[] = [];
+    for (const it of todo) {
+      setItem(it.key, { status: "applying" });
+      const r = await runAction(it.action);
+      setItem(it.key, { status: r.status, code: r.code });
+      results.push(r);
+    }
+    setBusy(undefined);
+    lastResults.current = results;
+    announce(`${results.filter((r) => r.status === "applied").length} of ${results.length} changes applied.`);
+    await turn(undefined, results);
+  };
   const addWeather = () => {
     const facts = stubRef.current.event.facts;
     const i = facts.findIndex((f) => f.id === "weather");
@@ -146,7 +237,7 @@ export function AgentChat(props: { stub: Stub; onChange: (s: Stub) => void; /** 
       say("No weather for this date yet. It stays pending until we can confirm it.", "simulated", "pending");
       return;
     }
-    updateFact(i, { kept: true });
+    updateFact(factKey(facts[i]), { kept: true });
     flow("agent_message", { intent: "weather", result: "rules" });
     say(`Added the weather: ${f.label}. Source: ${f.source}.`, "simulated", f.provenance);
   };
@@ -173,32 +264,20 @@ export function AgentChat(props: { stub: Stub; onChange: (s: Stub) => void; /** 
     if (!text || busy) return;
     userSays(text);
     const t = text.toLowerCase();
-    if (/\bweather\b|\brain\b|\btemperature\b/.test(t) && !/\bmood|remix|art\b/.test(t)) return addWeather();
-    if (/\bphoto\b|\bpicture\b|\bimage of mine\b/.test(t)) {
+    const answering = pendingRef.current?.options?.some((o) => o.toLowerCase() === t);
+    if (!answering && /\bweather\b|\brain\b|\btemperature\b/.test(t) && !/\bmood|remix|art\b/.test(t)) {
+      pendingRef.current = undefined;
+      return addWeather();
+    }
+    if (!answering && /\bphoto\b|\bpicture\b|\bimage of mine\b/.test(t)) {
+      pendingRef.current = undefined;
       flow("agent_message", { intent: "photo", result: "rules" });
       say("Choose a photo to add to your stub.");
       fileRef.current?.click();
       return;
     }
-    if (t.endsWith("?")) {
-      setBusy("Thinking…");
-      try {
-        const live = await askAgent(stubRef.current, text);
-        // a live model reply, or the rules when no model answers (204): never the question or the reply
-        flow("agent_message", { intent: "question", result: live ? "live" : "rules" });
-        if (live) return say(live.reply, "live");
-        return say("I can keep facts, fix unsure ones and remix the art. Try “Make it moodier”.");
-      } catch (error) {
-        flow("agent_message", { intent: "question", result: "error", error_code: errorCode(error) });
-        return say(failureCopy(error, "The agent is unavailable. Try again in a moment."));
-      } finally {
-        setBusy(undefined);
-      }
-    }
-    flow("agent_message", { intent: "remix", result: "rules" });
-    return remix(text);
+    return turn(text.slice(0, 400), lastResults.current);
   };
-
   useEffect(() => {
     if (sentInitial.current || !props.initial) return;
     sentInitial.current = true;
@@ -206,6 +285,7 @@ export function AgentChat(props: { stub: Stub; onChange: (s: Stub) => void; /** 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const state = summarize(stub);
   const facts = stub.event.facts;
   const keptCount = facts.filter((f) => f.kept).length;
 
@@ -232,16 +312,16 @@ export function AgentChat(props: { stub: Stub; onChange: (s: Stub) => void; /** 
                     : `No facts found for ${stub.event.title} yet.`}
                 </p>
                 <ul className={styles.facts}>
-                  {facts.map((f, i) => {
-                    const unsure = f.confidence < 0.8 && f.provenance !== "pending" && !activeCorrection(stub, f.id);
+                  {facts.map((f) => {
+                    const unsure = f.confidence < 0.8 && f.provenance !== "pending" && !activeCorrection(stub, factKey(f));
                     return (
-                      <li key={`${f.id}-${i}`} className={styles.fact} data-unsure={unsure || undefined}>
+                      <li key={factKey(f)} className={styles.fact} data-unsure={unsure || undefined}>
                         <div className={styles.factRow}>
                           <span className={styles.factLabel}>
                             {f.label}
                             <SourceMark p={f.provenance} />
                           </span>
-                          <Tag pressed={!!f.kept} disabled={f.provenance === "pending"} onClick={() => updateFact(i, { kept: !f.kept })}>
+                          <Tag pressed={!!f.kept} disabled={f.provenance === "pending"} onClick={() => updateFact(factKey(f), { kept: !f.kept })}>
                             {f.kept ? "Kept" : "Keep on stub"}
                           </Tag>
                         </div>
@@ -260,9 +340,9 @@ export function AgentChat(props: { stub: Stub; onChange: (s: Stub) => void; /** 
                             {f.alternatives?.length ? (
                               <Tags label="Alternatives">
                                 {f.alternatives.map((alt) => {
-                                  const isDate = /^\d{4}-\d{2}-\d{2}$/.test(alt);
+                                  const isDate = f.id === "date" && isIsoDate(alt);
                                   return (
-                                    <Tag key={alt} pressed={f.value === alt && !!activeCorrection(stub, f.id)} onClick={() => pickAlternative(i, alt)}>
+                                    <Tag key={alt} pressed={f.value === alt && !!activeCorrection(stub, factKey(f))} onClick={() => pickAlternative(factKey(f), alt)}>
                                       {isDate ? shortDate(alt) : alt}
                                     </Tag>
                                   );
@@ -270,7 +350,7 @@ export function AgentChat(props: { stub: Stub; onChange: (s: Stub) => void; /** 
                               </Tags>
                             ) : (
                               <Tags>
-                                <Tag onClick={() => commit(applyCorrection(stubRef.current, { factId: f.id, value: f.value }))}>Yes, keep it</Tag>
+                                <Tag onClick={() => commit(applyCorrection(stubRef.current, { factId: factKey(f), value: f.value }))}>Yes, keep it</Tag>
                               </Tags>
                             )}
                           </>
@@ -285,12 +365,57 @@ export function AgentChat(props: { stub: Stub; onChange: (s: Stub) => void; /** 
               </div>
             );
           }
+          const proposals = (m.items ?? []).filter((it) => it.action.type !== "ask_user");
+          const questions = (m.items ?? []).filter((it): it is PlanItem & { action: Extract<Action, { type: "ask_user" }> } => it.action.type === "ask_user");
+          const waiting = proposals.filter((it) => !items[it.key]);
           return (
             <div key={m.id} className={`${styles.msg} ${styles.agent}`}>
               <p>
                 {m.text}
                 {m.provenance ? <SourceMark p={m.provenance} /> : null}
               </p>
+              {proposals.length ? (
+                <ul className={styles.actions} aria-label="Proposed changes">
+                  {proposals.map((it) => {
+                    const st = items[it.key];
+                    return (
+                      <li key={it.key} className={styles.action} data-status={st?.status}>
+                        <span className={styles.actionText}>{describeAction(it.action, state, stub.personal.note)}</span>
+                        {st && st.status !== "applying" ? (
+                          <span className={styles.actionState}>{st.status === "applied" ? "Applied" : st.status === "failed" ? "Failed" : "Not applied"}</span>
+                        ) : (
+                          <PaperButton className={styles.apply} disabled={!!busy || !!st} onClick={() => void apply([it])}>
+                            {st ? "Applying…" : "Apply"}
+                            <span className="visually-hidden"> {describeAction(it.action, state, stub.personal.note)}</span>
+                          </PaperButton>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : null}
+              {/* two remixes are alternatives (a fallback or a retry), not a set to apply together */}
+              {waiting.length > 1 && proposals.filter((it) => it.action.type === "remix_art").length < 2 ? (
+                <div className={styles.applyAll}>
+                  <PaperButton disabled={!!busy} onClick={() => void apply(waiting)}>
+                    Apply all {waiting.length}
+                  </PaperButton>
+                </div>
+              ) : null}
+              {questions.map((q) => (
+                <div key={q.key} className={styles.question}>
+                  <p>{q.action.question}</p>
+                  {q.action.options?.length ? (
+                    <Tags label="Answers">
+                      {q.action.options.map((o) => (
+                        <Tag key={o} disabled={!!busy} onClick={() => void handle(o)}>
+                          {o}
+                        </Tag>
+                      ))}
+                    </Tags>
+                  ) : null}
+                </div>
+              ))}
             </div>
           );
         })}

@@ -18,5 +18,36 @@
     "cross-project-b.json",
     "tenant-a-owner.json",
     "tenant-b-owner.json"
-  ]
+  ],
+  "v2": {
+    "schema": "ticketstub.context/2",
+    "dir": "v2",
+    "fixtures": [
+      "v2/finance-read-allowed.json",
+      "v2/finance-export-allowed.json",
+      "v2/finance-command-denied.json",
+      "v2/finance-read-denied.json",
+      "v2/finance-export-denied.json",
+      "v2/finance-command-allowed.json",
+      "v2/finance-guest-denied.json",
+      "v2/injective-account.json",
+      "v2/injective-guest.json",
+      "v2/economic-sandbox.json",
+      "v2/economic-none.json",
+      "v2/economic-paid-test.json",
+      "v2/economic-live.json",
+      "v2/boundary-actor-128.json",
+      "v2/boundary-actor-129.json",
+      "v2/boundary-actor-raw-128.json",
+      "v2/boundary-project-128.json",
+      "v2/boundary-project-129.json",
+      "v2/boundary-project-raw-128.json",
+      "v2/wrong-audience.json",
+      "v2/right-audience.json",
+      "v2/revoked-membership.json",
+      "v2/project-membership-removed.json",
+      "v2/stale-revision.json"
+    ],
+    "malformed": "v2/malformed-shapes.json"
+  }
 }

@@ -21,6 +21,15 @@ export const VENDORED_FILES = [
   "src/observability/private/neatlogs-otlp.js",
   "src/observability/private/neatlogs-delivery-queue.js",
   "src/observability/private/neatlogs-sdk-mapper.js",
+  "src/decisions/index.js",
+  "src/decisions/index.d.ts",
+  "src/development/index.js",
+  "src/development/index.d.ts",
+  "src/adapters/jev/http-transport.js",
+  "src/adapters/jev/address-policy.js",
+  "src/adapters/jev/request-validation.js",
+  "src/adapters/jev/response-validation.js",
+  "src/adapters/jev/safe-json.js",
 ];
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");

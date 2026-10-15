@@ -37,6 +37,9 @@ delete process.env.ANTHROPIC_API_KEY;
 delete process.env.OPENAI_API_KEY;
 delete process.env.TICKETSTUB_OPS_TELEMETRY;
 const {POST}=await import('../src/app/api/research/route.ts');
+const {setTransport,createPinnedTransport}=await import('../src/server/intake-url.ts');
+// Offline: the pinned socket transport is replaced by a stub of globalThis.fetch (redirects are followed by fetchPublic itself).
+setTransport((url,init)=>globalThis.fetch(url.href,{...init,redirect:'manual'}));
 const {POST: artPost}=await import('../src/app/api/art/route.ts');
 const {buildArtPrompt}=await import('../src/customer/studio/research/artPrompt.ts');
 const {memoryCollector,setOpsSink}=await import('../src/server/observability/sink.ts');
@@ -53,7 +56,7 @@ async function run(sequence,{status=200,expectedOutcomes,timeoutMs=[8000,8000]}=
   AbortSignal.timeout=ms=>{seen.push(ms);return oldTimeout(ms);};
   globalThis.fetch=async (url,init)=>{
     assert.equal(url,'https://example.com/review');
-    assert.equal(init.redirect,'follow');assert.equal(init.cache,'no-store');
+    assert.equal(init.redirect,'manual');assert.equal(init.cache,'no-store');
     signals.push(init.signal);
     const step=sequence[calls++];
     assert.ok(step,`unexpected fetch ${calls}`);
@@ -96,8 +99,11 @@ test('real loopback 503 stream is closed after recovery',async()=>{
     else {res.writeHead(200,{'content-type':'text/html'});res.end(html);}
   });
   server.listen(0,'127.0.0.1');await once(server,'listening');
+  // Real sockets: the pinned transport, with a local name and loopback allowed for this test only.
+  const pinned=createPinnedTransport({resolver:()=>async()=>['127.0.0.1'],allowed:a=>a==='127.0.0.1'});
+  setTransport((url,init)=>pinned(new URL(`http://loopback.example.com:${server.address().port}${url.pathname}`),init));
   try{
-    const res=await POST(req({url:`http://127.0.0.1:${server.address().port}/review`}));
+    const res=await POST(req({url:'http://loopback.example.com/review'}));
     assert.equal(res.status,200);assert.equal(calls,2);
     await new Promise(resolve=>setTimeout(resolve,25));
     assert.equal(firstClosed,true,`retry succeeded while discarded 503 stream remains live; writableEnded=${firstResponse.writableEnded}`);

@@ -1,0 +1,110 @@
+{
+  "reviewedHead": "701fa67b4077679d1451627e1dcd67960609173e",
+  "parentPublishedHead": "9e826eb6c91b621952e162648d89a14d9c83b377",
+  "implementationHead": "c7be4a1379727ffa93d016c3e5432cecc8c4aa95",
+  "findings": {
+    "APP-REVIEW-001": "Every completed sync publishes a result; the signed-in account UI keeps local-write failure visible, exposes keyboard retry, and clears it after successful recovery. Mount/focus/change paths tested.",
+    "APP-REVIEW-002": "Contiguous confidence runs preserve original selected-fact order. A(sure),B(unsure),C(sure) identity/order is asserted on each face across all five editions and in production React DOM."
+  },
+  "acceptance": "not_recorded",
+  "canonicalAssembly": false,
+  "providerMode": "offline synthetic; production React account tests explicitly substitute auth/sync responses and inject a local Storage fault",
+  "sourceDigests": [
+    {
+      "path": "scripts/check-facts.mjs",
+      "sha256": "3fcf71c4a9b2de4de56dcb74225c8109997574395a16fa34d2a19021a34a1f6a"
+    },
+    {
+      "path": "src/customer/account/AccountRoot.tsx",
+      "sha256": "565efb25abf161f5051f6ef9770e7ec98fe4daff30fc63c98f2c4c61846fc5b1"
+    },
+    {
+      "path": "src/customer/account/account.module.css",
+      "sha256": "324ece6248a3233726e6f50855f674c23610c2530bccd59ac1cf30564921b1c1"
+    },
+    {
+      "path": "src/customer/account/sync.ts",
+      "sha256": "c7f346e10c48a07ec06ad4644c31217d6616b8ccdc42e57e790d862b92280d20"
+    },
+    {
+      "path": "src/customer/studio/stub/StubView.tsx",
+      "sha256": "610f4562b09c73c1fb7668f981f4e7dfec448bbf6dfa47c017681b73a632f849"
+    },
+    {
+      "path": "tests/analytics-flows.test.mjs",
+      "sha256": "8bb9288a497eccbd57fc24eb988958817e2b6e3e6fdbeef56286a984ad43ef1b"
+    },
+    {
+      "path": "tests/stub-weather-credit.test.mjs",
+      "sha256": "42c4d4b885d6c611ec9d3c73248bf237bd1add0ce98caa6164752611bebefc5b"
+    }
+  ],
+  "evidenceDirectory": "/tmp/ticketstub-review-fixes",
+  "logDigests": [
+    {
+      "file": "targeted.log",
+      "sha256": "02fb19ec9c3e84ad83acb1d2e05543d60babb1d0468e62bff229c2ef39243519"
+    },
+    {
+      "file": "units.log",
+      "sha256": "e87d5b359ec9cdfc954ca798c2c9c6814687fe96514d3336d5f85005173ec7e4"
+    },
+    {
+      "file": "lint.log",
+      "sha256": "6a756bb8c63a2bc602e165a4356205bf6667774ced48bd3a895feba913894c62"
+    },
+    {
+      "file": "final-build.log",
+      "sha256": "dd188c048b0f496e7fc589d73f00ca0d03dbf2cb493dd226b67481f0d984d16b"
+    },
+    {
+      "file": "final-types.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "final-targeted.log",
+      "sha256": "a20ff6c105c47f1ef94f8979991de172b87528d20b7d4d71cf3a53e923fa930b"
+    },
+    {
+      "file": "final-lint.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "facts.log",
+      "sha256": "e6a69bf554e4c5d06459445177b79373149f25aed4cf1eb324ad77f95a3eae3b"
+    },
+    {
+      "file": "facts-final.log",
+      "sha256": "490fa0bcb975d5f1e17e3af5405bf0dadfa7c3548d95fe2d3975db552742e172"
+    }
+  ],
+  "checks": {
+    "fullUnitsCorePatch": {
+      "passed": 1031,
+      "failed": 0,
+      "skipped": 1
+    },
+    "finalTargeted": {
+      "passed": 44,
+      "failed": 0
+    },
+    "finalFacts": {
+      "childPassed": 88,
+      "wrapperPassed": 90,
+      "failed": 0,
+      "skipped": 0,
+      "outboundAttempts": 0
+    },
+    "finalBuildExit": 0,
+    "finalTypesExit": 0,
+    "fullLintExit": 0,
+    "existingLintWarnings": 1,
+    "finalChangedFilesLintExit": 0
+  },
+  "provenance": [
+    "Full units ran on the core fix before the final responsive toast CSS and singular-description cleanup. Final build, targeted tests, typecheck and production facts suite ran after those adjustments.",
+    "Final working-tree executable bytes were committed unchanged as implementationHead. Build-time Git metadata may name the published parent; the source digests identify the checked bytes.",
+    "The following evidence-only commit does not change executable files.",
+    "No rerun of canonical integration, physical print acceptance, live authentication/provider/host behavior, or supported screen-reader acceptance is claimed. No deployment, merge or issue closure."
+  ]
+}

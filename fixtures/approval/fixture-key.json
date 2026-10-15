@@ -1,5 +1,5 @@
 {
-  "warning": "FIXTURE ONLY. NEVER PRODUCTION. Public on purpose: it signs test approvals that carry mode fixture. Never set it as CONTEXT_SECRET; the server refuses any secret containing FIXTURE-ONLY.",
+  "warning": "FIXTURE ONLY. NEVER PRODUCTION. Public on purpose: it signs test approvals that carry mode fixture. Never put it in APPROVAL_SIGNING_KEYS or CONTEXT_SECRET; the server refuses any key containing FIXTURE-ONLY and any kid starting with fixture.",
   "kid": "fixture",
   "alg": "HS256",
   "key": "FIXTURE-ONLY-NEVER-PRODUCTION--ticketstub-approval-key-v1"

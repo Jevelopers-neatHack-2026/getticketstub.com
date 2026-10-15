@@ -1,4 +1,5 @@
 "use client";
+import { factKey } from "../facts/identity";
 // The stub. Three layers per face:
 //   ART       currentVersion(stub).art (image, or procedural from seed). Never contains text.
 //   LIVE TYPE title / subtitle / place+date / kept facts as a fact line / unsure facts as pulsing chips.
@@ -7,6 +8,7 @@
 /* eslint-disable @next/next/no-img-element */
 import { useCallback, useId, useMemo, useRef, type CSSProperties, type MouseEvent, type ReactNode } from "react";
 import { activeCorrection } from "../facts/corrections";
+import { includedExtraFacts } from "../facts/inclusion";
 import { currentVersion, type ArtLayer, type Edition, type Fact, type Stub } from "../types";
 import { EDITION_META, type EditionMeta } from "./editions";
 import { Foil, foilTextClass } from "./Foil";
@@ -20,6 +22,8 @@ export type StubElement = "title" | "subtitle" | "facts" | "art";
 export interface StubViewProps {
   stub: Stub;
   flipped?: boolean;
+  /** Export mode (src/customer/studio/download): one face, flat on the page, as printed. No tilt, flip, light, shadow or animation. */
+  still?: "front" | "back";
   tilt?: boolean;
   size?: "sm" | "md" | "lg";
   selected?: string | null;
@@ -72,6 +76,20 @@ function initials(name: string): string {
   return (parts[0][0] + (parts.length > 1 ? parts[parts.length - 1][0] : "")).toUpperCase();
 }
 
+/** The paper's noise as an inline SVG, for export mode only: the screen tiles it as a CSS data-URL background, which the PNG rasteriser cannot carry (its "#" cuts the URL). Same filter, same alpha. */
+function GrainNoise() {
+  const id = `g${useId().replace(/[^a-zA-Z0-9]/g, "")}`;
+  return (
+    <svg width="100%" height="100%" aria-hidden="true" style={{ position: "absolute", inset: 0 }}>
+      <filter id={id} x="0" y="0" width="100%" height="100%">
+        <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="3" stitchTiles="stitch" />
+        <feColorMatrix values="0 0 0 0 0.55 0 0 0 0 0.5 0 0 0 0 0.42 0 0 0 0.55 0" />
+      </filter>
+      <rect width="100%" height="100%" filter={`url(#${id})`} />
+    </svg>
+  );
+}
+
 /* ------------------------------------------------------------------ */
 /* shared render context                                               */
 
@@ -81,8 +99,7 @@ interface Ctx {
   meta: EditionMeta;
   date: DateParts | null;
   place: string;
-  kept: Fact[];
-  unsure: Fact[];
+  facts: Fact[];
   show: (key: string) => boolean;
   foilTitle: boolean;
   selected?: string | null;
@@ -141,7 +158,7 @@ function Admit({ c, className }: { c: Ctx; className?: string }) {
 function Chip({ c, f }: { c: Ctx; f: Fact }) {
   if (!c.onChipTap)
     return (
-      <span className={s.chip}>
+      <span className={s.chip} data-fact-id={factKey(f)}>
         {f.label}
         <span className={s.chipQ} aria-hidden="true">?</span>
       </span>
@@ -150,10 +167,11 @@ function Chip({ c, f }: { c: Ctx; f: Fact }) {
     <button
       type="button"
       className={s.chip}
+      data-fact-id={factKey(f)}
       aria-label={`Unsure: ${f.label}. Tap to check.`}
       onClick={(e) => {
         e.stopPropagation();
-        c.onChipTap?.(f.id);
+        c.onChipTap?.(factKey(f));
       }}
     >
       {f.label}
@@ -166,7 +184,7 @@ function Chip({ c, f }: { c: Ctx; f: Fact }) {
 // "live" matters: demo and pending weather also name Open-Meteo as their source. A value the person typed over the
 // research is theirs, not Open-Meteo's. Public projections carry no correction history, so there it stays credited.
 const fromOpenMeteo = (stub: Stub) => (f: Fact) =>
-  f.id === "weather" && f.provenance === "live" && f.source.startsWith("Open-Meteo") && activeCorrection(stub, f.id)?.kind !== "correct";
+  f.id === "weather" && f.provenance === "live" && f.source.startsWith("Open-Meteo") && activeCorrection(stub, factKey(f))?.kind !== "correct";
 
 function WeatherCredit() {
   return <span className={s.weatherCredit}>Weather data by Open-Meteo.com</span>;
@@ -174,23 +192,29 @@ function WeatherCredit() {
 
 function Facts({ c, className, sep = " · ", upper }: { c: Ctx; className?: string; sep?: string; upper?: boolean }) {
   if (!c.show("facts")) return null;
-  const line = c.kept.map((f) => f.label).join(sep);
-  if (!line && !c.unsure.length) return null;
+  if (!c.facts.length) return null;
+  // Keep contiguous runs in source order; uncertainty changes presentation, not position.
+  const runs: { sure: boolean; facts: Fact[] }[] = [];
+  for (const fact of c.facts) {
+    const sure = fact.confidence >= 0.8;
+    const last = runs[runs.length - 1];
+    if (last?.sure === sure) last.facts.push(fact);
+    else runs.push({ sure, facts: [fact] });
+  }
   return (
     <div className={cx(s.facts, className)}>
-      {line && (
-        <Pick c={c} el="facts" className={s.factLine}>
-          {upper ? line.toUpperCase() : line}
+      {runs.map((run) => run.sure ? (
+        <Pick key={factKey(run.facts[0])} c={c} el="facts" className={s.factLine}>
+          {run.facts.map((f, i) => <span key={factKey(f)} data-fact-id={factKey(f)}>{i > 0 ? sep : ""}{upper ? f.label.toUpperCase() : f.label}</span>)}
         </Pick>
-      )}
-      {c.unsure.length > 0 && (
-        <span className={s.chips}>
-          {c.unsure.map((f) => (
-            <Chip key={f.id} c={c} f={f} />
+      ) : (
+        <span key={factKey(run.facts[0])} className={s.chips}>
+          {run.facts.map((f) => (
+            <Chip key={factKey(f)} c={c} f={f} />
           ))}
         </span>
-      )}
-      {[...c.kept, ...c.unsure].some(fromOpenMeteo(c.stub)) && <WeatherCredit />}
+      ))}
+      {c.facts.some(fromOpenMeteo(c.stub)) && <WeatherCredit />}
     </div>
   );
 }
@@ -200,7 +224,7 @@ function Facts({ c, className, sep = " · ", upper }: { c: Ctx; className?: stri
 
 function ArtLayers({ art, edition }: { art: ArtLayer; edition: Edition }) {
   if (art.kind === "image" && art.src) {
-    const img = <img className={s.artImg} src={art.src} alt="" draggable={false} decoding="async" />;
+    const img = <img className={s.artImg} src={art.src} alt="" draggable={false} decoding="sync" />;
     if (edition === "risograph")
       return (
         <>
@@ -492,7 +516,7 @@ function BackList({ c }: { c: Ctx }) {
       </ul>
     );
   }
-  const shown = e.programme?.length ? [] : e.facts.filter((f) => c.show(f.id));
+  const shown = e.programme?.length ? [] : includedExtraFacts(c.stub);
   // The list clips at its last row, so the credit takes a row of the cap rather than overflowing. Weather that would
   // land in that last row, with no room left for its credit, is left off the back instead.
   const om = fromOpenMeteo(c.stub);
@@ -502,9 +526,9 @@ function BackList({ c }: { c: Ctx }) {
   return (
     <ul className={s.backList}>
       {items.map((p, i) => (
-        <li key={i}>
+        <li key={!e.programme?.length && listed[i] ? factKey(listed[i]) : i}>
           <span className={s.backIdx}>·</span>
-          <span>{p}</span>
+          <span data-fact-id={!e.programme?.length ? (listed[i] ? factKey(listed[i]) : undefined) : undefined}>{p}</span>
         </li>
       ))}
       {credited && (
@@ -574,7 +598,7 @@ const FRONTS: Record<Edition, (p: { c: Ctx }) => ReactNode> = {
   classic: ClassicFront,
 };
 
-export function StubView({ stub, flipped = false, tilt = false, size = "md", selected = null, onSelect, onChipTap, className }: StubViewProps) {
+export function StubView({ stub, flipped = false, still, tilt = false, size = "md", selected = null, onSelect, onChipTap, className }: StubViewProps) {
   const tiltRef = useRef<HTMLDivElement | null>(null);
   const { requestGyro } = useTilt(tiltRef, tilt);
   const version = currentVersion(stub);
@@ -585,15 +609,14 @@ export function StubView({ stub, flipped = false, tilt = false, size = "md", sel
   const c: Ctx = useMemo(() => {
     const hidden = new Set(stub.personal.hiddenFields);
     const show = (k: string) => !hidden.has(k);
-    const facts = e.facts.filter((f) => show(f.id));
+    const facts = includedExtraFacts(stub);
     return {
       stub,
       edition,
       meta,
       date: parseDate(e.dateISO),
       place: [e.venue, e.city].filter(Boolean).join(", "),
-      kept: facts.filter((f) => f.kept && f.confidence >= 0.8),
-      unsure: facts.filter((f) => f.confidence < 0.8),
+      facts,
       show,
       foilTitle: stub.personal.foilTitle,
       selected,
@@ -621,17 +644,18 @@ export function StubView({ stub, flipped = false, tilt = false, size = "md", sel
   } as CSSProperties;
 
   // The name is short (what it is); the description carries the rest (when, where, which facts, how it is finished).
-  const label = `${e.title}, ${meta.label} edition stub${flipped ? ", back" : ""}`;
+  const label = `${e.title}, ${meta.label} edition stub${flipped || still === "back" ? ", back" : ""}`;
+  const unsureCount = c.facts.filter((f) => !(f.confidence >= 0.8)).length;
   const description = [
     e.subtitle,
     e.venue,
     e.city,
     c.date?.long,
     stub.personal.guestName ? `Admits ${stub.personal.guestName}` : undefined,
-    c.kept.length ? `Facts on the stub: ${c.kept.map((f) => f.label).join(", ")}` : undefined,
-    c.unsure.length ? `${c.unsure.length} unsure ${c.unsure.length === 1 ? "fact" : "facts"} to check` : undefined,
+    c.facts.length ? `Facts on the stub: ${c.facts.map((f) => f.label).join(", ")}` : undefined,
+    unsureCount ? `${unsureCount} unsure ${unsureCount === 1 ? "fact" : "facts"} to check` : undefined,
     `${stub.finish} finish`,
-    flipped ? "Showing the back" : "Showing the front",
+    flipped || still === "back" ? "Showing the back" : "Showing the front",
   ]
     .filter(Boolean)
     .join(". ");
@@ -639,7 +663,7 @@ export function StubView({ stub, flipped = false, tilt = false, size = "md", sel
 
   return (
     <figure
-      className={cx(s.stub, s[edition], s[meta.orientation], flipped && s.flipped, className)}
+      className={cx(s.stub, s[edition], s[meta.orientation], flipped && !still && s.flipped, still && s.still, still === "back" && s.stillBack, className)}
       style={vars}
       aria-label={label}
       aria-describedby={descId}
@@ -656,13 +680,17 @@ export function StubView({ stub, flipped = false, tilt = false, size = "md", sel
           <div className={cx(s.face, s.front)} aria-hidden={flipped || undefined}>
             <div className={s.paper} />
             <Front c={c} />
-            <div className={s.grain} aria-hidden="true" />
+            <div className={s.grain} aria-hidden="true">
+              {still && <GrainNoise />}
+            </div>
             <Foil finish={stub.finish} seed={stub.id} />
           </div>
           <div className={cx(s.face, s.back)} aria-hidden={!flipped || undefined}>
             <div className={s.paper} />
             <Back c={c} />
-            <div className={s.grain} aria-hidden="true" />
+            <div className={s.grain} aria-hidden="true">
+              {still && <GrainNoise />}
+            </div>
             <Foil finish="matte" seed={stub.id + ":back"} />
           </div>
         </div>

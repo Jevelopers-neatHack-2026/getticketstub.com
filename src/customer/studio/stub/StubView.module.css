@@ -97,6 +97,44 @@
   }
 }
 
+/* Export mode (the PNG download): one face, flat and still. What stays is what is printed: paper, grain, edition edge,
+   art, type, foil/holo stock at rest. What goes is the screen: tilt, flip, window light, the desk shadow, the chips' pulse. */
+.still .tilt {
+  transform: none;
+}
+.still .flipper {
+  transform: none;
+  transition: none;
+  filter: none;
+}
+.still .face {
+  transition: none;
+}
+.still .face::after {
+  display: none;
+}
+.still .chip {
+  animation: none;
+  box-shadow: none;
+}
+.still .grain {
+  background-image:
+    radial-gradient(120% 90% at 30% 20%, rgb(255 255 255 / 0.25), transparent 60%),
+    radial-gradient(140% 120% at 100% 100%, rgb(120 90 50 / 0.12), transparent 60%);
+  background-size: 100% 100%, 100% 100%;
+}
+.still .back {
+  transform: none;
+  visibility: visible;
+}
+.still .back,
+.stillBack .front {
+  display: none;
+}
+.stillBack .back {
+  display: block;
+}
+
 /* ---------- material ---------- */
 .paper {
   position: absolute;
@@ -220,9 +258,8 @@
   min-width: 0;
 }
 .factLine {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
+  overflow-wrap: anywhere;
   max-width: 100%;
 }
 /* Small print under the weather: its own line, unstyled by the edition. cqw follows the stub's width, so the

@@ -1,8 +1,11 @@
+import { sourceEvent } from "../facts/identity";
 // Browser-side calls to the research, art and agent routes. Errors carry user-facing copy.
 import type { ArtLayer, EventData, Stub } from "../types";
 import { currentVersion } from "../types";
+import { normalizeEventFacts } from "../facts/identity";
 import { codeOf, messageFor } from "@/customer/feedback-messages/messages";
 import { track, type EventParams } from "@/customer/analytics/track";
+import { AGENT_SCHEMA, parsePlan, type AgentRequest, type AgentResponse } from "../agent/protocol";
 
 const READ_ERROR = "We couldn't read that link.";
 
@@ -32,7 +35,9 @@ function errorClass(code: string | undefined, status: number): NonNullable<ApiCa
     case "bad_request":
     case "bad_json":
     case "too_large":
+    case "unsupported_input":
       return "invalid_input";
+    case "unsupported_url":
     case "unreadable_link":
     case "demo_only":
       return "unsupported_url";
@@ -133,7 +138,7 @@ export function pickEvent(data: EventData): EventData {
       },
     ];
   }
-  return event;
+  return normalizeEventFacts(event);
 }
 
 /** Research one event from a link (or a demo keyword). Throws Error(message) on failure. */
@@ -167,7 +172,7 @@ export interface RemixResult {
 }
 
 /** Remix the art layer for a stub, and say so when the daily cap turned it into procedural art. */
-export async function remixArtNoted(stub: Stub, vibe?: string): Promise<RemixResult> {
+export async function remixArtNoted(stub: Stub, vibe?: string, opts: { simulate?: "failure" } = {}): Promise<RemixResult> {
   const v = currentVersion(stub);
   const seed = Math.floor(Math.random() * 2_147_483_647);
   const started = performance.now();
@@ -176,7 +181,7 @@ export async function remixArtNoted(stub: Stub, vibe?: string): Promise<RemixRes
     res = await fetch("/api/art", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ event: stub.event, vibe, seed, edition: v?.edition, first: false }),
+      body: JSON.stringify({ event: sourceEvent(stub.event), vibe, seed, edition: v?.edition, first: false, ...(opts.simulate ? { simulate: opts.simulate } : {}) }),
     });
   } catch {
     reportCall("art", started, { result: "failure" });
@@ -217,7 +222,7 @@ export async function askAgent(stub: Stub, message: string): Promise<{ reply: st
     res = await fetch("/api/agent", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ event: stub.event, message }),
+      body: JSON.stringify({ event: sourceEvent(stub.event), message }),
     });
   } catch {
     reportCall("agent", started, { result: "failure" });
@@ -236,4 +241,15 @@ export async function askAgent(stub: Stub, message: string): Promise<{ reply: st
   const live = !!data.reply && data.provenance === "live";
   reportCall("agent", started, live ? { status: res.status, result: "success", mode: "live" } : { status: res.status, result: "fallback", mode: "fallback" });
   return live ? { reply: data.reply as string, provenance: "live" } : undefined;
+}
+
+/**
+ * One agent turn over the action protocol: a plan for a message, or the follow-up to observed results. The answer is
+ * validated here too (the same rules as the server), so a malformed reply never becomes a chip. Throws Error(message).
+ */
+export async function planAgent(req: AgentRequest): Promise<AgentResponse> {
+  const data = await postJson<Record<string, unknown>>("agent", "/api/agent", req, "The agent is unavailable. Try again in a moment.");
+  const plan = parsePlan({ reply: data.reply, actions: data.actions }, { allowSimulate: true });
+  if (!plan.ok) throw Object.assign(new Error("The agent sent something we could not use. Try again in a moment."), { code: "unavailable" });
+  return { schema: AGENT_SCHEMA, ...plan.value, provenance: data.provenance === "live" ? "live" : "rules" };
 }

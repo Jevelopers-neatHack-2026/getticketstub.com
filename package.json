@@ -10,6 +10,8 @@
     "typecheck": "tsc --noEmit",
     "smoke:production": "node scripts/smoke-production.mjs",
     "verify:product": "node scripts/verify-product.mjs",
+    "verify:release": "node scripts/verify-release.mjs",
+    "verify:creative-host": "TICKETSTUB_OFFLINE_POSTGRES=1 node --test tests/creative-host.test.mjs",
     "test": "node --test tests/*.test.mjs"
   },
   "engines": {
@@ -18,11 +20,19 @@
   },
   "packageManager": "npm@11.16.0",
   "dependencies": {
+    "@jevelopers/cost-intelligence": "file:src/server/vendor/cost-intelligence/runtime.tgz",
+    "creative-engine": "file:src/server/vendor/creative-engine/runtime.tgz",
+    "modern-screenshot": "4.7.0",
+    "motion": "^14.1.0",
     "next": "16.4.0",
     "react": "19.3.0",
-    "react-dom": "19.3.0"
+    "react-dom": "19.3.0",
+    "pg": "8.23.1",
+    "sharp": "0.35.5",
+    "three": "0.160.0"
   },
   "devDependencies": {
+    "@types/pg": "8.15.6",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",

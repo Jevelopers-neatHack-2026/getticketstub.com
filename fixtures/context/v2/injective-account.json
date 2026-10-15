@@ -1,0 +1,27 @@
+{
+  "fixture": "injective-account",
+  "description": "Raw id fxsame000000000001 as an account: actor and tenant are account:fxsame000000000001.",
+  "verifyAt": "2026-10-10T12:00:00.000Z",
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6InRpY2tldHN0dWIuY29udGV4dCJ9.eyJjdHgiOnsic2NoZW1hIjoidGlja2V0c3R1Yi5jb250ZXh0LzIiLCJpc3N1ZXIiOiJnZXR0aWNrZXRzdHViLmNvbSIsImF1ZGllbmNlIjoidGlja2V0c3R1Yi5maW5hbmNlIiwiYWN0b3IiOnsia2luZCI6ImFjY291bnQiLCJpZCI6ImFjY291bnQ6ZnhzYW1lMDAwMDAwMDAwMDAxIn0sInRlbmFudCI6eyJpZCI6ImFjY291bnQ6ZnhzYW1lMDAwMDAwMDAwMDAxIn0sInJvbGUiOiJvd25lciIsImNhcGFiaWxpdGllcyI6WyJhY2NvdW50LmRlbGV0ZSIsImFjY291bnQuZW1haWwuY2hhbmdlIiwiYWNjb3VudC5yZWFkIiwiYWdlbnQudXNlIiwiYXJ0LmdlbmVyYXRlIiwiY2xhaW0ucmVkZWVtIiwiY2xhaW0udmlldyIsImV2ZW50LmNyZWF0ZSIsImZpbGUucmVhZCIsIm9yZGVyLmNyZWF0ZSIsIm9yZGVyLnJlYWQiLCJzZXNzaW9uLnJldm9rZSIsInNoYXJlLmNyZWF0ZSIsInNoYXJlLnZpZXciLCJzdHViLmRyYWZ0Iiwid2FsbC5wdWJsaWMudmlldyIsIndhbGwucHVibGlzaCIsIndhbGwuc3luYyJdLCJtZW1iZXJzaGlwUmV2aXNpb24iOjEsInJldm9rZWQiOmZhbHNlLCJlbnZpcm9ubWVudCI6ImRldmVsb3BtZW50IiwiZWNvbm9taWNNb2RlIjoic2FuZGJveCIsImV2aWRlbmNlTW9kZSI6ImZpeHR1cmUiLCJpc3N1ZWRBdCI6IjIwMjYtMTAtMTBUMTI6MDA6MDAuMDAwWiIsImV4cGlyZXNBdCI6IjIwMjYtMTAtMTBUMTI6MDU6MDAuMDAwWiJ9LCJzaWQiOiJmeDAwMDAwMDAwMDAwMDAwMDAwMDAwMTMifQ.Fzz4GRAgIbjthC6ZfVeHaYcm8ZiP4lshvBN6Npgk9K8",
+  "state": {
+    "membershipRevision": 1,
+    "sessionLive": true,
+    "projectMember": true
+  },
+  "expect": {
+    "ok": true,
+    "role": "owner",
+    "tenant": "account:fxsame000000000001",
+    "modes": {
+      "environment": "development",
+      "economicMode": "sandbox",
+      "evidenceMode": "fixture"
+    },
+    "grants": {
+      "allow": [],
+      "deny": [
+        "finance.read"
+      ]
+    }
+  }
+}

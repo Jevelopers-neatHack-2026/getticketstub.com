@@ -1,4 +1,5 @@
 "use client";
+import { factKey, normalizeEventFacts } from "../facts/identity";
 // The printing reveal, shared by /new and the start section. It paints no ground of its own: the parent
 // supplies the paper desk (desk-surface). The stub feeds out of the printer slot with a slight curl and
 // the ink settles, while researched facts arrive as receipt lines. Tap a line to stamp it "Kept".
@@ -6,7 +7,7 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { newStub } from "../fixtures";
-import type { EventData, Fact } from "../types";
+import type { EventData } from "../types";
 import { StubView } from "@/customer/studio/stub/StubView";
 import { haptic, play, stopPrint, type PrintBurst } from "@/customer/studio/feedback";
 import { MarkLegend, SourceMark, Stamped, TearLink } from "@/customer/desk/Desk";
@@ -16,6 +17,7 @@ import { factGroup, type FactGroup } from "../facts/corrections";
 import { GROUP_TITLE, whenLabel } from "../facts/FactsReview";
 import { clock, errorCode, flow, since } from "@/customer/flows/events";
 import styles from "./Printing.module.css";
+import { useReducedMotion } from "@/customer/landing/MotionContext";
 
 const MIN_MS = 2500;
 const STAGGER_MS = 450;
@@ -24,23 +26,10 @@ const TAP_EXTEND_MS = 1500;
 const SKIP_AFTER_MS = 3000;
 const SETTLE_MS = 750;
 
-function usePrefersReducedMotion(): boolean {
-  const [reduced, setReduced] = useState(false);
-  useEffect(() => {
-    if (typeof window === "undefined" || !window.matchMedia) return;
-    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const update = () => setReduced(mq.matches);
-    update();
-    mq.addEventListener?.("change", update);
-    return () => mq.removeEventListener?.("change", update);
-  }, []);
-  return reduced;
-}
-
 /** Verified first, then what is in doubt, then what we could not find. Nothing is corrected yet while the stub is still printing. */
 const RECEIPT_ORDER: FactGroup[] = ["source", "unsure", "missing"];
 
-const keyOf = (f: Fact, i: number) => `${f.id}-${i}`;
+const keyOf = factKey;
 
 /** The paper leaves a thermal printer in runs, one per printed band, with short rests between. */
 function feedSchedule(seed: string): PrintBurst[] {
@@ -117,11 +106,11 @@ export function Printing(props: {
   const { input } = props;
   const entry = props.entry ?? "new_page";
   const source = input.event ? (props.picked ? "picked" : "demo") : input.url ? "link" : "query";
-  const reduced = usePrefersReducedMotion();
-  const [event, setEvent] = useState<EventData | undefined>(input.event);
+  const reduced = useReducedMotion();
+  const [event, setEvent] = useState<EventData | undefined>(() => input.event ? normalizeEventFacts(input.event) : undefined);
   const [staggered, setShown] = useState(0);
   const [kept, setKept] = useState<Record<string, boolean>>(() =>
-    Object.fromEntries((input.event?.facts ?? []).map((f, i) => [keyOf(f, i), !!f.kept])),
+    Object.fromEntries((event?.facts ?? []).map(f => [keyOf(f), !!f.kept])),
   );
   const [showSkip, setShowSkip] = useState(false);
   const [touched, setTouched] = useState<Record<string, boolean>>({});
@@ -165,31 +154,33 @@ export function Printing(props: {
     } catch {
       /* sound is optional */
     }
-    const skipTimer = window.setTimeout(() => setShowSkip(true), SKIP_AFTER_MS);
+    let stopped = false;
+    const skipTimer = window.setTimeout(() => { if (!stopped) setShowSkip(true); }, SKIP_AFTER_MS);
     let doneTimer: number | undefined;
 
     const finish = () => {
       const ev = eventRef.current;
-      if (!ev || finishingRef.current) return;
+      if (stopped || !ev || finishingRef.current) return;
       finishingRef.current = true;
       try {
         stopPrint();
         play("done");
-        haptic([18, 40, 28]);
+        if (!reducedRef.current) haptic([18, 40, 28]);
       } catch {
         /* feedback is optional */
       }
       setSettling(true);
       const final: EventData = {
         ...ev,
-        facts: ev.facts.map((f, i) => ({ ...f, kept: !!keptRef.current[keyOf(f, i)] })),
+        facts: ev.facts.map((f) => ({ ...f, kept: !!keptRef.current[keyOf(f)] })),
       };
       // the reveal runs from when the facts were in hand (research done, or handed in) to the ink settling
       flow("reveal_complete", { entry, skipped: skipRef.current, duration_ms: since(researchedAt.current ?? begunRef.current ?? clock()), fact_count: final.facts.length, kept_count: final.facts.filter((f) => f.kept).length });
-      doneTimer = window.setTimeout(() => onDoneRef.current(final), reducedRef.current ? 0 : SETTLE_MS);
+      doneTimer = window.setTimeout(() => { if (!stopped) onDoneRef.current(final); }, reducedRef.current ? 0 : SETTLE_MS);
     };
 
     const tick = window.setInterval(() => {
+      if (stopped) return;
       const ev = eventRef.current;
       if (!ev || finishingRef.current) return;
       if (skipRef.current) return finish();
@@ -205,9 +196,10 @@ export function Printing(props: {
     }, 100);
 
     return () => {
+      stopped = true;
       window.clearTimeout(skipTimer);
       window.clearInterval(tick);
-      if (doneTimer && !finishingRef.current) window.clearTimeout(doneTimer);
+      if (doneTimer !== undefined) window.clearTimeout(doneTimer);
       try {
         stopPrint();
       } catch {
@@ -242,7 +234,7 @@ export function Printing(props: {
         if (cancelled) return;
         researchedAt.current = clock();
         flow("research_complete", { entry, input_source: url ? "link" : "query", result: "success", duration_ms: since(asked), fact_count: ev.facts.length });
-        setKept(Object.fromEntries(ev.facts.map((f, i) => [keyOf(f, i), !!f.kept])));
+        setKept(Object.fromEntries(ev.facts.map((f) => [keyOf(f), !!f.kept])));
         setEvent(ev);
       })
       .catch((err: unknown) => {
@@ -290,22 +282,22 @@ export function Printing(props: {
       } catch {
         /* optional */
       }
-    } else haptic(10);
+    } else if (!reduced) haptic(10);
     // Give the person time to finish choosing.
     extendDeadline(deadlineRef);
   };
 
   const preview = useMemo(() => {
     if (!event) return undefined;
-    return newStub({ ...event, facts: event.facts.map((f, i) => ({ ...f, kept: !!kept[keyOf(f, i)] })) }, props.stubId ?? "printing-preview");
+    return newStub({ ...event, facts: event.facts.map((f) => ({ ...f, kept: !!kept[keyOf(f)] })) }, props.stubId ?? "printing-preview");
   }, [event, kept, props.stubId]);
 
-  const lines = (event?.facts ?? []).slice(0, shown).map((f, i) => ({ f, i, k: keyOf(f, i) }));
+  const lines = (event?.facts ?? []).slice(0, shown).map((f, i) => ({ f, i, k: keyOf(f) }));
   const marks = [...new Set(lines.map((l) => l.f.provenance))];
   const grouped = useMemo(() => {
     const out: Record<string, FactGroup> = {};
-    (event?.facts ?? []).forEach((f, i) => {
-      out[keyOf(f, i)] = factGroup({}, f);
+    (event?.facts ?? []).forEach((f) => {
+      out[keyOf(f)] = factGroup({}, f);
     });
     return out;
   }, [event]);

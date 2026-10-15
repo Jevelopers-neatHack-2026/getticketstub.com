@@ -120,20 +120,27 @@ export function receiptMail(order: Order, wallUrl: string, imageUrl: string): Ma
     label: `${l.title} · ${cap(l.material)} · ${cap(l.finish)} · ${SIZE[l.size] ?? l.size}`,
     price: formatMoney(l.totalMinor, currency),
   }));
-  const total = formatMoney(order.totalMinor, currency);
-  const sandbox = "Sandbox, nothing was charged.";
+  // A confirmed payment prints what the provider actually charged, tax included.
+  const charged = order.payment?.status === "paid" ? order.payment.chargedMinor : undefined;
+  const tax = charged !== undefined && charged > order.totalMinor ? charged - order.totalMinor : 0;
+  const total = formatMoney(charged ?? order.totalMinor, currency);
+  // Only a webhook-confirmed payment changes this line. A test-mode payment charges nothing real.
+  const paid = order.payment?.status === "paid";
+  const sandbox = !paid ? "Sandbox, nothing was charged." : order.payment?.environment === "test_mode" ? "Paid in test mode, no real charge." : "Paid.";
   const copy = ["Your order is in. Here's what you ordered.", sandbox];
   const rows = lines
     .map((l) => `<tr><td style="padding:6px 0;font-family:${SANS};font-size:14px;line-height:20px;color:${INK};border-bottom:1px solid ${COPPER}">${esc(l.label)}</td><td align="right" style="padding:6px 0 6px 12px;font-family:${SANS};font-size:14px;color:${INK};white-space:nowrap;border-bottom:1px solid ${COPPER}">${esc(l.price)}</td></tr>`)
     .join("");
+  const taxRow = tax ? `<tr><td style="padding:6px 0;font-family:${SANS};font-size:14px;line-height:20px;color:${INK};border-bottom:1px solid ${COPPER}">Tax</td><td align="right" style="padding:6px 0 6px 12px;font-family:${SANS};font-size:14px;color:${INK};white-space:nowrap;border-bottom:1px solid ${COPPER}">${esc(formatMoney(tax, currency))}</td></tr>` : "";
   const middle =
-    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:4px 0 6px 0">${rows}` +
+    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:4px 0 6px 0">${rows}${taxRow}` +
     `<tr><td style="padding:10px 0 0 0;font-family:${SANS};font-size:15px;font-weight:700;color:${INK}">Total</td><td align="right" style="padding:10px 0 0 12px;font-family:${SANS};font-size:15px;font-weight:700;color:${INK}">${esc(total)}</td></tr></table>`;
   return {
     subject: "Your TicketStub receipt",
     text:
       `${copy[0]}\n\n` +
       lines.map((l) => `${l.label}: ${l.price}`).join("\n") +
+      (tax ? `\nTax: ${formatMoney(tax, currency)}` : "") +
       `\n\nTotal: ${total}\n${sandbox}\nOrder ${order.id}\n\nOpen your wall: ${wallUrl}\n\nTicketStub\n${legalText(wallUrl)}`,
     html: paper({ preheader: `${copy[0]} ${total}.`, lines: copy, imageUrl, imageAlt: "Your stub", button: { label: "Open your wall", url: wallUrl }, middle, small: `Order ${order.id}` }),
   };

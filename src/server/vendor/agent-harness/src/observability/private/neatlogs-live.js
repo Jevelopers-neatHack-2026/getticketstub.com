@@ -138,7 +138,9 @@ function retryDelay(response, fallback, nowMs = Date.now()) {
   if (/^\d+$/.test(trimmed)) {
     let firstNonzero = 0;
     while (firstNonzero < trimmed.length - 1 && trimmed.charCodeAt(firstNonzero) === 48) firstNonzero += 1;
-    const maxSeconds = String(Math.floor(MAX_RETRY_AFTER_MS / 1_000));
+    // This bound preserves every exactly representable finite delay. The
+    // MAX_RETRY_AFTER_MS guard below controls local sleeping only.
+    const maxSeconds = String(Math.floor(Number.MAX_SAFE_INTEGER / 1_000));
     const significantLength = trimmed.length - firstNonzero;
     let exceedsBound = significantLength > maxSeconds.length;
     if (significantLength === maxSeconds.length) {
@@ -290,12 +292,15 @@ export async function sendNeatlogsPlan(config, plan, options = {}) {
   if (!config?.summary?.ingestReady) {
     return sendResult('not_configured', { reasonCode: 'MISSING_INGEST_KEY', attempts: 0, expectedSpans });
   }
-  const body = encodeNeatlogsExportRequest(plan);
+  const canonicalBody = encodeNeatlogsExportRequest(plan);
+  const body = options.encodedBody === undefined ? canonicalBody : Buffer.from(options.encodedBody);
+  if (!body.equals(canonicalBody)) throw new NeatlogsOtlpError('PERSISTED_BODY_MISMATCH');
   const url = `${config.summary.ingestOrigin}/v1/traces`;
   let attempts = 0;
   let last = { reasonCode: 'NOT_ATTEMPTED', httpStatus: null };
   let anyAmbiguous = false;
   let firstAmbiguous = null;
+  let retryAfterMinimumMs = null;
   const refusalResult = (reasonCode, httpStatus) => anyAmbiguous
     ? sendResult('outcome_unknown', {
       reasonCode: 'PRIOR_ATTEMPT_OUTCOME_UNKNOWN', attempts, expectedSpans,
@@ -324,7 +329,10 @@ export async function sendNeatlogsPlan(config, plan, options = {}) {
           'x-api-key': config.ingestKey()
         },
         body
-      }, limits.timeoutMs, signal, () => { requestStarted = true; });
+      }, limits.timeoutMs, signal, () => {
+        options.onPostStart?.(Object.freeze({ ordinal: attempts, bodyBytes: body.length }));
+        requestStarted = true;
+      });
       const httpStatus = response.status;
       if (httpStatus >= 200 && httpStatus < 300) {
         let parsed;
@@ -367,6 +375,7 @@ export async function sendNeatlogsPlan(config, plan, options = {}) {
         last = { reasonCode: 'RATE_LIMITED', httpStatus };
         const retry = retryDelay(response, delay, now());
         delay = retry.milliseconds;
+        if (retry.serverMinimum) retryAfterMinimumMs = retry.milliseconds;
         if (retry.serverMinimum && delay > MAX_RETRY_AFTER_MS) {
           return anyAmbiguous
             ? sendResult('outcome_unknown', {
@@ -385,13 +394,18 @@ export async function sendNeatlogsPlan(config, plan, options = {}) {
         if (firstAmbiguous === null) firstAmbiguous = { ...last };
         const retry = retryDelay(response, delay, now());
         delay = retry.milliseconds;
+        if (retry.serverMinimum) retryAfterMinimumMs = retry.milliseconds;
         if (retry.serverMinimum && delay > MAX_RETRY_AFTER_MS) {
-          return uncertainResult('RETRY_AFTER_EXCEEDS_BOUND', httpStatus, last);
+          return sendResult('outcome_unknown', {
+            reasonCode: 'RETRY_AFTER_EXCEEDS_BOUND', attempts, expectedSpans, httpStatus,
+            lastResponse: Object.freeze(last), retryAfterMinimumMs: delay
+          });
         }
       } else {
         return refusalResult('RECEIVER_REFUSED_REQUEST', httpStatus);
       }
     } catch (error) {
+      if (!requestStarted) throw error;
       if (signal?.aborted || error?.code === 'REQUEST_ABORTED') {
         return sendResult(anyAmbiguous || requestStarted ? 'outcome_unknown' : 'aborted', {
           reasonCode: 'ABORTED', attempts, expectedSpans,
@@ -420,7 +434,8 @@ export async function sendNeatlogsPlan(config, plan, options = {}) {
     attempts,
     expectedSpans,
     httpStatus: anyAmbiguous ? (firstAmbiguous?.httpStatus ?? last.httpStatus) : last.httpStatus,
-    ...(anyAmbiguous ? { lastResponse: Object.freeze({ ...last }) } : {})
+    ...(anyAmbiguous ? { lastResponse: Object.freeze({ ...last }) } : {}),
+    ...(retryAfterMinimumMs === null ? {} : { retryAfterMinimumMs })
   });
 }
 
@@ -432,7 +447,7 @@ class ReadbackStop extends Error {
   }
 }
 
-function createReader(config, fetchImpl, limits, signal, sleepImpl, now) {
+function createReader(config, fetchImpl, limits, signal, sleepImpl, now, onRequestStarted) {
   const base = `${config.summary.appOrigin}/api/v1/public`;
   return async function get(path, { allowMissing = false } = {}) {
     for (let attempt = 1; attempt <= 3; attempt += 1) {
@@ -446,8 +461,9 @@ function createReader(config, fetchImpl, limits, signal, sleepImpl, now) {
             authorization: `Bearer ${config.readbackToken()}`,
             'x-project-id': config.summary.projectId
           }
-        }, limits.timeoutMs, signal);
-      } catch {
+        }, limits.timeoutMs, signal, () => onRequestStarted?.(path));
+      } catch (error) {
+        if (error?.code === 'LEASE_LOST') throw new ReadbackStop('READBACK_LEASE_LOST');
         if (signal?.aborted) throw new ReadbackStop('READBACK_ABORTED');
         if (attempt === 3) throw new ReadbackStop('READBACK_TRANSPORT_FAILED');
         if (!(await sleepImpl(500 * attempt, signal))) throw new ReadbackStop('READBACK_ABORTED');
@@ -553,13 +569,23 @@ export async function readbackNeatlogsPlan(config, plan, options = {}) {
       traces: Object.freeze([])
     });
   }
-  const get = createReader(config, fetchImpl, limits, signal, sleepImpl, now);
+  let currentTraceId = null;
+  const attemptedTraceIds = [];
+  const attempted = new Set();
+  const outcomes = new Map();
+  const get = createReader(config, fetchImpl, limits, signal, sleepImpl, now, path => {
+    if (currentTraceId && !attempted.has(currentTraceId)) {
+      attempted.add(currentTraceId);
+      attemptedTraceIds.push(currentTraceId);
+    }
+    options.onRequestStarted?.(path, currentTraceId);
+  });
   try {
     const project = await get('/project');
     if (project.data.id !== config.summary.projectId) {
       return Object.freeze({ status: 'mismatch', reasonCode: 'PROJECT_MISMATCH', traces: Object.freeze([]) });
     }
-    const outcomes = new Map(plan.traces.map(trace => [trace.traceId, {
+    for (const trace of plan.traces) outcomes.set(trace.traceId, {
       traceId: trace.traceId,
       rootSpanId: trace.rootSpanId,
       sessionId: trace.sessionId,
@@ -578,7 +604,7 @@ export async function readbackNeatlogsPlan(config, plan, options = {}) {
       priorGenerationConflict: false,
       priorGenerationIdentityMismatch: false,
       duplicateTraceIds: []
-    }]));
+    });
     const observePriorGenerations = async expected => {
       const outcome = outcomes.get(expected.traceId);
       for (const priorId of expected.priorTraceIds ?? []) {
@@ -604,6 +630,7 @@ export async function readbackNeatlogsPlan(config, plan, options = {}) {
       for (const expected of plan.traces) {
         const outcome = outcomes.get(expected.traceId);
         if (outcome.status === 'verified' || outcome.status === 'mismatch') continue;
+        currentTraceId = expected.traceId;
         outcome.pollsObserved += 1;
         const trace = await get(`/traces/${expected.traceId}`, { allowMissing: true });
         if (signal?.aborted) throw new ReadbackStop('READBACK_ABORTED');
@@ -714,11 +741,21 @@ export async function readbackNeatlogsPlan(config, plan, options = {}) {
     });
   } catch (error) {
     if (error instanceof ReadbackStop) {
+      const traces = attemptedTraceIds.map(traceId => {
+        const outcome = outcomes.get(traceId);
+        if (outcome?.status === 'pending') outcome.problems = [error.code];
+        return Object.freeze({
+          ...outcome,
+          problems: Object.freeze([...(outcome?.problems ?? [])]),
+          duplicateTraceIds: Object.freeze([...(outcome?.duplicateTraceIds ?? [])])
+        });
+      });
       return Object.freeze({
         status: 'readback_failed',
         reasonCode: error.code,
         httpStatus: error.httpStatus,
-        traces: Object.freeze([])
+        attemptedTraceIds: Object.freeze([...attemptedTraceIds]),
+        traces: Object.freeze(traces)
       });
     }
     throw error;

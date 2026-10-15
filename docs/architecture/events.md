@@ -9,7 +9,7 @@ type names (`EVENT_SPEC`) and drops everything else.
 
 Types: `intake_submitted`, `intake_rejected`, `research_started`, `fact_corrected`, `art_requested`, `art_ready`,
 `art_failed`, `art_limit`, `version_selected`, `share_created`, `share_revoked`, `gift_created`, `order_placed`,
-`order_blocked`, `signin_link_sent`, `signed_in`, `claim_redeemed`, `storage_unavailable`, `approval_issued`, `approval_revoked`, `order_authorized`, `authorization_claimed`, `authorization_revoked`, `authorization_refused`.
+`order_blocked`, `checkout_started`, `order_paid`, `payment_needs_review`, `signin_link_sent`, `signed_in`, `claim_redeemed`, `storage_unavailable`, `approval_issued`, `approval_revoked`, `order_authorized`, `authorization_claimed`, `authorization_revoked`, `authorization_refused`.
 
 Every event carries `schema`, `type`, `at`, `requestId` (the correlation id), `actor` (`account | guest | anonymous`),
 `actorRef`, `projectRef`, `mode` (`sandbox | live`) and `fields`. Ids are stored as `refOf(id)`: a 16-hex hash.

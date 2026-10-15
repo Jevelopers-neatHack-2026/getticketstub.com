@@ -29,6 +29,15 @@ export interface Composition {
   size: string;
 }
 
+/** The server canonicalizes object keys; equality depends on the four bound
+ * composition values, never their insertion order in a JSON response. */
+export function sameComposition(value: unknown, current: Composition): boolean {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const bound = value as Record<string, unknown>;
+  return (["edition", "material", "finish", "size"] as const).every((key) =>
+    Object.hasOwn(bound, key) && typeof bound[key] === "string" && bound[key] === current[key]);
+}
+
 const EVENT_LINES: [keyof Stub["event"], string][] = [
   ["type", "Kind of event"],
   ["title", "Title"],
@@ -50,6 +59,14 @@ export function printedLines(stub: Pick<Stub, "event">): PrintedLine[] {
     lines.push({ key: `fact:${f.id}`, label: f.label, value: f.value, provenance: f.provenance });
   }
   return lines;
+}
+
+/** UI-only row identity, deliberately separate from the source/content-only approval summary DTO. */
+export function printedRowKeys(stub: Pick<Stub, "event">): string[] {
+  const lines = printedLines(stub);
+  const facts = [...(stub.event.facts ?? [])].filter(f => f.kept).sort((a,b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+  const offset = lines.length - facts.length;
+  return lines.map((line,i) => i < offset ? line.key : (facts[i-offset].clientEntityKey ?? facts[i-offset].id));
 }
 
 export const printedSummary = (stub: Pick<Stub, "event">): ApprovalSummary => ({ printed: printedLines(stub) });

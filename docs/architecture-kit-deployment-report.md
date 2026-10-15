@@ -2,6 +2,8 @@
 
 Documentation distribution completed October 10, 2026. All fourteen repositories existed at inspection; twelve were empty and received signed, meaningful documentation baselines. No repositories needed creation. The application is public; the other thirteen remain private. Existing visibility, licenses, brand assets, configuration and unrelated local work were preserved. No application code or placeholder applications were created.
 
+> **Historical point-in-time record (2026-10-10).** The visibility count and repository descriptions below record that day's deployment inspection; they are not current organization visibility data. Subsequent source and visibility changes are tracked in the maintained [current architecture and integration state](architecture/CURRENT-STATE.md). The immutable kit remains a design snapshot, and this report preserves its historical evidence.
+
 ## Entry points and maintained ownership
 
 [Original architecture kit](architecture-kit/v1.0/README.md) · [Implementation plan](planning/implementation-plan.md) · [P0 issues](planning/work-packages.md) · [File distribution map](architecture-kit-distribution.json) · [Repository inventory](../integration/repository-map.json).

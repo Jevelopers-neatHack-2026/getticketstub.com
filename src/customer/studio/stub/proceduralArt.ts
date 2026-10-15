@@ -36,7 +36,9 @@ const ORANGE = "228 87 46";
 const CREAM = "244 236 221";
 
 /** Painted tooth: a fine, quiet noise over everything so the gradients read as pigment, not CSS. */
-const GRAIN = `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.96 0 0 0 0 0.92 0 0 0 0 0.86 0 0 0 0.55 -0.2'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>") 0 0 / 160px`;
+const GRAIN_SVG = `<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.96 0 0 0 0 0.92 0 0 0 0 0.86 0 0 0 0.55 -0.2'/></filter><rect width='100%' height='100%' filter='url(#n)'/></svg>`;
+// base64, so the nested url(#n) is not visible to the PNG export, which would fetch it as /%23n and drop the art
+const GRAIN = `url("data:image/svg+xml;base64,${btoa(GRAIN_SVG)}") 0 0 / 160px`;
 
 /** background-position percentages are relative to the leftover space, so convert an absolute offset. */
 const at = (offset: number, size: number) => (size >= 100 ? "0%" : pct((offset / (100 - size)) * 100));

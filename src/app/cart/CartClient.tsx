@@ -7,7 +7,7 @@ import { getStub, upsertStub } from "@/customer/studio/store";
 import { formatMoney, type Stub } from "@/customer/studio/types";
 import { CartLineSpec } from "@/customer/studio/editor/MaterialPicker";
 import { PageShell, EmptyState, PaperLink, StampLink, TearAnchor, ui } from "@/customer/pages/ui";
-import { AfterPay, ReceiptField, useReceiptEmail } from "@/customer/account/Receipt";
+import { AfterPay, PayResumeNote, ReceiptField, askToSignIn, useReceiptEmail } from "@/customer/account/Receipt";
 import { useOrderFlow } from "@/customer/account/useOrderFlow";
 import { CART_EVENT, SANDBOX_LABEL, billableSeats, cartItemState, cartMarks, cartTotals, loadCart, saveCart, type CartItem, type CartSeat } from "@/customer/pages/commerce";
 import { CAPABILITY_VERSION, orderGate, runtimeMode, variantFor } from "@/customer/pages/capabilities";
@@ -51,6 +51,7 @@ export default function CartClient() {
     flow("view_cart", { currency: "USD", value: major(cartTotals(cart).totalMinor), item_count: cart.length, context: "cart" });
   }, [loaded]);
   const checkoutBegun = useRef(false);
+  const guestPlacement = useRef<(() => void) | null>(null);
 
   // The mini cart edits the same cart: follow it, until the order is placed (then this page keeps its receipt).
   useEffect(() => {
@@ -85,8 +86,14 @@ export default function CartClient() {
   const blocked = items.map((i) => orderGate(variantFor(i.material, i.size, i.finish), mode)).find((g) => !g.ok);
   const hold = stale.length > 0 ? `${stale.length === 1 ? "One stub needs" : `${stale.length} stubs need`} you to choose again before you can pay.` : blocked && !blocked.ok ? blocked.message : "";
 
+  // Signed out, Pay opens the sign-in sheet first; "Continue as guest" (or being signed in) goes straight on.
   function pay() {
     if (paid) return;
+    if (!hold && !receipt.problem && askToSignIn(receipt, () => guestPlacement.current?.())) return;
+    placeAsGuest();
+  }
+  function placeAsGuest() {
+    if (paidRef.current || paid || items.length === 0) return;
     if (!checkoutBegun.current) {
       checkoutBegun.current = true;
       const t = cartTotals(items);
@@ -118,14 +125,21 @@ export default function CartClient() {
       quoteId: items.length === 1 ? items[0].quoteId : undefined,
       method: "card",
       email: receipt.email || undefined,
+    }, () => {
+      for (const i of items) {
+        const st = stubs[i.stubId];
+        if (st) upsertStub({ ...st, material: i.material, finish: i.finish, torn: true });
+      }
+      saveCart([]);
     });
-    for (const i of items) {
-      const st = stubs[i.stubId];
-      if (st) upsertStub({ ...st, material: i.material, finish: i.finish, torn: true });
-    }
-    saveCart([]);
     haptic([18, 40, 28]);
   }
+
+  // The open sheet must use this tab's current cart, including changes made in another tab.
+  useEffect(() => {
+    guestPlacement.current = placeAsGuest;
+    return () => { guestPlacement.current = null; };
+  });
 
   const totals = cartTotals(items);
 
@@ -222,6 +236,7 @@ export default function CartClient() {
                 <SourceMark p="estimated" />. A quote is not a charge. Prices are sandbox fixtures, not printer quotes · capability map {CAPABILITY_VERSION}.
               </p>
               {paid ? null : <ReceiptField id="cart-email" r={receipt} error={emailError === hold ? "" : emailError} onChange={() => setEmailError("")} />}
+              {paid ? null : <PayResumeNote r={receipt} />}
               {hold && !paid ? (
                 <p className={ui.err} data-announce>
                   {hold}

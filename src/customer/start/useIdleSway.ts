@@ -3,14 +3,17 @@
 // tilt hook a gentle path of synthetic pointer positions, so the tilt, the light and the foil all follow
 // the same smoothing as a real hand. Real pointers take over at once and the sway resumes after a pause.
 import { useEffect, type RefObject } from "react";
+import { useReducedMotion } from "@/customer/landing/MotionContext";
 
 const RESUME_AFTER_MS = 1800;
 const FRAME_MS = 33;
 
 export function useIdleSway(host: RefObject<HTMLElement | null>) {
+  const reduced = useReducedMotion();
   useEffect(() => {
     const el = host.current;
-    if (!el || window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+    if (!el || reduced) return;
+    let stopped = false;
     let lastReal = -Infinity;
     let visible = true;
     let raf = 0;
@@ -26,6 +29,7 @@ export function useIdleSway(host: RefObject<HTMLElement | null>) {
     io.observe(el);
 
     const step = (now: number) => {
+      if (stopped) return;
       raf = requestAnimationFrame(step);
       if (!visible || document.hidden || now - last < FRAME_MS || now - lastReal < RESUME_AFTER_MS) return;
       last = now;
@@ -40,10 +44,11 @@ export function useIdleSway(host: RefObject<HTMLElement | null>) {
     };
     raf = requestAnimationFrame(step);
     return () => {
+      stopped = true;
       cancelAnimationFrame(raf);
       io.disconnect();
       el.removeEventListener("pointermove", real);
       el.removeEventListener("pointerenter", real);
     };
-  }, [host]);
+  }, [host, reduced]);
 }

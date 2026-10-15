@@ -1,0 +1,390 @@
+{
+  "finding": "APP-REVIEW-003",
+  "severity": "P1",
+  "reviewedHead": "4883b9ea2a9460ffad7edcd80d356789a5e9c837",
+  "base": "3ded8581283ba0890b77659c996c1cee107c6cf9",
+  "implementationHead": "ad5c1c0580d83e2d7bc518d75fc0bf66147c6e31",
+  "createdAt": "2026-10-15T06:46:42.357830+00:00",
+  "pr": "https://github.com/Jevelopers-neatHack-2026/getticketstub.com/pull/209",
+  "decision": "Preserve source Fact.id/provenance; persist clientEntityKey for local entities, source-separated questions/history, independent inclusion and UI keys. Fail locally before creative DTO emission for ambiguous source identity. No assumed canonical mapping.",
+  "sourceDigests": [
+    {
+      "path": "scripts/check-facts.mjs",
+      "sha256": "bd3a90c62f84d375e9175aaf6330af52e4855288b3c6e5c885a0f9fb9a63217b"
+    },
+    {
+      "path": "src/app/api/art/route.ts",
+      "sha256": "c71d8d45dc159651f89022d26287263326e8191793100a7ca1f89c536ebca547"
+    },
+    {
+      "path": "src/customer/account/AccountRoot.tsx",
+      "sha256": "565efb25abf161f5051f6ef9770e7ec98fe4daff30fc63c98f2c4c61846fc5b1"
+    },
+    {
+      "path": "src/customer/account/account.module.css",
+      "sha256": "324ece6248a3233726e6f50855f674c23610c2530bccd59ac1cf30564921b1c1"
+    },
+    {
+      "path": "src/customer/account/sync.ts",
+      "sha256": "c7f346e10c48a07ec06ad4644c31217d6616b8ccdc42e57e790d862b92280d20"
+    },
+    {
+      "path": "src/customer/studio/agent/AgentChat.tsx",
+      "sha256": "29bdc872507a4714b8b1ed39408fd4b3932d3578f83d085f34fdb6a75ededf3c"
+    },
+    {
+      "path": "src/customer/studio/agent/AgentNotes.tsx",
+      "sha256": "69aa184b4ff2c1d8cb97b9cdf45316d5e1bdd79c26ba0119da1c4b151793515d"
+    },
+    {
+      "path": "src/customer/studio/agent/apply.ts",
+      "sha256": "cdfd6e741655fc6fdf58f2783324009b6bd581498716c815a608731fed79f8a9"
+    },
+    {
+      "path": "src/customer/studio/agent/protocol.ts",
+      "sha256": "94b2089f6acc5a328af3c5e163f81f0a79bf2ac9c16576be5e70d40e5ae28b45"
+    },
+    {
+      "path": "src/customer/studio/approval/ApproveSheet.tsx",
+      "sha256": "97f1a63b703aea787db6f2babbbb8f2f289313b37c3054f50090c2520187d07a"
+    },
+    {
+      "path": "src/customer/studio/approval/printed.ts",
+      "sha256": "0496bc0a04c8bb8773b293819d58ba8afd4b9d96696519778537fc54d7c6f7f5"
+    },
+    {
+      "path": "src/customer/studio/creative/adapter.ts",
+      "sha256": "a3d2204f76dd85ceda542a00efb5e0de7e7dda9c3b9bcabd76f57f17de8e27cd"
+    },
+    {
+      "path": "src/customer/studio/creative/controls.ts",
+      "sha256": "2253c1dd57de6c4d26e1cfb8b1c0cbb78d357ccb2747f4f473947153d6dd71f0"
+    },
+    {
+      "path": "src/customer/studio/editor/ChipPopover.tsx",
+      "sha256": "a024236c9f826d67b3f5aca827d124ddb37f4ff67e00e0bdfba6899eb72074cf"
+    },
+    {
+      "path": "src/customer/studio/editor/ops.ts",
+      "sha256": "9db6b1a878d648245684a2e3d77486efa01f188c32944c5d883983d804bcd8d3"
+    },
+    {
+      "path": "src/customer/studio/facts/FactsReview.tsx",
+      "sha256": "61c2a2fe86a00894802de98aecec96c10c11df5a10838098e4d0ba8f94e9cbbd"
+    },
+    {
+      "path": "src/customer/studio/facts/corrections.ts",
+      "sha256": "0d42f8b0e0f45acbfb84728e79652c167531d4fe3eb034e2c43d328e37e738ff"
+    },
+    {
+      "path": "src/customer/studio/facts/fit.ts",
+      "sha256": "9d9336acea3633c28359d3302a6fa50f7e2d136a845b3799988c64e5134b82b5"
+    },
+    {
+      "path": "src/customer/studio/facts/fitProof.tsx",
+      "sha256": "c20bf2689fa4b725636fdc8bdac5d2aedaaf0280b2d1c543fcd9f4209584aafe"
+    },
+    {
+      "path": "src/customer/studio/facts/identity.ts",
+      "sha256": "1129aa69bf720d09ff1cf907550d40d66ec5a2902cfd91a534b15bf0f6dcc524"
+    },
+    {
+      "path": "src/customer/studio/facts/inclusion.ts",
+      "sha256": "36fe805dcc1dbe80689d99ea2650d9135d3f38feeccaefd5e426656aeb19cbe2"
+    },
+    {
+      "path": "src/customer/studio/research/Printing.tsx",
+      "sha256": "f206bc3b40536d8c7c4aba487f178eebc469c9edf3742981b350c2ac1042ccd1"
+    },
+    {
+      "path": "src/customer/studio/research/client.ts",
+      "sha256": "5422094ff85c97e9ba60ca2f5f5f89620169291d79713d506c10579a66f5dda6"
+    },
+    {
+      "path": "src/customer/studio/store.ts",
+      "sha256": "06bd0833ea384e49fe9400746253a7b25bb5256a63f0d593905051b550686f45"
+    },
+    {
+      "path": "src/customer/studio/stub/StubView.tsx",
+      "sha256": "517b760fc520ba62dd70feff1fe48a8beb66cbae9bb594e4b2f0cc5f47919c9f"
+    },
+    {
+      "path": "src/customer/studio/types.ts",
+      "sha256": "bc1978e175c8044228cf0c11aaa61a447a034e0ebf26055697e87f71e833e454"
+    },
+    {
+      "path": "src/server/approval-token.ts",
+      "sha256": "f5c8d72dc2fcac49c1059bdb44868b1ce39ea7016b8579cf6415491cee5820b4"
+    },
+    {
+      "path": "src/server/project.ts",
+      "sha256": "03858a4da6a122925118ef909abb0a79068554fee30ba046bfd59a83636403b8"
+    },
+    {
+      "path": "tests/analytics-flows.test.mjs",
+      "sha256": "8bb9288a497eccbd57fc24eb988958817e2b6e3e6fdbeef56286a984ad43ef1b"
+    },
+    {
+      "path": "tests/providers.test.mjs",
+      "sha256": "f7479afc722effd6d140ab316267254fdeb2781743a2fe4c5ff8d2e373db6122"
+    },
+    {
+      "path": "tests/stub-weather-credit.test.mjs",
+      "sha256": "c5f41f83750b9b37a224864268a91612cbcf6b8e2a02950c7676f651fbe8801b"
+    },
+    {
+      "path": "tests/studio-fact-identity.test.mjs",
+      "sha256": "936328b5f3445f59a5b2501a7483663f64d61736bcb281db9916f440008620f4"
+    }
+  ],
+  "sourceManifestVerifiedAgainstImplementationCommit": true,
+  "checkProvenance": "Build/browser checks ran on final implementation bytes before the code commit, so build-time Git metadata may name reviewed predecessor 4883b9e with dirty=true. Executable/test file hashes match the implementation commit. Evidence-only follow-up changes no executable bytes. Earlier failed and superseded runs are not acceptance evidence.",
+  "runtime": {
+    "node": "v22.23.3",
+    "npm": "11.16.0",
+    "modelProfileEvidence": "Not exposed in this runtime; no model/provider/profile configuration changed.",
+    "postgresImage": "postgres@sha256:ca0bd484cb98bf4b24eb1010e73fb3fcbd6714d240fbc1a10eea5b7dbecb641d"
+  },
+  "checks": {
+    "fullUnits": {
+      "passed": 1037,
+      "failed": 0,
+      "skipped": 1,
+      "skipReason": "Default SQL-backed creative host test disabled; separate required flag-enabled pinned-PostgreSQL suite passed 5/5 with 0 skips."
+    },
+    "focusedApprovalIdentityRender": {
+      "passed": 36,
+      "failed": 0
+    },
+    "creativeHost": {
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0,
+      "transport": "offline intercepted provider transport; actual pinned PostgreSQL"
+    },
+    "build": "exit 0",
+    "typecheck": "exit 0",
+    "lint": "exit 0; only pre-existing unused $comment warning in fixtures/context/finance-scope-check.mjs"
+  },
+  "suiteReceipts": [
+    {
+      "suite": "facts",
+      "receiptPath": "/tmp/app003-facts-final-source/facts-2026-10-15T06-41-42-476Z.json",
+      "sha256": "672bcc995104d882867007f9b994fc16a7d3fafa96b05cfc60a020a274b47ab2",
+      "counts": {
+        "passed": 93,
+        "failed": 0,
+        "skipped": 0
+      },
+      "startedAt": "2026-10-15T06:41:42.476Z",
+      "finishedAt": "2026-10-15T06:42:39.830Z",
+      "gitMetadataSha": "4883b9ea2a9460ffad7edcd80d356789a5e9c837",
+      "gitMetadataDirty": true,
+      "blockedNetwork": []
+    },
+    {
+      "suite": "download",
+      "receiptPath": "/tmp/app003-download-final-source/download-2026-10-15T06-41-44-899Z.json",
+      "sha256": "e226b36bd1788e41244fe02633400f7cd8957f06294a7f45a2cca88dc2ef5e2e",
+      "counts": {
+        "passed": 242,
+        "failed": 0,
+        "skipped": 0
+      },
+      "startedAt": "2026-10-15T06:41:44.899Z",
+      "finishedAt": "2026-10-15T06:45:56.536Z",
+      "gitMetadataSha": "4883b9ea2a9460ffad7edcd80d356789a5e9c837",
+      "gitMetadataDirty": true,
+      "blockedNetwork": []
+    },
+    {
+      "suite": "foundation",
+      "receiptPath": "/tmp/app003-foundation-final-source/foundation-2026-10-15T06-43-58-618Z.json",
+      "sha256": "e7bb1c4cbac3f9cced2d5988276836096931dfd7a036c290999557a5549829ab",
+      "counts": {
+        "passed": 49,
+        "failed": 0,
+        "skipped": 0
+      },
+      "startedAt": "2026-10-15T06:43:58.618Z",
+      "finishedAt": "2026-10-15T06:43:59.741Z",
+      "gitMetadataSha": "ad5c1c0580d83e2d7bc518d75fc0bf66147c6e31",
+      "gitMetadataDirty": true,
+      "blockedNetwork": []
+    },
+    {
+      "suite": "access",
+      "receiptPath": "/tmp/app003-access-final-source/access-2026-10-15T06-43-58-567Z.json",
+      "sha256": "110b3b0524e4d684d7273db9cd089e1e7814245e612f1055e66557be13baec54",
+      "counts": {
+        "passed": 300,
+        "failed": 0,
+        "skipped": 0
+      },
+      "startedAt": "2026-10-15T06:43:58.567Z",
+      "finishedAt": "2026-10-15T06:44:00.794Z",
+      "gitMetadataSha": "ad5c1c0580d83e2d7bc518d75fc0bf66147c6e31",
+      "gitMetadataDirty": true,
+      "blockedNetwork": []
+    },
+    {
+      "suite": "approval",
+      "receiptPath": "/tmp/app003-approval-final-source/approval-2026-10-15T06-43-58-509Z.json",
+      "sha256": "287d9bb1cfab84f00aa9f5602c2665050c8d96d6ceacbc03a4af590056033950",
+      "counts": {
+        "passed": 107,
+        "failed": 0,
+        "skipped": 0
+      },
+      "startedAt": "2026-10-15T06:43:58.509Z",
+      "finishedAt": "2026-10-15T06:43:59.496Z",
+      "gitMetadataSha": "ad5c1c0580d83e2d7bc518d75fc0bf66147c6e31",
+      "gitMetadataDirty": true,
+      "blockedNetwork": []
+    },
+    {
+      "suite": "agent",
+      "receiptPath": "/tmp/app003-agent-final-source/agent-2026-10-15T06-43-58-637Z.json",
+      "sha256": "929d200dbdbd360b29f046db64f5b1076785db286f4b37fc51033108848700c2",
+      "counts": {
+        "passed": 116,
+        "failed": 0,
+        "skipped": 0
+      },
+      "startedAt": "2026-10-15T06:43:58.637Z",
+      "finishedAt": "2026-10-15T06:44:22.205Z",
+      "gitMetadataSha": "ad5c1c0580d83e2d7bc518d75fc0bf66147c6e31",
+      "gitMetadataDirty": true,
+      "blockedNetwork": []
+    },
+    {
+      "suite": "creative",
+      "receiptPath": "/tmp/app003-creative-final/creative-2026-10-15T06-36-29-774Z.json",
+      "sha256": "5f351305401ee977ca15209eba9ac57d9682cb70e7ae0317dcd8a92e0d5e5fab",
+      "counts": {
+        "passed": 3,
+        "failed": 0,
+        "skipped": 0
+      },
+      "startedAt": "2026-10-15T06:36:29.774Z",
+      "finishedAt": "2026-10-15T06:36:29.961Z",
+      "gitMetadataSha": "4883b9ea2a9460ffad7edcd80d356789a5e9c837",
+      "gitMetadataDirty": true,
+      "blockedNetwork": []
+    },
+    {
+      "suite": "review",
+      "receiptPath": "/tmp/app003-review/review-2026-10-15T06-36-29-382Z.json",
+      "sha256": "37729182428d8bd102545b8785859ae94ecce75662712255973f6e583cd5bfa6",
+      "counts": {
+        "passed": 21,
+        "failed": 0,
+        "skipped": 0
+      },
+      "startedAt": "2026-10-15T06:36:29.382Z",
+      "finishedAt": "2026-10-15T06:36:29.642Z",
+      "gitMetadataSha": "4883b9ea2a9460ffad7edcd80d356789a5e9c837",
+      "gitMetadataDirty": true,
+      "blockedNetwork": []
+    }
+  ],
+  "logs": [
+    {
+      "path": "/tmp/app003-units-final-source.log",
+      "sha256": "feed68020f3d18dc22b3553eb1166c980c9ef1cd03fde83a80a1744daf39012d"
+    },
+    {
+      "path": "/tmp/app003-final-target.log",
+      "sha256": "83efe5aae736084b23a41f73ddb6a5a9412a6eafef163cf2cf94751e6c696733"
+    },
+    {
+      "path": "/tmp/app003-build-final-source.log",
+      "sha256": "5fc6ed99bc70adc10c83cfbb57d7fb9edd2482f06621f92afb4cd123f98231c0"
+    },
+    {
+      "path": "/tmp/app003-typecheck-final-source.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/tmp/app003-lint-final-source.log",
+      "sha256": "6a756bb8c63a2bc602e165a4356205bf6667774ced48bd3a895feba913894c62"
+    },
+    {
+      "path": "/tmp/app003-creative-host.log",
+      "sha256": "4e74e056e54e0657bedf4f47b949422fabd6f7b9f1838e57120c41017ceb290f"
+    },
+    {
+      "path": "/tmp/app003-facts-final-source.log",
+      "sha256": "a509c0a7c38ad38b533435b4c8e90589f3516e98be8efc3d9c07f60d65a324bb"
+    },
+    {
+      "path": "/tmp/app003-download-final-source.log",
+      "sha256": "211dcee407e971fa62d4aec6b506c62aced56e7724d3905f41e5195474679433"
+    },
+    {
+      "path": "/tmp/app003-foundation-final-source.log",
+      "sha256": "1cf2060ad1443fa62b92e44015afda5e050d53aed971d9c53cb051615c04c75b"
+    },
+    {
+      "path": "/tmp/app003-access-final-source.log",
+      "sha256": "41b41db2110e2d450c6f0a1f68e160b398836daed2d1702582d7e7dd5ed1c3dc"
+    },
+    {
+      "path": "/tmp/app003-approval-final-source.log",
+      "sha256": "d299f449b800a6337d2b7f2803e8a0ba9844f52fdb9de51da35a234470156c38"
+    },
+    {
+      "path": "/tmp/app003-agent-final-source.log",
+      "sha256": "a3da3f63efa36bafb45e6608f01d090179e1b0bb8317708c7e3950521258223a"
+    },
+    {
+      "path": "/tmp/app003-creative-final.log",
+      "sha256": "d1a9a7172893a904bd5c48d1ceae5aa717ac9ded2463006038b617ff0c700df5"
+    },
+    {
+      "path": "/tmp/app003-review.log",
+      "sha256": "a0bcb277a3d071685f46a9618f3065305e82132f4429b2c2ce7c8552343504db"
+    }
+  ],
+  "retainedPriorAttempts": [
+    {
+      "path": "/tmp/app003-units.log",
+      "sha256": "b67ad6df205b079488fbbdcc9c2a1e5e0758a8592bda2f68f40c899c2715c623",
+      "disposition": "Initial sandbox run: Chrome denied startup; old source-suffix/order assertions had not yet been replaced."
+    },
+    {
+      "path": "/tmp/app003-facts.log",
+      "sha256": "61ad3de3414c6ec8a9bafd638cec5d732c47925ebe21f07d6c875ba42b1317d4",
+      "disposition": "First expanded browser run: duplicate second-row correction passed, then a case-sensitive text expectation failed. Minimal renders mixed-case DOM text. Fixed test expectation; retained failing receipt exits 1 despite wrapper parsed failed-count 0."
+    }
+  ],
+  "reviewInput": {
+    "path": "/Users/completetech/getticketstub.com/.orchestration/older-issues-20261015T053856Z/reviews/getticketstub-com-4883b9e.json",
+    "sha256": "73b0030a0c05edee0d92e6f30009f93063de2ccd3a96b22f9a7de9719c291784"
+  },
+  "issue94Input": {
+    "path": "/tmp/ticketstub-issue94-current.json",
+    "sha256": "393a15f75d66bdd72ce9ec7a74f3cf5ece767ba4cb1d8a25ada26a99cc8218bf",
+    "latestDecisionAt": "2026-10-12T14:19:00Z",
+    "readBeforeImplementation": true
+  },
+  "preservedFindings": [
+    "APP-REVIEW-001",
+    "APP-REVIEW-002"
+  ],
+  "focusContinuation": "Not pulled, merged or edited; existing PR126 and isolated continuation remain supervisor-owned.",
+  "canonicalAssembly": false,
+  "acceptance": "not_recorded",
+  "independentExactHeadReview": "pending",
+  "deployment": false,
+  "merge": false,
+  "issueClosure": false,
+  "sdkPinsChanged": false,
+  "remainingRequirements": [
+    "Independent exact-head review, normal merge and supervisor-owned post-merge evidence for focused #94 closure candidacy.",
+    "Elected producer/source mapping and caller conformance for canonical Research/correction/control interfaces; duplicate local facts remain refused at the creative boundary.",
+    "Integration-evals master acceptance requires real app-owned pinned assembly and exact owner-run evidence.",
+    "Existing #93 screen-reader, #95 Product/print-layout/preflight/final-output, rights/provider/human/host decisions and GoDaddy manual Preview isolation gate remain open."
+  ],
+  "limits": "Synthetic local/browser/API/provider-interception evidence is not canonical master acceptance, real provider/authentication/host acceptance, screen-reader observation, print readability acceptance or deployment evidence. Raw screenshots remain in /tmp, not published as collateral."
+}

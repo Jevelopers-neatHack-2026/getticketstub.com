@@ -33,6 +33,7 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { launchBrowser } from "./lib/cdp.mjs";
+import { submitSheetEmail } from "./lib/analytics-sheet-readiness.mjs";
 
 const root = new URL("..", import.meta.url).pathname;
 if (!existsSync(join(root, ".next/BUILD_ID"))) {
@@ -559,7 +560,7 @@ async function runViewport(vp) {
     ev = (await events()).slice(from);
     check(T("memory: a closed share sheet is one cancel, not a failure, and copies nothing"), same(named(ev, "share").map((e) => pick(e.p, ["method", "result"])), [{ method: "native", result: "cancel" }]), fmt(ev));
     from = await mark();
-    check(T("memory: Download story image"), await clickText("button", "Download story image"));
+    check(T("memory: Story image"), await clickText("button", "Story image"));
     ev = await waitEvents(from, (e) => named(e, "story_export").length > 0, 8000);
     check(T("memory: story export is the image generated and a download started (downloads are denied in this run)"), same(named(ev, "story_export").map((e) => pick(e.p, ["action", "result"])), [{ action: "download", result: "generated" }]), fmt(ev));
   }
@@ -599,9 +600,10 @@ async function runViewport(vp) {
   check(T("claim: Claim with no name is claim_invalid(name_missing), not a claim"), same(named(ev, "claim_invalid").map((e) => e.p.reason), ["name_missing"]) && named(ev, "claim_complete").length === 0, fmt(ev));
   from = await mark();
   check(T("claim: Email me a link"), await clickText("button", "Email me a link"));
-  await page.waitFor(`document.querySelector("#signin-email")`);
-  await typeInto("#signin-email", SEED.email);
-  check(T("claim: the sheet's Email me a link (submit)"), await tap('[role="dialog"] form button[type="submit"]', "Email me a link"));
+  const claimSubmit = await submitSheetEmail(page, SEED.email);
+  console.log(`info ${T("claim: bounded sheet readiness")} ${JSON.stringify(claimSubmit)}`);
+  if (claimSubmit.clicked) realClicks++;
+  check(T("claim: the sheet's Email me a link (submit)"), claimSubmit.ok, JSON.stringify(claimSubmit));
   ev = await waitEvents(from, (e) => named(e, "sign_in_link").length > 0, 6000);
   check(T("claim: the sign-in choice, then a sandbox link at the server's answer; never a login"), same(named(ev, "signin_choice").map((e) => pick(e.p, ["choice", "reason"])), [{ choice: "sign_in", reason: "claim" }]) && same(named(ev, "sign_in_link").map((e) => pick(e.p, ["reason", "result"])), [{ reason: "claim", result: "sandbox" }]) && named(ev, "sign_in_return").length === 0, fmt(ev));
   await clickText('[role="dialog"] button', "Close");
@@ -635,6 +637,8 @@ async function runViewport(vp) {
   check(T("checkout: Add to cart is one add_to_cart(context=checkout)"), named(ev, "add_to_cart").length === 1 && named(ev, "add_to_cart")[0].p.context === "checkout", fmt(ev));
   from = await mark();
   check(T("checkout: Pay with no receipt email"), await clickText("button", "Pay "));
+  // signed out, Pay opens the sign-in sheet first; Continue as guest is the choice that goes on (one signin_choice(sign_in), one guest)
+  check(T("checkout: Pay signed out opens the sheet, Continue as guest goes on"), (await page.waitFor(`document.querySelector('[role="dialog"]')`)) && (await clickText('[role="dialog"] button', "Continue as guest")));
   ev = await waitEvents(from, (e) => named(e, "sandbox_order").length > 0, 8000);
   const local = named(ev, "sandbox_order")[0]?.p ?? {};
   check(T("checkout: sandbox card chosen, then a placed local order (no email: the server needs one), never a purchase"), named(ev, "add_payment_info").length === 1 && named(ev, "add_payment_info")[0].p.capability === "sandbox" && same(pick(local, ["result", "receipt", "storage", "capability", "method", "error_code"]), { result: "placed", receipt: "local", storage: "ok", capability: "sandbox", method: "card", error_code: "unauthorized" }), fmt(ev) + JSON.stringify(local));
@@ -670,6 +674,8 @@ async function runViewport(vp) {
   await page.waitFor(`document.querySelector("#cart-email")`);
   await typeInto("#cart-email", SEED.email);
   await clickText("button", "Pay ");
+  await page.waitFor(`document.querySelector('[role="dialog"]')`);
+  await clickText('[role="dialog"] button', "Continue as guest");
   ev = await waitEvents(from, (e) => named(e, "sandbox_order").length > 0, 8000);
   const serverOrder = named(ev, "sandbox_order")[0]?.p ?? {};
   check(T("cart: begin_checkout(cart), sandbox card, then a placed order with a server receipt"), named(ev, "begin_checkout")[0]?.p.context === "cart" && named(ev, "add_payment_info").length === 1 && same(pick(serverOrder, ["result", "receipt", "storage", "capability"]), { result: "placed", receipt: "server", storage: "ok", capability: "sandbox" }), fmt(ev) + JSON.stringify(serverOrder));
@@ -776,11 +782,21 @@ async function runViewport(vp) {
   /* ================= entry points ================= */
 
   await hard("/");
+  // A hard load may finish before the landing page hydrates and sends its initial view. Establish that
+  // source-page boundary before marking the click, so it cannot be mistaken for the destination view.
+  ev = await waitEvents(0, (e) => named(e, "page_view").some((v) => v.p.route_template === "/"), 4000);
+  check(T("entry: one initial home page_view before the search action"), same(named(ev, "page_view").map((e) => pick(e.p, ["route_template", "page_location"])), [{ route_template: "/", page_location: `${base}/` }]), fmt(ev));
+  const entrySourceViews = named(ev, "page_view");
+  check(T("entry: the landing loader dismisses before the search action"), await page.waitFor('document.querySelector(".lp")?.classList.contains("ready") && document.querySelector(".lp-host #loader")?.hidden', 12000));
   from = await mark();
-  check(T("entry: the landing page's search link"), await clickText("button", "No link? Search for your show"));
+  check(T("entry: the landing page's search link"), await tap("button", "No link? Search for your show"));
   check(T("entry: /search opens"), await at("/search"));
-  ev = await waitEvents(from, (e) => named(e, "page_view").length > 0, 4000);
-  check(T("entry: cta_select(search, home) on / before the /search page_view"), named(ev, "cta_select")[0]?.p.context === "home" && named(ev, "cta_select")[0]?.p.route_template === "/" && ev.findIndex((e) => e.name === "cta_select") < ev.findIndex((e) => e.name === "page_view"), fmt(ev));
+  ev = await waitEvents(from, (e) => named(e, "page_view").some((v) => v.p.route_template === "/search"), 4000);
+  // Keep the complete synthetic payload in CI evidence, including the source view; a name-only trace can hide
+  // attribution errors and cannot distinguish an initial view arriving late from the destination view.
+  const entryPayload = [...entrySourceViews, ...ev.filter((e) => e.name === "cta_select" || e.name === "page_view")];
+  console.log(`info [${vp.name}] entry analytics payload: ${JSON.stringify(entryPayload)}`);
+  check(T("entry: cta_select(search, home) on / before the /search page_view"), same(named(ev, "cta_select").map((e) => pick(e.p, ["cta", "context", "route_template"])), [{ cta: "search", context: "home", route_template: "/" }]) && same(named(ev, "page_view").map((e) => pick(e.p, ["route_template", "page_location"])), [{ route_template: "/search", page_location: `${base}/search` }]) && ev.findIndex((e) => e.name === "cta_select") < ev.findIndex((e) => e.name === "page_view"), fmt(ev));
   from = await mark();
   // the sidebar's Wall as a visible control: on the phone the menu is opened first; a folded desktop rail is opened too
   const wallRow = 'a[data-row-link][href="/wall"]';

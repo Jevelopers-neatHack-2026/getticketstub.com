@@ -12,6 +12,8 @@ export interface SignInRequest {
   /** Replace the sheet's title and lede when the default copy for `reason` doesn't fit the place. */
   title?: string;
   lede?: string;
+  /** Set when the sheet stands in front of a step that can go on without an account: shows "Continue as guest", which closes the sheet and runs this. */
+  onGuest?: () => void;
   /** Set once the link is sent: the sheet then shows where it went. */
   sent?: { email: string; devLink?: string };
 }
@@ -34,6 +36,34 @@ export function updateSignIn(patch: Partial<SignInRequest>) {
 export function closeSignIn() {
   current = null;
   listeners.forEach((l) => l());
+}
+
+// Paying after signing in: the link lands back on the pay step (?resume=pay), or another tab of this browser notices the session.
+const RESUME_PARAM = "resume";
+let resumed = false;
+const resumeListeners = new Set<() => void>();
+
+/** The page the person was paying on, marked so it can say "tap Pay to finish" when the link brings them back. Relative, same origin. */
+export function payReturnTo(): string {
+  const u = new URL(window.location.href);
+  u.searchParams.set(RESUME_PARAM, "pay");
+  return `${u.pathname}${u.search}`;
+}
+/** This tab learned (not from the address) that the person signed in while paying. */
+export function markPayResumed() {
+  if (resumed) return;
+  resumed = true;
+  resumeListeners.forEach((l) => l());
+}
+export function usePayResumed(): boolean {
+  return useSyncExternalStore(
+    (cb) => {
+      resumeListeners.add(cb);
+      return () => resumeListeners.delete(cb);
+    },
+    () => resumed || new URLSearchParams(window.location.search).get(RESUME_PARAM) === "pay",
+    () => false,
+  );
 }
 
 export function useSignInRequest(): SignInRequest | null {

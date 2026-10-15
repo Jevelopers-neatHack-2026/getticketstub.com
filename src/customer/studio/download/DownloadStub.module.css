@@ -1,0 +1,17 @@
+/* Download on the desk: a card-stock button, the other side and the story image as tear links, honest progress below. */
+.root {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+}
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 14px;
+}
+.hint {
+  font: var(--type-label);
+  color: var(--desk-ink-soft);
+  text-wrap: pretty;
+}

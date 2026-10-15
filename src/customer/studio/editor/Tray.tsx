@@ -7,6 +7,7 @@ import { openCount } from "../facts/FactsReview";
 import { selectedSummary } from "../versions/versions";
 import { MaterialPicker, ctaVerb, totalLabel } from "./MaterialPicker";
 import { TearStrip } from "./TearStrip";
+import { DownloadStub } from "../download/DownloadStub";
 import { flow } from "@/customer/flows/events";
 import styles from "./Tray.module.css";
 
@@ -57,6 +58,7 @@ export function Tray({ stub, onChange, onTear, compact, onOpen }: Props) {
         {ctaVerb(stub.material)}
         <LeavesMark />
       </Stamp>
+      <DownloadStub stub={stub} context="editor" />
       <TearStrip torn={stub.torn} onTear={onTear} />
     </section>
   );

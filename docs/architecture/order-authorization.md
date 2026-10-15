@@ -44,9 +44,15 @@ One SQLite write lock (`BEGIN IMMEDIATE`) reads the authorization, its approval,
 
 Reasons: `invalid_clock unknown forged unsupported_version wrong_scope changed_terms revoked expired stale_approval stale not_orderable already_claimed not_claimed idempotency_conflict`. Rejections are `{ ok:false, status:"rejected", reason, fields? }` with the one error envelope `authorization_invalid` (403, or 409 for the two claim conflicts); `fields` names changed terms by path, never values.
 
+## Token signing keys (decision 0003 K4)
+
+Order-authorization tokens sign with **their own versioned key set, `ORDER_AUTH_SIGNING_KEYS`**, never `CONTEXT_SECRET` and never the approval keys ([integration-evals decision 0003](https://github.com/Jevelopers-neatHack-2026/integration-evals/blob/main/planning/decisions/0003-owner-delegated-decisions-2026-10-12.md), row K4). The header names the key: `{"alg":"HS256","typ":"ticketstub.order-authorization","kid":"order-auth-g1"}`. The active key signs; a retired key keeps verifying for the 15-minute token lifetime plus 5 minutes, so a rotation never fails tokens in flight, provided `retiredAt` is the restart time and the retired entry stays 20 minutes after it (see identity.md for why). A retired key refuses a token that claims an `issuedAt` after its `retiredAt` + 5 minutes. That catches accidental late signing only: whoever holds a leaked key can backdate `issuedAt`, so delete a compromised entry at once. An unknown `kid` is `forged`, a missing one `unknown`. In live mode without a usable key set, issuing and listing answer 503 `signing_unavailable` and every consumer route answers `forged`; outside live mode an unset set falls back to a per-process random key (kid `sandbox`, records say `mode: "sandbox"`). An invalid set fails closed in every mode, and so does a set that reuses `CONTEXT_SECRET`, `ORDER_AUTH_CONSUMER_KEY` or an `APPROVAL_SIGNING_KEYS` entry, whether as the same string or as its base64url encoding. Format, rotation and failure modes: [identity.md, Signing keys](identity.md#signing-keys-decision-0003-k4).
+
+`ORDER_AUTH_CONSUMER_KEY` is a different thing: it signs consumer **requests** only (below), never tokens.
+
 ## Consumer authentication (a stopgap)
 
-Consumer routes carry no cookie and no Origin. Each request is signed: `x-ticketstub-consumer-timestamp` and `x-ticketstub-consumer-signature` = HMAC-SHA256 hex over `timestamp \n METHOD \n path \n sha256(body)` with `ORDER_AUTH_CONSUMER_KEY` (32+ characters, not `CONTEXT_SECRET`), within a five minute window. Unset key: 503 `consumer_unavailable` in **every** mode. A key containing `FIXTURE-ONLY` is treated as unset, and a request signed with the fixture key is 401. The token alone is not enough to claim: the signature is a second credential the owner never holds.
+Consumer routes carry no cookie and no Origin. Each request is signed: `x-ticketstub-consumer-timestamp` and `x-ticketstub-consumer-signature` = HMAC-SHA256 hex over `timestamp \n METHOD \n path \n sha256(body)` with `ORDER_AUTH_CONSUMER_KEY` (32+ characters, not `CONTEXT_SECRET` as the same string or its base64url encoding, and not a token signing key), within a five minute window. Unset key: 503 `consumer_unavailable` in **every** mode. A key containing `FIXTURE-ONLY` is treated as unset, and a request signed with the fixture key is 401. The token alone is not enough to claim: the signature is a second credential the owner never holds.
 
 ## Gate
 
@@ -59,7 +65,7 @@ Migration adds `order_authorizations`, `order_authorization_revocations`, `order
 ## Limitations (read these)
 
 - **Not the canonical `OrderAuthorization`.** shared-contracts #26 has no schema or pin yet; no mapping is accepted. The claim response follows fulfillment-connectors' `AuthorizationClaimResult` shape and `actionId`/`claimReference` names as read from its types, which is not an agreed protocol.
-- **No consumer adoption or conformance.** fulfillment-connectors has not run against this port.
+- **Limited simulated consumer coverage; no app-server conformance.** The `fulfillment-connectors` main source contains a fixture-tested simulated protocol consumer that uses a fake issuer/HTTP port. It has not run against this app server. The app has no runtime import of that package; there is no accepted shared-contracts #26 mapping or pin, cross-repository conformance, runtime adoption, or integration-evals acceptance.
 - **No real quote.** The amount is the maximum the owner confirmed for a sandbox quote id; the studio does not re-price it and the real `FulfillmentQuote` (shared-contracts #25) is not wired. The destination is a reference the studio does not hold or validate against anything.
 - **No payment or budget.** Nothing here captures money or reserves budget; cost-intelligence is separate.
 - **Stopgap consumer auth**: one shared key, one consumer id, no rotation, signed requests replayable for five minutes (claims are idempotent; the rest are read only). The unset-key 503 is confirmed by source check only, because the suite's server has the key.

@@ -80,6 +80,10 @@
     0 6px 12px -6px rgb(40 24 8 / 0.7);
   transform: rotate(0.6deg);
 }
+/* the lamp is up: the strip would ghost through its scrim, behind the stub's title */
+.controls[data-lamp] {
+  visibility: hidden;
+}
 .btn {
   display: inline-grid;
   place-items: center;

@@ -1,4 +1,7 @@
 "use client";
+import { questionKey } from "./corrections";
+import { unresolvedHistory } from "./corrections";
+import { factKey, resolveFact } from "./identity";
 // Research review (GT-05): the facts grouped by how far to trust them, where each came from, one short question for
 // anything required that is missing or in doubt, and the person's corrections with their history. The same pieces sit in
 // the desktop Inspector, the phone Facts sheet and the agent's margin note, and they all read openQuestions(), so a
@@ -7,7 +10,7 @@ import { useId, useState } from "react";
 import type { Correction, Fact, Stub } from "../types";
 import { haptic, play } from "@/customer/studio/feedback";
 import { MarkLegend, PaperButton, SourceMark, Tag, Tags, TearLink } from "@/customer/desk/Desk";
-import { altLabel, toggleKept } from "../editor/ops";
+import { altLabel } from "../editor/ops";
 import {
   ASSET_WORDS,
   activeCorrection,
@@ -24,6 +27,8 @@ import {
   type FactGroup,
   type Question,
 } from "./corrections";
+import { isCoreFact, isFactIncluded } from "./inclusion";
+import { FactFitNotice } from "./fitProof";
 import styles from "./Facts.module.css";
 
 const TIME: Intl.DateTimeFormatOptions = { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" };
@@ -72,12 +77,12 @@ export function FactQuestion({ stub, q, onChange, onDone }: { stub: Stub; q: Que
   const [reason, setReason] = useState("");
   const id = useId();
   const answer = (v: string, why?: string) => {
-    onChange(applyCorrection(stub, { factId: q.factId, value: v, reason: why }));
+    onChange(applyCorrection(stub, { factId: questionKey(q), value: v, reason: why }));
     play("stamp");
     haptic([12]);
     onDone?.();
   };
-  const prints = typing && changesPrintedStub(stub, q.factId, value);
+  const prints = typing && changesPrintedStub(stub, questionKey(q), value);
   return (
     <section className={styles.question} aria-labelledby={`${id}-q`}>
       <p className={styles.qText} id={`${id}-q`}>
@@ -151,12 +156,24 @@ function History({ c }: { c: Correction }) {
   );
 }
 
-function FactRow({ stub, f, group, onChange, onAsk }: { stub: Stub; f: Fact; group: FactGroup; onChange: (s: Stub) => void; onAsk: () => void }) {
+/** The same action and associated status in the inspector, phone sheet and chip popover. */
+export function FactInclusion({ stub, fact, onToggleFact }: { stub: Stub; fact: Fact; onToggleFact: (projectId: string, factId: string) => void }) {
+  const statusId = useId();
+  const included = isFactIncluded(stub, fact);
+  if (isCoreFact(fact)) return <span className={styles.source}>{included ? "Included by default" : "Core detail hidden or missing"}</span>;
+  const action = included ? "Remove from stub" : "Add to stub";
+  return <span className={styles.inclusion}>
+    <span id={statusId} className={styles.source}>{included ? "Selected for stub" : "Not selected"}</span>
+    <Tag aria-label={`${action}: ${fact.label}`} aria-describedby={statusId} onClick={() => onToggleFact(stub.id, factKey(fact))}>{action}</Tag>
+  </span>;
+}
+
+function FactRow({ stub, f, group, onChange, onToggleFact, onAsk }: { stub: Stub; f: Fact; group: FactGroup; onChange: (s: Stub) => void; onToggleFact: (projectId: string, factId: string) => void; onAsk: () => void }) {
   const [showOriginal, setShowOriginal] = useState(false);
   const id = useId();
-  const active = activeCorrection(stub, f.id);
+  const active = activeCorrection(stub, factKey(f));
   const original = originalOf(stub, f);
-  const history = entries(stub, f.id);
+  const history = entries(stub, factKey(f));
   const printed = isPrinted(f);
   return (
     <li className={styles.fact} data-group={group}>
@@ -186,7 +203,7 @@ function FactRow({ stub, f, group, onChange, onAsk }: { stub: Stub; f: Fact; gro
             <Tag
               aria-label={`Undo your change to ${f.label}`}
               onClick={() => {
-                onChange(undoCorrection(stub, f.id));
+                onChange(undoCorrection(stub, factKey(f)));
                 play("tap", { emphasis: "subtle" });
               }}
             >
@@ -194,9 +211,7 @@ function FactRow({ stub, f, group, onChange, onAsk }: { stub: Stub; f: Fact; gro
             </Tag>
           )}
           {group !== "missing" && (
-            <Tag pressed={!!f.kept} aria-label={`${f.kept ? "On stub" : "Keep"}: ${f.label}`} onClick={() => onChange(toggleKept(stub, f.id))}>
-              {f.kept ? "On stub" : "Keep"}
-            </Tag>
+<FactInclusion stub={stub} fact={f} onToggleFact={onToggleFact} />
           )}
         </Tags>
       </div>
@@ -225,31 +240,36 @@ function FactRow({ stub, f, group, onChange, onAsk }: { stub: Stub; f: Fact; gro
 }
 
 /** The whole review: open questions, then the facts in four groups, then any images we can't use. */
-export function FactsReview({ stub, onChange }: { stub: Stub; onChange: (s: Stub) => void }) {
+export function FactsReview({ stub, onChange, onToggleFact }: { stub: Stub; onChange: (s: Stub) => void; onToggleFact: (projectId: string, factId: string) => void }) {
   const [asking, setAsking] = useState<string | null>(null);
   const questions = openQuestions(stub);
   const groups = groupFacts(stub.event.facts, stub);
   const assets = reviewAssets(stub);
-  const marks = [...new Set(stub.event.facts.filter((f) => !activeCorrection(stub, f.id)).map((f) => f.provenance))];
-  const asked = asking ? questions.find((q) => q.factId === asking) : undefined;
+  const marks = [...new Set(stub.event.facts.filter((f) => !activeCorrection(stub, factKey(f))).map((f) => f.provenance))];
+  const asked = asking ? questions.find((q) => questionKey(q) === asking) : undefined;
   // A "Fix" or "Add" on a row opens that question even when it isn't one that always asks (an optional fact).
   const manual: Question | undefined =
     asking && !asked
       ? (() => {
-          const f = stub.event.facts.find((x) => x.id === asking);
-          return f ? { factId: f.id, label: f.label, text: "What should it say?", alternatives: [...new Set(f.alternatives ?? [])], input: "text", required: false } : undefined;
+          const f = resolveFact(stub.event.facts, asking);
+          return f ? { factId: f.id, clientEntityKey: f.clientEntityKey, label: f.label, text: "What should it say?", alternatives: [...new Set(f.alternatives ?? [])], input: "text", required: false } : undefined;
         })()
       : undefined;
-  const shown = [...questions.filter((q) => q.factId !== asking), ...(asked ? [asked] : []), ...(manual ? [manual] : [])];
+  const shown = [...questions.filter((q) => questionKey(q) !== asking), ...(asked ? [asked] : []), ...(manual ? [manual] : [])];
 
   if (!stub.event.facts.length && !shown.length && !assets.length) return <p className={styles.empty}>No facts found yet. Ask the agent to look again.</p>;
 
   return (
     <div className={styles.review}>
+      <p className={styles.groupNote}>Choose which extra facts appear on your stub. Inclusion does not verify or approve a fact.</p>
+      <FactFitNotice stub={stub} />
+      {unresolvedHistory(stub) && (
+        <p className={styles.notice} role="status">Some older corrections referred to duplicate fact IDs. Their history is retained, but cannot be assigned to a particular row. Review those facts again.</p>
+      )}
       {shown.length > 0 && (
         <div className={styles.questions} role="group" aria-label="Questions about your facts">
           {shown.map((q) => (
-            <FactQuestion key={q.factId} stub={stub} q={q} onChange={onChange} onDone={() => setAsking(null)} />
+            <FactQuestion key={questionKey(q)} stub={stub} q={q} onChange={onChange} onDone={() => setAsking(null)} />
           ))}
         </div>
       )}
@@ -263,7 +283,7 @@ export function FactsReview({ stub, onChange }: { stub: Stub; onChange: (s: Stub
             <p className={styles.groupNote}>{GROUP_NOTE[g]}</p>
             <ul className={styles.facts}>
               {groups[g].map((f) => (
-                <FactRow key={f.id} stub={stub} f={f} group={g} onChange={onChange} onAsk={() => setAsking(f.id)} />
+                <FactRow key={factKey(f)} stub={stub} f={f} group={g} onChange={onChange} onToggleFact={onToggleFact} onAsk={() => setAsking(factKey(f))} />
               ))}
             </ul>
           </section>

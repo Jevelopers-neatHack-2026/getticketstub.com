@@ -21,7 +21,7 @@ export const OPS_SPEC = {
   /** One per product operation (an API request), emitted when the handler returns or throws. */
   api_request: {
     route: ["research", "art", "agent"],
-    operation: ["research_link", "research_search", "art_generate", "agent_reply", "unknown"],
+    operation: ["research_link", "research_search", "art_generate", "agent_reply", "agent_plan", "agent_followup", "unknown"],
     status: "status",
     outcome: OUTCOMES,
     durationMs: "ms",
@@ -62,6 +62,20 @@ export const OPS_SPEC = {
     outcome: ["ok", "http_error", "timeout", "network_error", "no_match", "no_data", "pending", "skipped", "rate_limited", "auth_failed", "not_found", "bad_response"],
     upstreamStatus: "status",
     durationMs: "ms",
+  },
+  /**
+   * One per agent step: the plan, each action result the browser reports (applied, failed or rejected), the follow-up,
+   * and the failure and recovery that connect them. Only the action type and a bounded outcome: never a message,
+   * a value the person typed or a fact.
+   */
+  agent_step: {
+    step: ["plan", "result", "followup", "failure", "recovery"],
+    action: ["set_fact", "set_style", "set_material", "set_finish", "set_text", "remix_art", "show_back", "ask_user", "none"],
+    outcome: ["ok", "repaired", "invalid_plan", "applied", "failed", "rejected"],
+    source: ["rules", "live"],
+    code: "code",
+    durationMs: "ms",
+    count: "count",
   },
   /** One per page parse: which extractor matched and how many facts it produced. */
   source_parse: {

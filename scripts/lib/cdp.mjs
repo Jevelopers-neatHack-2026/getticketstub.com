@@ -5,6 +5,7 @@ import { spawn } from "node:child_process";
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { cleanupDownloadProfile } from "./download-profile-cleanup.mjs";
 
 const CANDIDATES = [
   process.env.CHROME_PATH,
@@ -20,27 +21,44 @@ export const chromePath = () => CANDIDATES.find((p) => existsSync(p)) ?? null;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-export async function launchBrowser() {
+// Unlike a bare race against sleep(), this leaves no timer behind when the operation finishes.
+async function within(promise, ms) {
+  let timer;
+  try {
+    return await Promise.race([promise.then(() => true), new Promise((r) => { timer = setTimeout(() => r(false), ms); })]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// Download qualification opts into extension isolation. Other consumers retain exactly
+// the existing arguments; this option is not a compositor or screenshot readiness flag.
+export function browserLaunchArguments(profile, { downloadIsolation = false } = {}) {
+  return [
+    "--headless=new",
+    // Background audits must not play sound or take over the user's media keys.
+    "--mute-audio",
+    "--disable-features=HardwareMediaKeyHandling",
+    "--disable-gpu",
+    "--no-first-run",
+    "--no-default-browser-check",
+    "--hide-scrollbars",
+    "--remote-debugging-port=0",
+    `--user-data-dir=${profile}`,
+    // loopback only: any other host does not resolve, so a fixture run cannot touch the network
+    "--host-resolver-rules=MAP * ~NOTFOUND , EXCLUDE 127.0.0.1 , EXCLUDE localhost",
+    ...(downloadIsolation === true ? ["--disable-extensions", "--disable-component-extensions-with-background-pages"] : []),
+    "about:blank",
+  ];
+}
+
+export async function launchBrowser(options) {
   const exe = chromePath();
   if (!exe) throw new Error("no Chrome or Edge found (set CHROME_PATH)");
   const profile = mkdtempSync(join(tmpdir(), "ticketstub-chrome-"));
   const child = spawn(
     exe,
-    [
-      "--headless=new",
-      // Background audits must not play sound or take over the user's media keys.
-      "--mute-audio",
-      "--disable-features=HardwareMediaKeyHandling",
-      "--disable-gpu",
-      "--no-first-run",
-      "--no-default-browser-check",
-      "--hide-scrollbars",
-      "--remote-debugging-port=0",
-      `--user-data-dir=${profile}`,
-      // loopback only: any other host does not resolve, so a fixture run cannot touch the network
-      "--host-resolver-rules=MAP * ~NOTFOUND , EXCLUDE 127.0.0.1 , EXCLUDE localhost",
-      "about:blank",
-    ],
+    browserLaunchArguments(profile, options),
     { stdio: ["ignore", "ignore", "pipe"] },
   );
   let log = "";
@@ -70,13 +88,30 @@ export async function launchBrowser() {
       return page;
     },
     async close() {
+      // Wait for "exit", not "close": "close" also needs the stderr pipe to end, and Chrome's helper processes can hold
+      // that pipe open after the browser itself is gone, which hung the runners at teardown on macOS and Linux. The wait
+      // is bounded: ask politely, then SIGKILL, then stop waiting and drop the pipe.
+      const gone = new Promise((r) => (child.exitCode !== null || child.signalCode !== null ? r() : child.once("exit", r)));
+      // Chrome may close the socket before acknowledging Browser.close. A still-open socket may also
+      // never answer; neither case may prevent the existing process cleanup from running.
+      await within(Promise.race([conn.send("Browser.close").catch(() => {}), gone]), 1000);
+      let exited;
       try {
-        await conn.send("Browser.close");
-      } catch {
-        /* already gone */
+        child.kill();
+        exited = await within(gone, 5000);
+        if (!exited) {
+          child.kill("SIGKILL");
+          exited = await within(gone, 5000);
+        }
+      } finally {
+        child.stderr.destroy();
       }
-      child.kill();
-      await new Promise((r) => (child.exitCode !== null ? r() : child.once("close", r)));
+      if (!exited) throw new Error("Chrome did not exit after bounded shutdown");
+      if (options?.downloadIsolation === true) {
+        // Filesystem cleanup has its own receipt; a cleanup failure must not
+        // relabel the process exit that was already confirmed above.
+        return { profileCleanup: await cleanupDownloadProfile(profile) };
+      }
       try {
         rmSync(profile, { recursive: true, force: true });
       } catch {
@@ -86,13 +121,22 @@ export async function launchBrowser() {
   };
 }
 
-function connect(url) {
+export function connect(url, Socket = WebSocket) {
   return new Promise((resolve, reject) => {
-    const ws = new WebSocket(url);
+    const ws = new Socket(url);
     let id = 0;
+    let closedError;
     const pending = new Map();
     const listeners = new Set();
+    const disconnected = (error) => {
+      closedError ??= error;
+      for (const { no } of pending.values()) no(closedError);
+      pending.clear();
+      listeners.clear();
+      reject(closedError); // Also rejects a connection that closed before its open event.
+    };
     ws.onmessage = (ev) => {
+      if (closedError) return;
       const msg = JSON.parse(ev.data);
       if (msg.id && pending.has(msg.id)) {
         const { ok, no } = pending.get(msg.id);
@@ -101,17 +145,26 @@ function connect(url) {
         else ok(msg.result);
       } else if (msg.method) listeners.forEach((l) => l(msg));
     };
-    ws.onerror = () => reject(new Error("DevTools socket error"));
-    ws.onopen = () =>
+    ws.onerror = () => disconnected(new Error("DevTools socket error"));
+    ws.onclose = () => disconnected(new Error("DevTools socket closed"));
+    ws.onopen = () => {
+      if (closedError) { ws.close(); return; }
       resolve({
         send: (method, params = {}, sessionId) =>
           new Promise((ok, no) => {
+            if (closedError) { no(closedError); return; }
             const n = ++id;
             pending.set(n, { ok, no });
-            ws.send(JSON.stringify({ id: n, method, params, sessionId }));
+            try {
+              ws.send(JSON.stringify({ id: n, method, params, sessionId }));
+            } catch (error) {
+              pending.delete(n);
+              no(error);
+            }
           }),
-        on: (fn) => (listeners.add(fn), () => listeners.delete(fn)),
+        on: (fn) => { if (!closedError) listeners.add(fn); return () => listeners.delete(fn); },
       });
+    };
   });
 }
 

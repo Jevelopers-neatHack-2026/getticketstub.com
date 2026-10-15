@@ -66,7 +66,7 @@ export const FAQ_GROUPS: FaqGroup[] = [
         q: "How do I change the style?",
         a: (
           <>
-            <p>On a phone, swipe the stub for another style, or press and hold to browse them. On desktop, pick one from the styles column.</p>
+            <p>On a phone, swipe the stub for another style, or press the All styles button (or press and hold) to browse them. On desktop, pick one from the styles column.</p>
             <p>
               <TearAnchor href="/make">Make a stub</TearAnchor>
             </p>

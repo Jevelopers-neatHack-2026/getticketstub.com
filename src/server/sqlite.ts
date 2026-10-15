@@ -4,7 +4,7 @@ import { dirname, resolve } from "node:path";
 import { randomBytes } from "node:crypto";
 import { safeEqual } from "./crypto";
 import { DatabaseSync } from "node:sqlite";
-import type { Order } from "@/customer/pages/commerce";
+import type { Order, OrderPayment } from "@/customer/pages/commerce";
 import type { Stub } from "@/customer/studio/types";
 import { artUnavailable, retainArt } from "@/customer/studio/versions/retention";
 import { EVENT_RETENTION_MS, EVENT_SCHEMA, type StoredEvent, type TicketstubEvent } from "./events";
@@ -14,6 +14,10 @@ import type { Account, AccountState, ApprovalRow, ArtQuota, ArtQuotaResult, Clai
 type Row = Record<string, unknown>;
 
 const newId = (prefix: string) => `${prefix}_${randomBytes(12).toString("base64url")}`;
+// Both ordinary ownership checks and the final session snapshot use this
+// storage-owned predicate. The account expression is a literal owned by this module.
+const stubOwnership = (account: "?" | "a.id") => `(EXISTS(SELECT 1 FROM shares WHERE owner_key = ${account} AND stub_id = ?)
+  OR EXISTS(SELECT 1 FROM wall_stubs WHERE account_id = ${account} AND stub_id = ? AND deleted = 0))`;
 
 export function openDatabase(file: string): DatabaseSync {
   if (file !== ":memory:") mkdirSync(dirname(resolve(file)), { recursive: true });
@@ -194,6 +198,19 @@ export class SqliteStorage implements Storage {
     };
   }
 
+  readCreativeDispatchState(tokenHash: string, stubId: string, now: number): { account: AccountState; sessionRef: string; ownsStub: boolean } | null {
+    // DatabaseSync.isTransaction is present on the pinned Node22 runtime;
+    // @types/node20 cannot express it. Missing support fails closed.
+    if ((this.db as DatabaseSync & { readonly isTransaction?: boolean }).isTransaction !== false || !Number.isFinite(now)) return null;
+    const r = this.get(`SELECT s.token_hash, a.id, a.email, a.membership_revision, a.is_staff,
+      ${stubOwnership("a.id")} AS owns_stub
+      FROM sessions s JOIN accounts a ON a.id = s.account_id WHERE s.token_hash = ? AND s.expires_at > ?`,
+      stubId, stubId, tokenHash, now);
+    if (!r || !safeEqual(r.token_hash as string, tokenHash)) return null;
+    return { account: { id: r.id as string, email: r.email as string, membershipRevision: Number(r.membership_revision), isStaff: Number(r.is_staff) === 1 },
+      sessionRef: (r.token_hash as string).slice(0, 24), ownsStub: Number(r.owns_stub) === 1 };
+  }
+
   async isSessionLive(sessionRef: string, now: number): Promise<boolean> {
     if (!/^[a-f0-9]{24}$/.test(sessionRef)) return false;
     return !!this.get("SELECT 1 AS x FROM sessions WHERE substr(token_hash, 1, 24) = ? AND expires_at > ? LIMIT 1", sessionRef, now);
@@ -326,6 +343,25 @@ export class SqliteStorage implements Storage {
       accountId, email,
     );
     return rows.map((r) => JSON.parse(r.data as string) as Order);
+  }
+
+  async getOrder(id: string): Promise<{ order: Order; accountId: string | null; email: string | null } | null> {
+    const r = this.get("SELECT account_id, email, data FROM orders WHERE id = ?", id);
+    if (!r) return null;
+    return { order: JSON.parse(r.data as string) as Order, accountId: (r.account_id as string | null) ?? null, email: (r.email as string | null) ?? null };
+  }
+
+  async updateOrderPayment(id: string, apply: (order: Order) => OrderPayment | null): Promise<{ before: Order; after: Order } | null> {
+    return this.tx(() => {
+      const r = this.get("SELECT data FROM orders WHERE id = ?", id);
+      if (!r) return null;
+      const before = JSON.parse(r.data as string) as Order;
+      const payment = apply(before);
+      if (!payment) return { before, after: before };
+      const after: Order = { ...before, payment };
+      this.run("UPDATE orders SET data = ? WHERE id = ?", JSON.stringify(after), id);
+      return { before, after };
+    });
   }
 
   async upsertShare(ownerKey: string, stub: Stub, newToken: string, now: number): Promise<string> {
@@ -629,8 +665,7 @@ export class SqliteStorage implements Storage {
   }
 
   async ownsStub(tenantId: string, stubId: string): Promise<boolean> {
-    if (this.get("SELECT 1 AS x FROM shares WHERE owner_key = ? AND stub_id = ?", tenantId, stubId)) return true;
-    return !!this.get("SELECT 1 AS x FROM wall_stubs WHERE account_id = ? AND stub_id = ? AND deleted = 0", tenantId, stubId);
+    return Number(this.get(`SELECT ${stubOwnership("?")} AS owned`, tenantId, stubId, tenantId, stubId)?.owned) === 1;
   }
 
   async getEventCaptain(eventId: string): Promise<string | null> {

@@ -43,11 +43,23 @@ const agent = await import("../src/app/api/agent/route.ts");
 const art = await import("../src/app/api/art/route.ts");
 const research = await import("../src/app/api/research/route.ts");
 const client = await import("../src/customer/studio/research/client.ts");
+const intake = await import("../src/server/intake-url.ts");
+intake.setTransport((url, init) => globalThis.fetch(url.href, { ...init, redirect: "manual" })); // offline: no sockets, no DNS
 const originalFetch = globalThis.fetch;
 const originalEnv = { ...process.env };
 afterEach(() => { globalThis.fetch = originalFetch; process.env = { ...originalEnv }; });
 const response = (body, status = 200) => Response.json(body, { status });
 const event = { type: "concert", title: "Offline Test", facts: [] };
+test("art rejects oversized declared and streamed UTF-8 bodies before provider dispatch", async () => {
+  process.env.TICKETSTUB_RUNTIME_MODE = "live";
+  globalThis.fetch = () => assert.fail("oversized art body dispatched a provider");
+  const body = JSON.stringify({ event, unused: "é".repeat(140000) });
+  for (const headers of [{ "content-length": String(Buffer.byteLength(body)) }, {}]) {
+    const res = await art.POST(new Request("http://localhost/api/art", { method: "POST", headers, body }));
+    assert.equal(res.status, 413);
+    assert.equal((await res.json()).error.code, "too_large");
+  }
+});
 const req = (body, signal) => new Request("http://localhost/api", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), signal });
 const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aY1cAAAAASUVORK5CYII=";
 function configure(capability = "agent", model = "anthropic/test-model") {
@@ -189,6 +201,8 @@ for (const image of [{ b64_json: png, media_type: "image/svg+xml" }, { b64_json:
 test("direct Anthropic and OpenAI paths keep their original wire contracts", async () => {
   process.env.TICKETSTUB_RUNTIME_MODE = "live";
   delete process.env.TICKETSTUB_AGENT_PROVIDER; delete process.env.TICKETSTUB_ART_PROVIDER;
+  delete process.env.GPT_IMAGE_MODEL;
+  process.env.TICKETSTUB_ART_MODEL = "gpt-image-1"; // Explicit compatibility selection, no implicit default.
   process.env.ANTHROPIC_API_KEY = "offline-direct-key"; process.env.OPENAI_API_KEY = "offline-direct-key";
   globalThis.fetch = async (url, init) => {
     const body = JSON.parse(init.body);
@@ -228,13 +242,29 @@ test("research rejects malformed enrichment with a safe provider error", async (
   assert.equal(result.status, 502); assert.equal((await result.json()).error.code, "invalid_provider_response");
 });
 
-test("optional direct-provider paths still simulate without credentials", async () => {
+test("research enrichment and browser ingestion keep repeated categories independently addressable", async () => {
+  configure("research");
+  const items = ["other", "other", "run", "run"].map((id, i) => ({ id, label: `Extra ${i}`, value: `Value ${i}`, evidence: "offline evidence", confidence: .9 }));
+  globalThis.fetch = async url => url === "https://example.com/test-event"
+    ? new Response('<script type="application/ld+json">{"@type":"MusicEvent","name":"Offline Test"}</script><p>offline evidence</p>')
+    : response(textResponse(JSON.stringify(items)));
+  const result = await research.POST(req({ url: "https://example.com/test-event" }));
+  assert.equal(result.status, 200);
+  const event = client.pickEvent(await result.json());
+  const extras = event.facts.filter((f) => f.label.startsWith("Extra "));
+  assert.equal(extras.length, 4);
+  assert.equal(new Set(event.facts.map((f) => f.clientEntityKey)).size, event.facts.length);
+  assert.deepEqual(extras.map(f => f.id), ["note", "note", "run", "run"]);
+  assert.deepEqual(extras.map((f) => f.label), items.map((f) => f.label));
+});
+
+test("optional direct text simulates but live art requires server API credentials", async () => {
   process.env.TICKETSTUB_RUNTIME_MODE = "live";
   delete process.env.TICKETSTUB_AGENT_PROVIDER; delete process.env.TICKETSTUB_ART_PROVIDER;
   delete process.env.OPENAI_API_KEY; delete process.env.ANTHROPIC_API_KEY;
   globalThis.fetch = () => { assert.fail("missing direct keys attempted network"); };
   assert.equal((await agent.POST(req({ event, message: "Hello?" }))).status, 204);
-  assert.equal((await (await art.POST(req({ event }))).json()).provenance, "simulated");
+  await assert.rejects(generateImage("test"), e => e.code === "missing_provider_key");
 });
 
 

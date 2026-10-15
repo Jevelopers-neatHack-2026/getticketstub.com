@@ -1,7 +1,8 @@
 import "server-only";
 // The storage interface. Routes and auth only talk to this, so Postgres can replace SQLite later by
-// implementing it. Every method is async for that reason, even though node:sqlite is synchronous.
-import type { Order } from "@/customer/pages/commerce";
+// implementing it. Ordinary methods are async. A backend that supports a final
+// synchronous provider fence must additionally implement the optional owned snapshot below.
+import type { Order, OrderPayment } from "@/customer/pages/commerce";
 import type { Stub } from "@/customer/studio/types";
 import type { StoredEvent, TicketstubEvent } from "./events";
 
@@ -196,6 +197,9 @@ export interface Storage {
   deleteSession(tokenHash: string): Promise<void>;
   /** The account behind a live session, with its membership revision and a non-secret reference to the session. Null when unknown, expired or signed out. */
   getSessionState(tokenHash: string, now: number): Promise<{ account: AccountState; sessionRef: string } | null>;
+  /** One current owner snapshot for the final synchronous creative send fence.
+   * No cached context, Promise or borrowed transaction may stand in for this read. */
+  readCreativeDispatchState?(tokenHash: string, stubId: string, now: number): { account: AccountState; sessionRef: string; ownsStub: boolean } | null;
   /** True while the session behind a sessionRef still exists and has not expired. */
   isSessionLive(sessionRef: string, now: number): Promise<boolean>;
   /** The current state of an account, or null once it is deleted. */
@@ -219,6 +223,13 @@ export interface Storage {
   // orders
   createOrder(order: Order, accountId: string | null, email: string | null): Promise<void>;
   listOrders(accountId: string, email: string): Promise<Order[]>;
+  /** The order and who placed it, or null. */
+  getOrder(id: string): Promise<{ order: Order; accountId: string | null; email: string | null } | null>;
+  /**
+   * Replaces the order's payment in one transaction when `apply` returns a new one; null leaves it unchanged.
+   * Returns the order before and after, so a caller acts only on a transition it caused (a receipt sends once).
+   */
+  updateOrderPayment(id: string, apply: (order: Order) => OrderPayment | null): Promise<{ before: Order; after: Order } | null>;
 
   // shares
   /** The same owner and stub id always get the same token; the snapshot is replaced each time. */

@@ -1,0 +1,33 @@
+{
+  "fixture": "boundary-actor-128",
+  "description": "Account actor and tenant are exactly 128 characters after the kind prefix (120 raw): accepted, and a valid TrustedScope.",
+  "verifyAt": "2026-10-10T12:00:00.000Z",
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6InRpY2tldHN0dWIuY29udGV4dCJ9.eyJjdHgiOnsic2NoZW1hIjoidGlja2V0c3R1Yi5jb250ZXh0LzIiLCJpc3N1ZXIiOiJnZXR0aWNrZXRzdHViLmNvbSIsImF1ZGllbmNlIjoidGlja2V0c3R1Yi5maW5hbmNlIiwiYWN0b3IiOnsia2luZCI6ImFjY291bnQiLCJpZCI6ImFjY291bnQ6YWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhIn0sInRlbmFudCI6eyJpZCI6ImFjY291bnQ6YWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhIn0sInByb2plY3QiOnsiaWQiOiJldnRfZnhfMSIsImtpbmQiOiJldmVudCIsInJlZiI6ImV2ZW50OmV2dF9meF8xIn0sInJvbGUiOiJjYXB0YWluIiwiY2FwYWJpbGl0aWVzIjpbImFjY291bnQuZGVsZXRlIiwiYWNjb3VudC5lbWFpbC5jaGFuZ2UiLCJhY2NvdW50LnJlYWQiLCJhZ2VudC51c2UiLCJhcnQuZ2VuZXJhdGUiLCJjbGFpbS5yZWRlZW0iLCJjbGFpbS52aWV3IiwiY2xhaW1zLnJlYWQiLCJldmVudC5jcmVhdGUiLCJldmVudC5wdWJsaXNoIiwiZXZlbnQucmVhZCIsImZpbGUucmVhZCIsImZpbmFuY2UuZXhwb3J0IiwiZmluYW5jZS5yZWFkIiwib3JkZXIuY3JlYXRlIiwib3JkZXIucmVhZCIsInNlc3Npb24ucmV2b2tlIiwic2hhcmUuY3JlYXRlIiwic2hhcmUudmlldyIsInN0dWIuZHJhZnQiLCJ3YWxsLnB1YmxpYy52aWV3Iiwid2FsbC5wdWJsaXNoIiwid2FsbC5zeW5jIl0sIm1lbWJlcnNoaXBSZXZpc2lvbiI6MywicmV2b2tlZCI6ZmFsc2UsImVudmlyb25tZW50IjoiZGV2ZWxvcG1lbnQiLCJlY29ub21pY01vZGUiOiJzYW5kYm94IiwiZXZpZGVuY2VNb2RlIjoiZml4dHVyZSIsImlzc3VlZEF0IjoiMjAyNi0xMC0xMFQxMjowMDowMC4wMDBaIiwiZXhwaXJlc0F0IjoiMjAyNi0xMC0xMFQxMjowNTowMC4wMDBaIn0sInNpZCI6ImZ4MDAwMDAwMDAwMDAwMDAwMDAwMDAxMCJ9.zqy4xzrPS4sCT5S-tLP6k_ER6n5v7_o33KoVW44bEJY",
+  "state": {
+    "membershipRevision": 3,
+    "sessionLive": true,
+    "projectMember": true
+  },
+  "expect": {
+    "ok": true,
+    "role": "captain",
+    "tenant": "account:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "project": {
+      "id": "evt_fx_1",
+      "kind": "event",
+      "ref": "event:evt_fx_1"
+    },
+    "financeAdapter": {
+      "ok": true,
+      "schema": "ticketstub.finance-scope-adapter/1",
+      "scope": {
+        "tenantId": "account:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "projectId": "event:evt_fx_1",
+        "environment": "development",
+        "billingMode": "sandbox",
+        "actorId": "account:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "evidenceMode": "mocked"
+    }
+  }
+}

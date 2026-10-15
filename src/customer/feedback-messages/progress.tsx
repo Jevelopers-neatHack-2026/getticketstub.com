@@ -3,6 +3,8 @@
 // The states are the real ones: idle, sending (the request is out), slow (still waiting past SLOW_MS: "Still
 // working..."), unknown (past UNKNOWN_MS the answer hasn't come, so we say we can't tell whether it went
 // through), done and failed. A late answer after "unknown" still lands: it moves the state to done or failed.
+// A run that was superseded (a newer run, `reset`, or unmount) is stale: it neither moves the state nor hands its
+// value to the caller, so a caller can't act on an answer the screen has already moved past.
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useAnnounce } from "@/customer/a11y/announce";
 import { PaperButton, TearLink } from "@/customer/desk/Desk";
@@ -28,9 +30,16 @@ export function useProgress(opts: { slowMs?: number; unknownMs?: number } = {}) 
     timers.current.forEach(clearTimeout);
     timers.current = [];
   };
-  useEffect(() => clear, []);
+  // Unmounting ends the current generation: whatever is still in flight is stale and its value is dropped.
+  useEffect(
+    () => () => {
+      run$.current++;
+      clear();
+    },
+    [],
+  );
 
-  /** Runs `fn`, tracking only real states. Resolves with its value, or undefined when it failed. */
+  /** Runs `fn`, tracking only real states. Resolves with its value, or undefined when it failed or was superseded (newer run, reset, unmount). */
   const run = useCallback(
     async <T,>(fn: () => Promise<T>): Promise<T | undefined> => {
       const mine = ++run$.current;
@@ -42,10 +51,9 @@ export function useProgress(opts: { slowMs?: number; unknownMs?: number } = {}) 
       ];
       try {
         const value = await fn();
-        if (run$.current === mine) {
-          clear();
-          setState({ phase: "done" });
-        }
+        if (run$.current !== mine) return undefined;
+        clear();
+        setState({ phase: "done" });
         return value;
       } catch (e) {
         if (run$.current === mine) {

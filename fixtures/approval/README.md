@@ -1,16 +1,16 @@
 # Artwork approval fixtures (`ticketstub.approval/1`)
 
-> **FIXTURE ONLY. NEVER PRODUCTION.** `fixture-key.json` holds the HMAC key these approvals are signed with. It is public on purpose. Records made with it say `"mode": "fixture"`. The server refuses any `CONTEXT_SECRET` containing `FIXTURE-ONLY`, so a production verifier rejects every one of them as `forged`. Fixture success shows a consumer reads the format. It does not show integration with the live issuer, and it is not a consumer-conformance receipt.
+> **FIXTURE ONLY. NEVER PRODUCTION.** `fixture-key.json` holds the HMAC key these approvals are signed with. It is public on purpose. Records made with it say `"mode": "fixture"`. Every fixture token names kid `fixture`. The server refuses any `APPROVAL_SIGNING_KEYS` entry whose key contains `FIXTURE-ONLY` or whose kid starts with `fixture`, so a production verifier rejects every one of them as `forged`. Fixture success shows a consumer reads the format. It does not show integration with the live issuer, and it is not a consumer-conformance receipt.
 
 Synthetic stub, synthetic art bytes, synthetic ids. Regenerate with `node fixtures/approval/generate.mjs` (deterministic). Check with `node fixtures/approval/verify.mjs`, which has no dependencies: copy `verifyApproval` and `contentHashes` into a consumer.
 
-An approval says: this signed-in owner approved this exact design version, art, printed facts and composition, for one purpose, until `expiresAt`. **It is not a purchase authorization, a payment, an order or an asset-rights grant.** The signed record carries `notAuthorizes: ["purchase","payment","order","asset_rights"]`, and there is no purchase purpose: asking for one is `wrong_purpose`. Purchase authorization is a separate, later record (GT-07 / issue #16).
+An approval says: this signed-in owner approved this exact design version, art, printed facts and composition, for one purpose, until `expiresAt`. **It is not a purchase authorization, a payment, an order or an asset-rights grant.** The signed record carries `notAuthorizes: ["purchase","payment","order","asset_rights"]`, and there is no purchase purpose: asking for one is `wrong_purpose`. The separate [order-authorization record](../order-authorization/README.md) covers the application-local fulfillment authorization boundary (GT-07 / issue #16); it also grants no payment or asset rights.
 
 ## The token
 
 `header.body.signature`, three base64url parts, HMAC-SHA256 over `header.body`.
 
-- header: `{"alg":"HS256","typ":"ticketstub.approval"}` (a context token has `typ` `ticketstub.context`, so one never passes as the other)
+- header: `{"alg":"HS256","typ":"ticketstub.approval","kid":"<key id>"}` (a context token has `typ` `ticketstub.context`, so one never passes as the other). `kid` names the key that signed it: 1-64 of `[A-Za-z0-9._-]`, `fixture` here.
 - body: `{"approval": <record>}`
 
 The record:
@@ -41,7 +41,7 @@ Revocation and staleness are **not** in the token. They are the issuer's current
 
 ## Verifying
 
-`verifyApproval(token, key, expect, { now, state })`. A consumer MUST pass `expect = { tenant, project: { kind, id }, purpose, content }`, where `content` has the hashes the consumer computed itself from what it holds (`artHash` = SHA-256 of the bytes it is about to use, the rest from `contentHashes(stub, size)`). Never take a hash from the token to compare with the token.
+`verifyApproval(token, keys, expect, { now, state })`, where `keys` maps kid to HMAC key (`{ fixture: key }` here, or a function `kid => key | null`). Look the kid up by own property only. During an issuer's key rotation, hold the previous kid's key too until its tokens expire (seven days). A consumer MUST pass `expect = { tenant, project: { kind, id }, purpose, content }`, where `content` has the hashes the consumer computed itself from what it holds (`artHash` = SHA-256 of the bytes it is about to use, the rest from `contentHashes(stub, size)`). Never take a hash from the token to compare with the token.
 
 **The content rule: print must hold and compare every applicable commitment.** The consumer supplies, and the verifier compares, every commitment that applies to the purpose:
 
@@ -59,8 +59,8 @@ Checks run in this order, and the first failure wins (`invalid_clock` first of a
 | Reason | Meaning |
 | --- | --- |
 | `invalid_clock` | checked first: `now` is not a finite number above zero. Nothing else is judged |
-| `unknown` | not a token, malformed, wrong header, or (with `state.known === false`) the issuer has no such record, or `issuedAt` / `expiresAt` is not a date |
-| `forged` | the HMAC does not match: wrong key, edited payload, the fixture key against a production verifier |
+| `unknown` | not a token, malformed, wrong header (including a missing or malformed `kid`), or (with `state.known === false`) the issuer has no such record, or `issuedAt` / `expiresAt` is not a date |
+| `forged` | no key for the token's `kid`, or the HMAC does not match: wrong key, a token keyed with the context key, edited payload, the fixture key against a production verifier |
 | `unsupported_version` | correctly signed, but a `schema` this verifier does not know |
 | `wrong_scope` | tenant or project differs from the consumer's |
 | `wrong_purpose` | purpose differs, or is not one of the two this version knows (any purchase purpose lands here) |
@@ -85,6 +85,9 @@ Revocation ends authority. It never deletes stored art: the app keeps the file, 
 | `valid-print-compose`, `valid-artifact-download` | ok (controls) |
 | `unknown-malformed`, `unknown-no-record` | `unknown` |
 | `forged`, `forged-edited-binding` | `forged` |
+| `forged-unknown-kid` | `forged` (the right key bytes under a kid the verifier holds no key for) |
+| `forged-context-key` | `forged` (key confusion: signed with the context fixture key, standing in for `CONTEXT_SECRET`) |
+| `unknown-no-kid` | `unknown` (a header with no `kid`, the pre-K4 format) |
 | `unsupported-version` | `unsupported_version` |
 | `wrong-scope-tenant`, `wrong-scope-project` | `wrong_scope` |
 | `wrong-purpose` | `wrong_purpose` |
@@ -105,7 +108,7 @@ Each fixture carries `token`, `verifyAt`, `held` (the bytes the consumer has), `
 ## Not supported
 
 - A canonical shared-contracts `ApprovalReceipt` schema. This record is the app's own `ticketstub.approval/1`; mapping to the canonical receipt is open (shared-contracts #22, #23).
-- Issuer, audience and consumer identity beyond the HMAC key: no per-consumer credentials, no audience claim, no key rotation or `kid` lookup, no asymmetric signatures. Any holder of a token can ask the verify port.
+- Issuer, audience and consumer identity beyond the HMAC key: no per-consumer credentials, no audience claim, no published key discovery (a consumer is given each kid's key out of band), no asymmetric signatures. Any holder of a token can ask the verify port.
 - A composed front/back preview id or hash. `compositionHash` covers the composition inputs, not rendered pixels.
 - Purchase authorization, payment, asset-rights approval, order, quote or supplier handoff.
 - Consumer adoption: nothing in print-production, creative-engine or the harness verifies these yet.

@@ -1,0 +1,105 @@
+name: Progress lifecycle repeatability
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/progress-repeat.yml'
+      - 'tests/progress.test.mjs'
+      - 'src/customer/feedback-messages/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.nvmrc'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/progress-repeat.yml'
+      - 'tests/progress.test.mjs'
+      - 'src/customer/feedback-messages/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.nvmrc'
+
+permissions:
+  contents: read
+
+jobs:
+  progress-repeat:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Select pinned npm
+        run: npm install --global npm@11.16.0
+      - run: npm ci
+      - name: Repeat the real React hook tests and retain every outcome
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/ticketstub-progress-repeats"
+          mkdir -p "$evidence"
+          node --input-type=module - "$evidence" <<'NODE'
+          import { createHash } from 'node:crypto';
+          import { execFileSync } from 'node:child_process';
+          import { readFileSync, writeFileSync } from 'node:fs';
+          import { join } from 'node:path';
+          const directory = process.argv[2];
+          const files = ['.nvmrc', 'package.json', 'package-lock.json', 'tests/progress.test.mjs',
+            'src/customer/feedback-messages/progress.tsx', 'src/customer/feedback-messages/messages.ts'];
+          const manifest = {
+            revision: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
+            node: process.version,
+            npm: execFileSync('npm', ['--version'], { encoding: 'utf8' }).trim(),
+            iterations: 20,
+            command: ['node', '--test', '--test-reporter=tap', 'tests/progress.test.mjs'],
+            mode: 'real React and useProgress; mock clock and screen components; no provider requests',
+            sha256: Object.fromEntries(files.map(file => [file,
+              createHash('sha256').update(readFileSync(file)).digest('hex')])),
+          };
+          writeFileSync(join(directory, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n');
+          NODE
+          printf 'iteration\tcommand_exit\treport_exit\n' > "$evidence/results.tsv"
+          failures=0
+          for iteration in $(seq 1 20); do
+            # These are independent runs, not retries: a later pass never erases an earlier failure.
+            command_exit=0
+            node --test --test-reporter=tap tests/progress.test.mjs > "$evidence/run-$iteration.tap" 2>&1 || command_exit=$?
+            cat "$evidence/run-$iteration.tap"
+            report_exit=0
+            node --input-type=module - "$evidence" "$iteration" "$command_exit" <<'NODE' || report_exit=$?
+          import { readFileSync, writeFileSync } from 'node:fs';
+          import { join } from 'node:path';
+          const [directory, iteration, commandExit] = process.argv.slice(2);
+          const tap = readFileSync(join(directory, `run-${iteration}.tap`), 'utf8');
+          const names = ['tests', 'pass', 'fail', 'cancelled', 'skipped', 'todo'];
+          const counts = {};
+          let valid = true;
+          for (const name of names) {
+            const matches = [...tap.matchAll(new RegExp(`^# ${name} (\\d+)\\r?$`, 'gm'))];
+            if (matches.length !== 1) valid = false;
+            else counts[name] = Number(matches[0][1]);
+          }
+          const passed = Number(commandExit) === 0 && valid && counts.tests > 0 &&
+            counts.pass === counts.tests && ['fail', 'cancelled', 'skipped', 'todo'].every(name => counts[name] === 0);
+          const result = { iteration: Number(iteration), commandExitCode: Number(commandExit), counts, passed };
+          writeFileSync(join(directory, `run-${iteration}.json`), JSON.stringify(result, null, 2) + '\n');
+          console.log(JSON.stringify(result));
+          if (!passed) process.exitCode = 1;
+          NODE
+            printf '%s\t%s\t%s\n' "$iteration" "$command_exit" "$report_exit" >> "$evidence/results.tsv"
+            if [ "$command_exit" -ne 0 ] || [ "$report_exit" -ne 0 ]; then
+              failures=$((failures + 1))
+            fi
+          done
+          echo "Failed or incomplete iterations: $failures / 20"
+          test "$failures" -eq 0
+      - name: Retain repeated-run evidence, including failures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: progress-repeat-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/ticketstub-progress-repeats
+          if-no-files-found: warn

@@ -1,0 +1,15 @@
+# HTTP origin and telemetry boundaries
+
+`src/server/http.ts` keeps origin authorization and link generation on the same authority. Set `APP_URL` to each public deployment's own HTTPS URL, including a nondefault port when needed. Its normalized origin is the sole allowed browser Origin and the base for security links. A path in the configured URL is ignored. Credential-bearing URLs, nonlocal HTTP URLs and malformed configuration are rejected. An invalid nonempty `APP_URL` never enables a fallback.
+
+With `APP_URL` unset or blank, only a request URL on `localhost`, `127.0.0.1` or `[::1]` permits a fallback, using its exact HTTP or HTTPS origin and port. This supports local operation, including local AI modes and production builds. Public hosts always require configuration. `Host`, `x-forwarded-host` and `x-forwarded-proto` never establish authority. Reverse proxies must retain the configured public browser Origin; an internal request URL does not add another allowed origin when `APP_URL` is set.
+
+`checkOrigin` rejects absent, malformed, opaque, credential-bearing and path/query/fragment-bearing Origin values with the existing 403 `bad_origin` envelope. Scheme and effective port must match; standard URL normalization treats HTTPS port 443 as its default. `foreignOrigin` keeps its existing missing-Origin allowance for guest routes. `appOrigin` reports 503 `origin_unavailable` when no trusted origin exists. The existing auth-link and account-email handlers call `checkOrigin` before issuing a stored link, so the shared policy rejects unavailable authority before that write.
+
+Storage-failure events retain their schema, request ID, code, response body, status and headers. Their route field comes only from a private fixed route-template table in the HTTP module. Dynamic segments become categories such as `share_token`, `claim_token` and `files_name`. Unknown routes, extra segments and non-API paths use `unknown`; query strings never supply labels. Static `share/revoke` takes precedence over the share-token template. Longer order-authorization labels use `order_auth_*` so the existing event sanitizer retains them. All labels are shorter than its 24-character token-like string threshold.
+
+When adding a route, add a fixed label and a storage-failure regression here if a distinct category is useful; otherwise `unknown` remains safe. Never log a reconstructed, sanitized or truncated request path as a category.
+
+The bounded regressions run with `node --test tests/http-origin-boundaries.test.mjs tests/http-route-label-boundaries.test.mjs` on the pinned Node 22.23.3 toolchain. They exercise the real HTTP helpers, Next responses and event ring with synthetic requests. They do not establish deployed proxy configuration or hosted acceptance.
+
+Historical attribution: Timothy Gregg's `1a8981aa1c71bd6546a8a051e1c76c0be5fda03b` recorded earlier app-origin and route-template hardening. This HTTP-only repair was implemented against `783a9fa03e3d64b752cd8c5ad913c223db29118d` after reproducing its defects; it does not import that historical tree or its approval changes.

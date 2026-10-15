@@ -63,6 +63,7 @@ into one Neatlogs trace. Without the key the setting is ignored (and `log,neatlo
 | `<capability>.<phase>` | `LLM` | `provider_attempt` | `neatlogs.llm.model_name`, `neatlogs.llm.provider`, token counts, `neatlogs.llm.cost_usd` (only when the provider reported it), outcome/code |
 | `source.<name>` | `TOOL` | `source_fetch` | outcome, upstream status, duration |
 | `parse.<parser>` | `TOOL` | `source_parse` | parser, facts, date |
+| `agent.<step>` | `TOOL` | `agent_step` | step, action type, outcome, code, duration, count |
 
 - The Neatlogs session id is the operation id, so the `x-ticketstub-operation` response header finds the trace.
   Tags are `ticketstub` and, when `TICKETSTUB_COMMIT_SHA` is set, `ticketstub@<sha>`.
@@ -146,6 +147,19 @@ the whole Discovery lookup (`src/customer/studio/research/ticketmaster.ts` is no
 ### `source_parse` — one per fetched event page
 
 `parser`: `schema_org`, `title`, `none`; `outcome`: `ok`/`empty`; `facts` count; `date` found flag.
+
+### `agent_step` — one per agent step (action protocol `ticketstub.agent-action/1`)
+
+`step`: `plan` (a reply to a typed request), `followup` (a reply to observed results), `result` (one action result the
+browser reported), `failure` (a result that was `failed` or `rejected`), `recovery` (the procedural fallback applied).
+`action`: the action type only (`set_fact`, `set_style`, `set_material`, `set_finish`, `set_text`, `remix_art`,
+`show_back`, `ask_user`). `outcome`: `ok`, `repaired` (the model's JSON was invalid once and the repair attempt was
+valid), `invalid_plan` (still invalid: a safe reply with no actions), or the result's `applied`/`failed`/`rejected`.
+`source`: `rules` or `live`. Plus `code` (a bounded code such as `provider_unavailable`, `art_limit`, `invalid_value`),
+`durationMs` (planning time; for a `result` the browser-measured apply time) and `count` (actions proposed). A result is
+reported on the follow-up request, so each step is one span under that request's trace (`agent.<step>`). The model
+calls inside a plan are ordinary `provider_attempt` spans with their usage, so a repair shows as a second attempt.
+Never a field: the message, a fact or a value the person typed, the reply, or the proposed action's arguments.
 
 ## Usage, cost and what they are not
 

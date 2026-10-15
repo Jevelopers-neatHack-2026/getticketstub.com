@@ -101,7 +101,7 @@ export const api = {
   /** Takes a gift back: the message is deleted and the link answers 404. */
   revokeGift: (giftToken: string) => call<{ ok: true; revoked: boolean }>("DELETE", `/api/gift/${encodeURIComponent(giftToken)}`),
   publicWall: (token: string) => call<{ stubs: Stub[] }>("GET", `/api/u/${encodeURIComponent(token)}`),
-  order: (order: Omit<Order, "id" | "mode" | "createdAt">) => call<{ order: Order }>("POST", "/api/orders", { order }),
+  order: (order: Omit<Order, "id" | "mode" | "createdAt">, attemptId: string) => call<{ order: Order; checkoutUrl?: string }>("POST", "/api/orders", { order, attemptId }),
   share: (stub: Stub) => call<{ token: string }>("POST", "/api/share", { stub }),
   sharedStub: (token: string) => call<{ stub: Stub }>("GET", `/api/share/${encodeURIComponent(token)}`),
   publishEvent: (title: string, stub: Stub, guests: { name: string; seat?: string }[], expiresInDays?: number) =>

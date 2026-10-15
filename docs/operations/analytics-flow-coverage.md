@@ -5,6 +5,10 @@ only parameters each may carry are defined once, in `src/customer/analytics/cata
 `flow(name, params)` from `src/customer/flows/events.ts`, which is typed on that catalog and passes straight to
 `track()`. Configuration, consent, page views and GA administration are in `docs/operations/analytics.md`.
 
+### Scope note: 2026-10-12
+
+This map and its hosted/browser evidence predate PR [#104](https://github.com/Jevelopers-neatHack-2026/getticketstub.com/pull/104), which made the app's root page render the host-owned `customer/landing` experience around the existing `StudioStart` section. The ported landing component and script do not call `flow()` or `track()`: its hero form navigates to `/new`, while the embedded `StudioStart` search link retains the event listed below. Landing-specific form, demo-button and card interactions are therefore not covered by the instrumented-flow rows or the earlier browser journey run. Treat their analytics behavior as unverified until the host's rendered landing is exercised in browser QA.
+
 ## Rules every row follows
 
 - **Commit boundaries only.** An event fires in a handler after the action took effect, or in an effect guarded by a
@@ -98,7 +102,8 @@ test property (not available to this work: no measurement id, no live traffic).
 | `src/customer/pages/share.ts` `shareLink` (wall, lamp, memory page) | the share sheet resolved, was closed (AbortError), or the copy fallback finished | `share` (GA recommended) | method (`native`/`copy`), content_type, context, result (`success`/`cancel`/`failure`) | a share is the step on this device, never delivery | T, B, GA |
 | `src/customer/pages/share.ts` `copyLink`; `src/customer/pages/ui.tsx` `CopyField` | a copy attempt finished (public wall link, friends invite, gift link, organizer links) | `share` | method=`copy`, content_type (`wall`/`invite`/`gift`/`claim_link`), context, result | — | T, B, GA |
 | `src/app/s/[token]/MemoryPage.tsx` | the link was read, once per token | `share_landing` | surface (`memory`/`gift`), result (`valid`/`invalid`), viewer (`owner` only for a server link to a stub on this device; local ownership, not identity), link_kind (`server`/`encoded`) | — | tsc, B, GA |
-| same | "Download story image": image built and download started, or build failed | `story_export` | action=`download`, result (`generated`/`failed`) | not proof the file was kept | tsc, B, GA |
+| same | "Story image": image built and download started, or build failed | `story_export` | action=`download`, result (`generated`/`failed`) | not proof the file was kept | tsc, B, GA |
+| `src/customer/studio/download/DownloadStub.tsx` (editor tray, lamp, memory page) | "Download stub": the stub drawn to a PNG and handed over (download, share sheet, tab) or failed | `stub_download` | side, context, method, result, error_code | not proof the file was kept | tsc, B, GA |
 | same | photos added; a photo removed | `photo_add` (via=`memory_page`), `memory_photo_remove` | result, photo_count, storage | local only | tsc, B, GA |
 | same | "Stop sharing" answered | `stop_sharing_stub` | result, error_code | — | tsc, B, GA |
 | same | the gift wrap is torn open (animation done) | `gift_unwrap` | — | — | tsc, B, GA |
@@ -119,7 +124,7 @@ test property (not available to this work: no measurement id, no live traffic).
 | same | `/api/claim` answered | `claim_complete` | flow=`guest`, result (`claimed`/`error`), storage, error_code | the account has it | tsc, B, GA |
 | `src/app/organizer/claim/OrganizerClaimClient.tsx` | link read; claim with no name; claim stored | `claim_view`, `claim_invalid`, `claim_complete` | flow=`organizer` | a local claim | tsc, B, GA |
 | same | the attendee picked a photo: it could be read or not | `photo_add` | via=`organizer_claim`, result, photo_count (0/1) | never the photo or file name | T (catalog), B, GA |
-| `src/customer/account/signin.ts` | the sign-in sheet opened (once per opening); first-pin "Not now" | `signin_choice` | choice (`sign_in`/`skip`), reason | a choice, not a login | T, B, GA |
+| `src/customer/account/signin.ts` | the sign-in sheet opened (once per opening); first-pin "Not now"; "Continue as guest" on the Pay sign-in sheet | `signin_choice` | choice (`sign_in`/`skip`/`guest`), reason | a choice, not a login | T, B, GA |
 | `src/customer/account/SignInSheet.tsx` | bad email; `/api/auth/link` answered; "Not now" | `sign_in_link`, `signin_choice` | reason, result (`sent`/`sandbox` dev link/`invalid`/`error`), error_code | a link sent is not a sign-in | tsc, B, GA |
 | `src/customer/account/AccountRoot.tsx` | back from the emailed link: after `/api/auth/me` answered; or `?signin=expired` | `sign_in_return` | result (`signed_in` only when the server says so / `not_signed_in` / `expired`) | the only signed-in signal; GA `login` stays unused | tsc, B, GA |
 | `src/customer/account/useAccount.ts` | `/api/auth/signout` answered or failed | `sign_out` | result (`done`/`offline`) | — | tsc, B, GA |
@@ -137,7 +142,7 @@ test property (not available to this work: no measurement id, no live traffic).
 | same | the 15-minute quote ran out (the clock's tick); "Refresh the quote" | `quote_expired`, `quote_refresh` | context=`checkout` | quotes are fixtures | tsc, B, GA |
 | same, `src/app/cart/CartClient.tsx` | Pay refused: blocked variant, expired quote, choose again, bad email | `checkout_invalid` | reason | — | tsc, B, GA |
 | same | Pay accepted (sandbox card chosen) | `add_payment_info` | payment_type=`card` | sandbox; no payment details exist | tsc, B, GA |
-| `src/customer/account/orders.ts` `placeOrder` (checkout, cart, organizer print run) | after the server answered, or wasn't asked (saving off) | `sandbox_order` | method, result (`placed` when the server kept it or the local record was stored; `not_persisted` when neither, sent without value/currency; `blocked`), receipt (`server`/`local`), line_count, value, currency, storage (the local record), error_code (why the server didn't keep it, incl. `storage_unavailable` when saving is off) | sandbox; never `purchase`, never revenue | T (server receipt, refused, quota+server, quota+refused, saving off, saving off+quota, gift print) |
+| `src/customer/account/orders.ts` `placeOrder` (checkout, cart, organizer print run) | after the server answered, or wasn't asked (saving off); not when the server started a provider checkout (that is the server's `checkout_started`, and `order_paid` follows from the webhook) | `sandbox_order` | method, result (`placed` when the server kept it or the local record was stored; `not_persisted` when neither, sent without value/currency; `blocked`), receipt (`server`/`local`), line_count, value, currency, storage (the local record), error_code (why the server didn't keep it, incl. `storage_unavailable` when saving is off) | sandbox; never `purchase`, never revenue | T (server receipt, refused, quota+server, quota+refused, saving off, saving off+quota, gift print) |
 | same `resendOrder` | the retry answered (no second record) | `sandbox_order_retry` | result, error_code | sandbox | T |
 | `src/app/cart/CartClient.tsx` | the stored cart read, once per visit; first Pay press | `view_cart`; `begin_checkout` (context=`cart`) | currency, value, item_count (+ item_id for one line) | sandbox | tsc, B, GA |
 | same, `src/customer/cart/MiniCart.tsx` | a line removed and stored; the mini cart opened; Undo | `remove_from_cart`; `view_cart` (context=`mini_cart`); `cart_update` (action=`remove_undo`) | currency, value, item_id, quantity, context | sandbox | tsc, B, GA |
@@ -175,9 +180,11 @@ test property (not available to this work: no measurement id, no live traffic).
 ## Deliberately not reported
 
 - Page views: the analytics provider records them centrally from `src/app/layout.tsx`, and no screen emits its own.
-  Entry clicks are reported as the control that was used: the start section's search link is `cta_select`, and a
-  sidebar row is `nav_select` with `has_stubs` marking a returning wall. The landing page has no wall link today, so a
-  returning visitor who goes from the landing page to the wall without the sidebar shows up only as a page view.
+  In the host-native root composition, the embedded start section's search link is `cta_select`, and a sidebar row is
+  `nav_select` with `has_stubs` marking a returning wall. The separately ported landing interactions have no
+  flow-event coverage in this map; a returning visitor who uses its hero flow to reach `/new` is not identified as a
+  landing CTA. The home screen has no wall link, so a returning visitor who reaches the wall through another path is
+  represented by page views and whichever later actions are instrumented there.
 - Every keystroke, pointer move, camera pan or pinch, hover, render, and the editor's per-key note saves (only
   `note_edit` on blur).
 - **Intentional privacy exclusion:** the organizer's name and event-title fields, the gift recipient and note, the

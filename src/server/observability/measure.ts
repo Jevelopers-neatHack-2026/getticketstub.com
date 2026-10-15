@@ -155,6 +155,12 @@ export function providerObserver(): ProviderObserver | undefined {
   };
 }
 
+/** One agent step of the current operation (plan, result, follow-up, failure, recovery). No-op outside an operation. */
+export function agentStep(fields: { step: "plan" | "result" | "followup" | "failure" | "recovery"; action?: string; outcome: string; source?: "rules" | "live"; code?: string; durationMs?: number; count?: number }): void {
+  const op = store.getStore();
+  if (op) emit(op, "agent_step", fields);
+}
+
 export type SourceName = "event_page" | "ticketmaster" | "weather_geocode" | "weather_forecast";
 export type SourceOutcome = "ok" | "http_error" | "timeout" | "network_error" | "no_match" | "no_data" | "pending" | "skipped" | "rate_limited" | "auth_failed" | "not_found" | "bad_response";
 
