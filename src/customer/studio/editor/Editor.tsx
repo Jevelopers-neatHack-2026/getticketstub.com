@@ -22,6 +22,7 @@ import { AskIcon, FlipIcon, FriendsIcon, PreviewIcon, RemixIcon } from "@/custom
 import { editChanges, formatDate, hiddenLabel, setEdition, setHidden, stepEdition, type Selectable } from "./ops";
 import { flow } from "@/customer/flows/events";
 import { GenerationController, editorHost } from "../generation/operations";
+import { subscribeGenerationAnnouncements } from "../generation/announcements";
 import { GenerationStatus } from "../generation/GenerationStatus";
 import { FloatingToolbar } from "./FloatingToolbar";
 import { DockedToolbar } from "./Dock";
@@ -220,7 +221,6 @@ function EditorLoaded({ id }: { id: string }) {
   // eslint-disable-next-line react-hooks/refs
   const [generation] = useState(() => new GenerationController(editorHost(stubRef, revisionRef, update, (id) => loadDeleted().includes(id), stubPresence)));
   useEffect(() => {
-    generation.attach();
     // A removal is observed when it happens (local save, another tab, an account sync), not inferred later from a queue
     // that sync may already have emptied. Once seen, the operation is retired for good.
     const observe = () => generation.observe();
@@ -234,21 +234,15 @@ function EditorLoaded({ id }: { id: string }) {
     window.addEventListener(WALL_SYNCED, observe);
     window.addEventListener("storage", onStorage);
     window.addEventListener("focus", observe);
-    // say each transition once, through the single polite live region; the sheet and chat do not announce it again
-    const said = new Map<string, string>();
-    const unsub = generation.subscribe(() => {
-      for (const op of generation.all()) {
-        if (said.get(op.runId) === op.phase) continue;
-        const first = !said.has(op.runId);
-        said.set(op.runId, op.phase);
-        if (first && op.phase !== "pending" && op.phase !== "interrupted") continue; // adopted terminal status: already read
-        announce(op.phase === "pending" ? (op.via === "photo" ? "Adding your photo." : "Generating new art.") : op.message);
-        if (op.via !== "agent" && op.phase === "applied") {
-          play("success", { emphasis: op.fallback ? "subtle" : undefined });
-          haptic([18, 40, 28]);
-        } else if (op.phase === "failed" && op.via !== "agent") play("close");
-      }
+    // Subscribe before attach: attach may adopt a persisted pending/ready operation as interrupted and emit immediately.
+    const unsub = subscribeGenerationAnnouncements(generation, announce, {
+      applied: (op) => {
+        play("success", { emphasis: op.fallback ? "subtle" : undefined });
+        haptic([18, 40, 28]);
+      },
+      failed: () => play("close"),
     });
+    generation.attach();
     return () => {
       window.removeEventListener(WALL_CHANGED, observe);
       window.removeEventListener(WALL_SYNCED, observe);

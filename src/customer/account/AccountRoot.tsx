@@ -7,15 +7,21 @@ import { haptic } from "@/customer/studio/feedback";
 import { messageFor } from "@/customer/feedback-messages/messages";
 import { SignInSheet } from "./SignInSheet";
 import { closeSignIn, markPayResumed, openSignIn, useSignInRequest } from "./signin";
-import { startSync, syncNow } from "./sync";
+import { startSync, syncNow, WALL_SYNC_RESULT, type SyncResult } from "./sync";
 import { getAccountState, refreshAccount, useAccount } from "./useAccount";
 import { flow } from "@/customer/flows/events";
 import s from "./account.module.css";
+import { WallRecovery } from "./WallRecovery";
 
 /** The emailed link's return is reported once per page load, even when a remount (Strict Mode) runs the effect again. */
 let returnReported = false;
 
-type Slip = { id: number; kind: "saved"; text: string } | { id: number; kind: "expired" } | { id: number; kind: "offline" };
+type Slip = { id: number; kind: "saved"; text: string } | { id: number; kind: "expired" } | { id: number; kind: "offline" } | { id: number; kind: "local"; text: string };
+
+const localFailure = (r: SyncResult): boolean => !!(r.localReadFailed || r.localPersistenceFailed);
+const localMessage = (r: SyncResult): string => r.remoteAcknowledged
+  ? "The server acknowledged your wall, but this browser could not safely update its saved data. Keep this page open and retry."
+  : "Some saved data on this browser could not be read. Nothing was sent to the server. Keep this page open and retry.";
 
 const stubs = (n: number) => `${n} ${n === 1 ? "stub" : "stubs"}`;
 
@@ -59,7 +65,7 @@ export function AccountRoot() {
       const r = await syncNow();
       if (!live) return;
       haptic([14]);
-      setSlip(r.ok ? { id: Date.now(), kind: "saved", text: r.count > 0 ? `Saved. ${stubs(r.count)} on your wall.` : "Saved. Your wall is ready." } : { id: Date.now(), kind: "offline" });
+      setSlip(localFailure(r) ? { id: Date.now(), kind: "local", text: localMessage(r) } : r.ok ? { id: Date.now(), kind: "saved", text: r.count > 0 ? `Saved. ${stubs(r.count)} on your wall.` : "Saved. Your wall is ready." } : { id: Date.now(), kind: "offline" });
     })();
     return () => {
       live = false;
@@ -69,8 +75,15 @@ export function AccountRoot() {
   // Signed in: merge now, then on every change and on focus.
   useEffect(() => {
     if (status !== "in") return;
+    const result = (event: Event) => {
+      const r = (event as CustomEvent<SyncResult>).detail;
+      if (localFailure(r)) setSlip({ id: Date.now(), kind: "local", text: localMessage(r) });
+      else if (r.ok) setSlip(previous => previous?.kind === "local" ? null : previous);
+    };
+    window.addEventListener(WALL_SYNC_RESULT, result);
     void syncNow();
-    return startSync();
+    const stop = startSync();
+    return () => { stop(); window.removeEventListener(WALL_SYNC_RESULT, result); };
   }, [status]);
 
   // Link sent from a pay step, opened in another tab of this browser: the cookie is shared, so ask the server on focus
@@ -101,7 +114,7 @@ export function AccountRoot() {
 
   // A slip stays a few seconds, then lifts away. The expired one waits to be answered.
   useEffect(() => {
-    if (!slip || slip.kind === "expired") return;
+    if (!slip || (slip.kind === "expired" || slip.kind === "local")) return;
     const a = setTimeout(() => setLeavingId(slip.id), 4600);
     const b = setTimeout(() => setSlip(null), 4920);
     return () => {
@@ -113,12 +126,18 @@ export function AccountRoot() {
   return (
     <>
       <SignInSheet request={request} />
+      <WallRecovery />
       {slip ? (
         <div className={s.toast} data-leaving={leaving} key={slip.id}>
           {slip.kind === "saved" ? (
             <>
               <Stamped>Saved</Stamped>
               <p className={s.toastText} data-announce>{slip.text.replace(/^Saved\.\s*/, "")}</p>
+            </>
+          ) : slip.kind === "local" ? (
+            <>
+              <p className={s.toastText} data-announce>{slip.text}</p>
+              <TearLink type="button" onClick={() => void syncNow()}>Retry saving on this device</TearLink>
             </>
           ) : slip.kind === "offline" ? (
             <p className={s.toastText} data-announce>You&apos;re signed in. We&apos;ll save your wall as soon as we can reach the server.</p>
