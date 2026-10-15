@@ -181,11 +181,19 @@
 }
 
 .recovery {
-  position: relative;
-  z-index: 100;
-  padding: 20px;
-  margin: 12px;
+  position: fixed;
+  z-index: 1100;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  box-sizing: border-box;
+  width: calc(100% - 24px);
   max-width: 42rem;
+  max-height: calc(100dvh - 24px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 20px;
+  margin: 0;
   background: var(--desk-paper, #fff9ed);
   color: var(--desk-ink, #251f1c);
   border: 2px solid currentColor;
