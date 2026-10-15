@@ -1,3 +1,15 @@
+## Interrupted-save recovery correction (APP-WALL-REVIEW-004)
+
+Implementation `b2a87c95fa27b271e646e0ed4251b33748f90836` supersedes the earlier statement that an observed prepared marker requires an unimplemented owner-directed task. [Interrupted recovery receipt](interrupted-recovery-followup.json) records exact source/log digests. Prior receipts and failure evidence are preserved unchanged.
+
+A real recovery panel is available to guests and signed-in accounts. Read-only inspection distinguishes recognized snapshots from diverged data. Normal reads, mutations and sync still refuse prepared state. The person must close/stop all other Ticketstub tabs/windows, including installed windows, and affirm that no save is running. Only then can a native keyboard-accessible action authorize rollback to exact beforeWall and beforeDeleted bytes. There is no automatic abandonment inference or timeout. The action rechecks its exact snapshot inside restoration, accepts only existing before/after/known quota-release states, and clears only the same journal after successful restoration. Failure remains blocked and announced; a supported retry restores safely once storage permits. Differing peer bytes expose a blocked message and no rollback action. The intended change must be retried after recovery; server changes are not undone.
+
+Human-established exclusive use is a precondition, not an automated fence or promise against a concurrently active/older writer. localStorage has no CAS. No broader Product generation merge/fence policy is selected.
+
+Final validation: exact ab9 archive fails six new regressions (prior eleven pass); correction passes seventeen actual-SQLite recovery tests, 257 affected tests and 1,058 full-unit tests (one default PostgreSQL skip). Build, typecheck and lint pass with existing fixture warning only. Final native offline browser passes 24 child/26 wrapper assertions covering reload, confirmation, failed restoration, retry, restored card, diverged peer refusal and earlier deletion/sync behavior. Zero live account/provider calls. Intermediate type/build and browser-harness failures are retained and excluded from passing evidence. New exact-head review and hosted checks remain required.
+
+---
+
 ## Review correction superseding the original partial-write disposition
 
 The historical `receipt.json` below remains unchanged. Its wall-first partial-write limitation and WallClient ignore-false audit are superseded by implementation `67e4e1e43cab9b9c3f14fb24a75120ce12e7dced`; see [review-followup.json](review-followup.json). APP-WALL-REVIEW-001/002/003 were reproduced and repaired, pending independent exact-head re-review.
