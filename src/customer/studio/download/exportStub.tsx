@@ -17,6 +17,7 @@ import { currentVersion, type Stub } from "../types";
 import { StubView } from "../stub/StubView";
 import { EDITION_META } from "../stub/editions";
 import { planArtFetch } from "./artSource";
+import { checkFactFit } from "../facts/fitProof";
 
 export type StubSide = "front" | "back";
 
@@ -62,6 +63,7 @@ const isWebKitOnly = () => /AppleWebKit/.test(navigator.userAgent) && !/Chrome|C
 
 /** Renders one face of the stub to a PNG blob. Throws an Error with a catalog `code` when it can't. */
 export async function renderStubPng(stub: Stub, side: StubSide = "front"): Promise<Blob> {
+  if ((await checkFactFit(stub)).some((f) => f.state === "blocked")) throw coded("fact_layout_overflow");
   if (typeof document === "undefined") throw coded("unknown");
   const drawn = await inlineArt(stub);
   const meta = EDITION_META[currentVersion(drawn)?.edition ?? "researched"];

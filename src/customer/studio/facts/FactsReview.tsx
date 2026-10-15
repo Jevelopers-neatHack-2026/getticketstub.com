@@ -25,6 +25,7 @@ import {
   type Question,
 } from "./corrections";
 import { isCoreFact, isFactIncluded } from "./inclusion";
+import { FactFitNotice } from "./fitProof";
 import styles from "./Facts.module.css";
 
 const TIME: Intl.DateTimeFormatOptions = { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" };
@@ -258,6 +259,7 @@ export function FactsReview({ stub, onChange, onToggleFact }: { stub: Stub; onCh
   return (
     <div className={styles.review}>
       <p className={styles.groupNote}>Choose which extra facts appear on your stub. Inclusion does not verify or approve a fact.</p>
+      <FactFitNotice stub={stub} />
       {stub.corrections?.some((c) => c.unresolvedIdentity) && (
         <p className={styles.notice} role="status">Some older corrections referred to duplicate fact IDs. Their history is retained, but cannot be assigned to a particular row. Review those facts again.</p>
       )}

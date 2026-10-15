@@ -9,6 +9,7 @@ import { messageFor } from "@/customer/feedback-messages/messages";
 import { PaperButton, PaperSheet, SourceMark, Stamp, type MarkKind } from "@/customer/desk/Desk";
 import { SIZE_COPY, TIER_SIZES, type PrintSize } from "@/customer/pages/capabilities";
 import { StubView } from "../stub/StubView";
+import { useFactFit } from "../facts/fitProof";
 import { currentVersion, type Stub } from "../types";
 import { versionHash } from "../versions/versions";
 import { changesSince, compositionParts, printedLines, valueWords, type ChangeSource, type Composition } from "./printed";
@@ -32,6 +33,8 @@ const asSource = (a: ApprovalInfo): ChangeSource => ({ id: a.approval.id, status
 
 /** The sheet's body. It exists only while the sheet is open, so every opening starts from a fresh read of the history. */
 function Review({ stub, onClose, onApproved }: Omit<Props, "open">) {
+  const factFit = useFactFit(stub);
+  const factFitBlocked = !factFit || factFit.some((f) => f.state === "blocked");
   const [history, setHistory] = useState<ApprovalInfo[] | "loading" | "failed">("loading");
   const [said, setSaid] = useState("");
   const [busy, setBusy] = useState(false);
@@ -51,6 +54,7 @@ function Review({ stub, onClose, onApproved }: Omit<Props, "open">) {
   }, [stubId, stub.updatedAt]);
 
   const approve = async () => {
+    if (factFitBlocked) return;
     setBusy(true);
     try {
       await api.approve(stubId, stub.currentVersionId);
@@ -156,7 +160,8 @@ function Review({ stub, onClose, onApproved }: Omit<Props, "open">) {
         {said}
       </p>
       <div className={styles.actions}>
-        <Stamp block disabled={busy || history === "loading"} onClick={approve}>
+        {factFitBlocked && <p role="status">Check Facts before approving: selected facts must fit completely on the local proof.</p>}
+        <Stamp block disabled={busy || history === "loading" || factFitBlocked} onClick={approve}>
           Approve this version
         </Stamp>
         <PaperButton block onClick={onClose}>

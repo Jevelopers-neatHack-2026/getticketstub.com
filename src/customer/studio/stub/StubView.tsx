@@ -158,7 +158,7 @@ function Admit({ c, className }: { c: Ctx; className?: string }) {
 function Chip({ c, f }: { c: Ctx; f: Fact }) {
   if (!c.onChipTap)
     return (
-      <span className={s.chip}>
+      <span className={s.chip} data-fact-id={f.id}>
         {f.label}
         <span className={s.chipQ} aria-hidden="true">?</span>
       </span>
@@ -167,6 +167,7 @@ function Chip({ c, f }: { c: Ctx; f: Fact }) {
     <button
       type="button"
       className={s.chip}
+      data-fact-id={f.id}
       aria-label={`Unsure: ${f.label}. Tap to check.`}
       onClick={(e) => {
         e.stopPropagation();
@@ -197,7 +198,7 @@ function Facts({ c, className, sep = " · ", upper }: { c: Ctx; className?: stri
     <div className={cx(s.facts, className)}>
       {line && (
         <Pick c={c} el="facts" className={s.factLine}>
-          {upper ? line.toUpperCase() : line}
+          {c.kept.map((f, i) => <span key={f.id} data-fact-id={f.id}>{i > 0 ? sep : ""}{upper ? f.label.toUpperCase() : f.label}</span>)}
         </Pick>
       )}
       {c.unsure.length > 0 && (
@@ -521,7 +522,7 @@ function BackList({ c }: { c: Ctx }) {
       {items.map((p, i) => (
         <li key={i}>
           <span className={s.backIdx}>·</span>
-          <span>{p}</span>
+          <span data-fact-id={!e.programme?.length ? listed[i]?.id : undefined}>{p}</span>
         </li>
       ))}
       {credited && (

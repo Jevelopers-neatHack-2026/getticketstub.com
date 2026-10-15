@@ -258,9 +258,8 @@
   min-width: 0;
 }
 .factLine {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
+  overflow-wrap: anywhere;
   max-width: 100%;
 }
 /* Small print under the weather: its own line, unstyled by the edition. cqw follows the stub's width, so the
