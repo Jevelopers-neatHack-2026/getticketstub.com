@@ -89,3 +89,9 @@ From the repository root, use `npm test`, `npm run lint`, `npm run typecheck` an
 - **Foil never pops:** eased per frame (`stub/useTilt.ts`, `stub/Foil.tsx`), following brand-kit `docs/material-foil.md`.
 - **Sound is on by default.** Cues are synthesized in `feedback.ts` the way cuelume builds sounds (brand-kit `docs/motion-sound-haptics.md`). Audition them at `/parts`.
 - **Mobile first,** with a desktop layout from 960 px.
+
+### Fact inclusion
+
+Facts uses **Add to stub** and **Remove from stub**, with a separate inclusion status. Title, date and venue map to `event.title`, `event.dateISO` and `event.venue`; the template includes these core details by default, so they have no optional inclusion toggle. Optional facts require selection on both faces, including unsure weather. Adding a hidden optional fact clears its hidden override and the facts-layer override. Removing it retains its source, uncertainty and correction history. The inspector counts selected extra facts; spatial fit is a separate requirement tracked in #95.
+
+Legacy duplicate fact IDs are repaired when a wall is read or written. Every fact and individual selection survives; hidden overrides expand to the repaired IDs. Corrections whose original target is ambiguous remain in history with `unresolvedIdentity`, excluded from per-fact correction/undo authority and identified in Facts for review. IDs are allocated at ingestion and persisted, never generated during rendering.

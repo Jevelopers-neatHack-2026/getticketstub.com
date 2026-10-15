@@ -24,6 +24,7 @@ import {
   type FactGroup,
   type Question,
 } from "./corrections";
+import { isCoreFact, isFactIncluded } from "./inclusion";
 import styles from "./Facts.module.css";
 
 const TIME: Intl.DateTimeFormatOptions = { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" };
@@ -151,6 +152,18 @@ function History({ c }: { c: Correction }) {
   );
 }
 
+/** The same action and associated status in the inspector, phone sheet and chip popover. */
+export function FactInclusion({ stub, fact, onToggleFact }: { stub: Stub; fact: Fact; onToggleFact: (projectId: string, factId: string) => void }) {
+  const statusId = useId();
+  const included = isFactIncluded(stub, fact);
+  if (isCoreFact(fact)) return <span className={styles.source}>{included ? "Included by default" : "Core detail hidden or missing"}</span>;
+  const action = included ? "Remove from stub" : "Add to stub";
+  return <span className={styles.inclusion}>
+    <span id={statusId} className={styles.source}>{included ? "On stub" : "Not on stub"}</span>
+    <Tag aria-label={`${action}: ${fact.label}`} aria-describedby={statusId} onClick={() => onToggleFact(stub.id, fact.id)}>{action}</Tag>
+  </span>;
+}
+
 function FactRow({ stub, f, group, onChange, onToggleFact, onAsk }: { stub: Stub; f: Fact; group: FactGroup; onChange: (s: Stub) => void; onToggleFact: (projectId: string, factId: string) => void; onAsk: () => void }) {
   const [showOriginal, setShowOriginal] = useState(false);
   const id = useId();
@@ -194,9 +207,7 @@ function FactRow({ stub, f, group, onChange, onToggleFact, onAsk }: { stub: Stub
             </Tag>
           )}
           {group !== "missing" && (
-            <Tag pressed={!!f.kept} aria-label={`${f.kept ? "On stub" : "Keep"}: ${f.label}`} onClick={() => onToggleFact(stub.id, f.id)}>
-              {f.kept ? "On stub" : "Keep"}
-            </Tag>
+<FactInclusion stub={stub} fact={f} onToggleFact={onToggleFact} />
           )}
         </Tags>
       </div>
@@ -246,6 +257,7 @@ export function FactsReview({ stub, onChange, onToggleFact }: { stub: Stub; onCh
 
   return (
     <div className={styles.review}>
+      <p className={styles.groupNote}>Choose which extra facts appear on your stub. Inclusion does not verify or approve a fact.</p>
       {stub.corrections?.some((c) => c.unresolvedIdentity) && (
         <p className={styles.notice} role="status">Some older corrections referred to duplicate fact IDs. Their history is retained, but cannot be assigned to a particular row. Review those facts again.</p>
       )}

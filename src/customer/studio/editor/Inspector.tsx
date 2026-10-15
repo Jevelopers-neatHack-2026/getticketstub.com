@@ -8,6 +8,7 @@ import { EDITION_META } from "@/customer/studio/stub/editions";
 import { play } from "@/customer/studio/feedback";
 import { PaperButton, PunchTabs, Switch, Tag, Tags, TearLink } from "@/customer/desk/Desk";
 import { canHide, fontName, hiddenLabel, hideSelection, setFont, setHidden, setTitleColour, swatchLabel, TITLE_SWATCHES, toggleFoil, type Selectable } from "./ops";
+import { includedExtraFacts } from "../facts/inclusion";
 import { FactsReview, openCount } from "../facts/FactsReview";
 import { VersionsPanel } from "../versions/VersionsPanel";
 import { MaterialPicker } from "./MaterialPicker";
@@ -62,7 +63,6 @@ interface Props {
 
 export function Inspector({ stub, selected: sel, onChange, onToggleFact, onDeselect, onRemix }: Props) {
   const meta = EDITION_META[currentVersion(stub).edition];
-  const ev = stub.event;
   const fonts = (meta?.fontPairs ?? []).map((stack, i) => ({ value: String(i), label: fontName(stack, `Font ${i + 1}`), stack }));
   const hidden = stub.personal.hiddenFields;
 
@@ -149,7 +149,7 @@ export function Inspector({ stub, selected: sel, onChange, onToggleFact, onDesel
         title="Facts"
         meta={
           <span className={`${styles.num} ${styles.plain}`}>
-            {ev.facts.filter((f) => f.kept).length} on the stub{openCount(stub) ? ` · ${openCount(stub)} to answer` : ""}
+            {includedExtraFacts(stub).length} extra facts selected{openCount(stub) ? ` · ${openCount(stub)} to answer` : ""}
           </span>
         }
       >

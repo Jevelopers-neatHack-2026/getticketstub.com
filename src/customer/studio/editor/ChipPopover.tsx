@@ -1,7 +1,7 @@
 "use client";
 import type { Stub } from "../types";
-import { PaperSheet, SourceMark, Tag, Tags } from "@/customer/desk/Desk";
-import { FactQuestion, SourceLine } from "../facts/FactsReview";
+import { PaperSheet, SourceMark } from "@/customer/desk/Desk";
+import { FactInclusion, FactQuestion, SourceLine } from "../facts/FactsReview";
 import { activeCorrection, openQuestions } from "../facts/corrections";
 import styles from "./overlays.module.css";
 
@@ -28,11 +28,7 @@ export function ChipPopover({ stub, factId, onChange, onToggleFact, onClose }: P
             {mine ? null : <SourceMark p={fact.provenance} />}
           </p>
           {question && <FactQuestion stub={stub} q={question} onChange={onChange} onDone={onClose} />}
-          <Tags>
-            <Tag pressed={!!fact.kept} onClick={() => onToggleFact(stub.id, fact.id)}>
-              {fact.kept ? "On the stub" : "Keep on stub"}
-            </Tag>
-          </Tags>
+          <FactInclusion stub={stub} fact={fact} onToggleFact={onToggleFact} />
         </div>
       )}
     </PaperSheet>

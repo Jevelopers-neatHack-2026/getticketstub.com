@@ -7,6 +7,7 @@
 /* eslint-disable @next/next/no-img-element */
 import { useCallback, useId, useMemo, useRef, type CSSProperties, type MouseEvent, type ReactNode } from "react";
 import { activeCorrection } from "../facts/corrections";
+import { includedExtraFacts } from "../facts/inclusion";
 import { currentVersion, type ArtLayer, type Edition, type Fact, type Stub } from "../types";
 import { EDITION_META, type EditionMeta } from "./editions";
 import { Foil, foilTextClass } from "./Foil";
@@ -508,7 +509,7 @@ function BackList({ c }: { c: Ctx }) {
       </ul>
     );
   }
-  const shown = e.programme?.length ? [] : e.facts.filter((f) => c.show(f.id));
+  const shown = e.programme?.length ? [] : includedExtraFacts(c.stub);
   // The list clips at its last row, so the credit takes a row of the cap rather than overflowing. Weather that would
   // land in that last row, with no room left for its credit, is left off the back instead.
   const om = fromOpenMeteo(c.stub);
@@ -601,15 +602,15 @@ export function StubView({ stub, flipped = false, still, tilt = false, size = "m
   const c: Ctx = useMemo(() => {
     const hidden = new Set(stub.personal.hiddenFields);
     const show = (k: string) => !hidden.has(k);
-    const facts = e.facts.filter((f) => show(f.id));
+    const facts = includedExtraFacts(stub);
     return {
       stub,
       edition,
       meta,
       date: parseDate(e.dateISO),
       place: [e.venue, e.city].filter(Boolean).join(", "),
-      kept: facts.filter((f) => f.kept && f.confidence >= 0.8),
-      unsure: facts.filter((f) => f.confidence < 0.8),
+      kept: facts.filter((f) => f.confidence >= 0.8),
+      unsure: facts.filter((f) => !(f.confidence >= 0.8)),
       show,
       foilTitle: stub.personal.foilTitle,
       selected,

@@ -2,6 +2,7 @@
 import { EDITIONS, currentVersion } from "../types";
 import type { ArtLayer, DesignVersion, Edition, Finish, Material, Stub } from "../types";
 import { applyCorrection } from "../facts/corrections";
+import { isCoreFact, isFactIncluded } from "../facts/inclusion";
 import { contextOf, sameArt } from "../versions/versions";
 
 export type Selectable = "title" | "subtitle" | "facts" | "art";
@@ -74,8 +75,12 @@ export function setFactValue(stub: Stub, factId: string, value: string, reason?:
 
 export function toggleKept(stub: Stub, factId: string): Stub {
   if (stub.event.facts.filter((f) => f.id === factId).length !== 1) return stub;
-  const facts = stub.event.facts.map((f) => (f.id === factId ? { ...f, kept: !f.kept } : f));
-  return { ...stub, event: { ...stub.event, facts } };
+  const target = stub.event.facts.find((f) => f.id === factId)!;
+  if (isCoreFact(target) || target.provenance === "pending" || !target.value.trim()) return stub;
+  const adding = !isFactIncluded(stub, target);
+  const facts = stub.event.facts.map((f) => (f.id === factId ? { ...f, kept: adding } : f));
+  const hiddenFields = adding ? stub.personal.hiddenFields.filter((id) => id !== factId && id !== "facts") : stub.personal.hiddenFields;
+  return { ...stub, event: { ...stub.event, facts }, personal: { ...stub.personal, hiddenFields } };
 }
 
 /** Resolve queued UI actions against the current project, rather than a rendered snapshot. */

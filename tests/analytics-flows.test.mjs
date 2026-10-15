@@ -514,7 +514,9 @@ describe("editor edit diff", () => {
   });
 
   test("facts: keep, correct, confirm and undo; the note, photos and friends are left to their own events", () => {
-    assert.deepEqual(ops.editChanges(base, ops.toggleKept(base, "venue")), ["fact_kept"]);
+    const optional = { ...base, event: { ...base.event, facts: [...base.event.facts, { id: "extra", label: "Extra", value: "Extra", source: "fixture", provenance: "simulated", confidence: .9 }] } };
+    assert.deepEqual(ops.editChanges(optional, ops.toggleKept(optional, "extra")), ["fact_kept"]);
+    assert.equal(ops.toggleKept(base, "venue"), base, "core venue is included by default");
     const corrected = corrections.applyCorrection(base, { factId: "date", value: "2026-05-02", reason: SEEDS.message });
     assert.deepEqual(ops.editChanges(base, corrected), ["fact_correct"]);
     assert.deepEqual(ops.editChanges(base, corrections.applyCorrection(base, { factId: "date", value: "2026-05-01" })), ["fact_confirm"]);
