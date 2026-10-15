@@ -35,6 +35,7 @@ globalThis.fetch = () => { throw new Error("check-capabilities must not use the 
 
 const cap = await import(pathToFileURL(join(src, "customer/pages/capabilities.ts")).href);
 const commerce = await import(pathToFileURL(join(src, "customer/pages/commerce.ts")).href);
+const sandbox = await import(pathToFileURL(join(src, "server/fulfillment/sandbox-products.ts")).href);
 
 let passed = 0;
 const check = (name, fn) => {
@@ -53,7 +54,15 @@ const FINISHES = ["matte", "foil", "holo"];
 const SIZES = { digital: ["file"], card: ["classic", "stamp"], print: ["classic", "stamp"], framed: ["framed"] };
 const get = (m, s, f) => cap.variantFor(m, s, f);
 
-check("the version is pinned", () => assert.equal(cap.CAPABILITY_VERSION, "2026-10-12.1"));
+// CAPABILITY_VERSION is bumped only when what a quote or cart line means changes (see the capabilities.ts header). The sandbox
+// validation product has its own revision, so adding or editing it must not move this pin.
+check("the version is pinned", () => assert.equal(cap.CAPABILITY_VERSION, "2026-10-11.1"));
+
+check("the sandbox validation products live outside the versioned customer map, with their own revision", () => {
+  assert.equal(cap.SANDBOX_VALIDATION_PRODUCTS, undefined, "capabilities.ts must not carry sandbox validation products");
+  assert.equal(sandbox.SANDBOX_PRODUCTS_REVISION, "2026-10-12.1");
+  assert.match(sandbox.SANDBOX_PRODUCTS_REVISION, /^\d{4}-\d{2}-\d{2}\.\d+$/);
+});
 
 check("every tier x size x finish is present, once", () => {
   let count = 0;
@@ -91,8 +100,8 @@ check("nothing physical has a confirmed SKU: every physical variant is a preview
 });
 
 check("the sandbox validation product is GLOBAL-PHO-4X6, 6 × 4 in at 300 dpi, US Standard, and not customer-facing", () => {
-  assert.equal(cap.SANDBOX_VALIDATION_PRODUCTS.length, 1);
-  const p = cap.SANDBOX_VALIDATION_PRODUCTS[0];
+  assert.equal(sandbox.SANDBOX_VALIDATION_PRODUCTS.length, 1);
+  const p = sandbox.SANDBOX_VALIDATION_PRODUCTS[0];
   assert.equal(p.purpose, "sandbox-validation");
   assert.equal(p.customerFacing, false);
   assert.equal(p.supplier, "Prodigi");
@@ -100,7 +109,7 @@ check("the sandbox validation product is GLOBAL-PHO-4X6, 6 × 4 in at 300 dpi, U
   assert.equal(p.printArea, "default");
   assert.equal(p.orientation, "landscape");
   assert.deepEqual(p.size, { w: 6, h: 4, unit: "in" });
-  assert.deepEqual(p.artwork, { w: 1800, h: 1200, unit: "px", dpi: 300, colorSpace: "sRGB", format: "jpg", sizing: "fillPrintArea" });
+  assert.deepEqual(p.artwork, { w: 1800, h: 1200, unit: "px", dpi: 300, colorSpace: "sRGB", format: "jpg", sizing: "fillPrintArea", pixelBasis: "derived" });
   assert.equal(p.artwork.w, p.size.w * p.artwork.dpi);
   assert.equal(p.artwork.h, p.size.h * p.artwork.dpi);
   assert.equal(p.finish, "lustre");
@@ -110,14 +119,16 @@ check("the sandbox validation product is GLOBAL-PHO-4X6, 6 × 4 in at 300 dpi, U
   assert.match(p.decision, /0003-owner-delegated-decisions-2026-10-12/);
   assert.match(p.reviewed, /^\d{4}-\d{2}-\d{2}$/);
   for (const url of p.sources) assert.match(url, /^https:\/\/(www|support)\.prodigi\.com\//);
-  assert.ok(p.sources.includes(cap.SOURCES.cTypes));
+  assert.ok(p.sources.includes(sandbox.SANDBOX_SOURCES.cTypes));
+  // The pixel size is derived (size x dpi), not published: it stays open until the product-details read confirms it.
+  assert.ok(p.open.some((line) => /1800 × 1200/.test(line) && /derived/.test(line) && /printAreaSizes/.test(line)));
   assert.ok(p.open.some((line) => /customer-facing print-tier mapping/.test(line) && /open product decision/.test(line)));
   // A Classic stub (5.5 × 2 in at 300 dpi) fits on the sheet; it is composed on it, not trimmed to it.
   assert.ok(5.5 * 300 <= p.artwork.w && 2 * 300 <= p.artwork.h);
 });
 
 check("the sandbox validation SKU maps to no customer variant and changes no customer claim", () => {
-  for (const p of cap.SANDBOX_VALIDATION_PRODUCTS) {
+  for (const p of sandbox.SANDBOX_VALIDATION_PRODUCTS) {
     assert.ok(!cap.VARIANTS.some((v) => v.sku === p.sku), `${p.sku} must not be a customer variant's SKU`);
     assert.ok(!cap.VARIANTS.some((v) => v.id === p.id), `${p.id} must not be a variant`);
   }
