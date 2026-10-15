@@ -25,14 +25,21 @@ function changed(): void {
 }
 
 /** Ids removed on this device that the account hasn't heard about yet. Signed out they just accumulate, a few bytes each. */
-export function loadDeleted(): string[] {
+export type DeletedRead = { status: "known"; ids: string[] } | { status: "unknown" };
+export function readDeleted(): DeletedRead {
   try {
     const raw = localStorage.getItem(DELETED_KEY);
-    return raw ? (JSON.parse(raw) as string[]) : [];
+    const ids: unknown = raw === null ? [] : JSON.parse(raw);
+    if (!Array.isArray(ids) || !ids.every(id => typeof id === "string")) throw new SyntaxError("deleted IDs are not a list");
+    return { status: "known", ids };
   } catch (e) {
     storageFailure("deleted", "read", e);
-    return [];
+    return { status: "unknown" };
   }
+}
+export function loadDeleted(): string[] {
+  const read = readDeleted();
+  return read.status === "known" ? read.ids : [];
 }
 
 /** True when the ids were written. A false is already reported (without the ids). */
@@ -47,14 +54,30 @@ export function saveDeleted(ids: string[]): boolean {
   }
 }
 
+export type WallRead = { status: "known"; stubs: Stub[] } | { status: "unknown" };
+const record = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
+/** Local consumer readability, not a canonical schema or a data migration. Unknown fields are retained. */
+export function readableWall(value: unknown): value is Stub[] {
+  return Array.isArray(value) && value.every(s => readableGenerationHistory(s) && record(s)
+    && record(s.event) && typeof s.event.title === "string" && Array.isArray(s.event.facts)
+    && record(s.personal) && Array.isArray(s.personal.hiddenFields) && Array.isArray(s.personal.friends)
+    && (s.photos === undefined || Array.isArray(s.photos))
+    && (s.updatedAt === undefined || typeof s.updatedAt === "number" && Number.isFinite(s.updatedAt)));
+}
+function wallFromValue(raw: string | null): Extract<WallRead, { status: "known" }> {
+  const stubs: unknown = raw === null ? [] : JSON.parse(raw);
+  if (!readableWall(stubs)) throw new SyntaxError("wall rows are not readable");
+  return { status: "known", stubs };
+}
+/** Null alone means first use. An exception, empty string or malformed row/history is unknown. */
+export function readWall(): WallRead {
+  try { return wallFromValue(localStorage.getItem(KEY)); }
+  catch (e) { storageFailure("wall", "read", e); return { status: "unknown" }; }
+}
+/** Legacy display projection only. Mutation and sync must use readWall instead. */
 export function loadWall(): Stub[] {
-  try {
-    const raw = localStorage.getItem(KEY);
-    return raw ? (JSON.parse(raw) as Stub[]) : [];
-  } catch (e) {
-    storageFailure("wall", "read", e);
-    return [];
-  }
+  const read = readWall();
+  return read.status === "known" ? read.stubs : [];
 }
 
 /**
@@ -69,6 +92,7 @@ export function writeWall(stubs: Stub[]): boolean {
 
 /** As writeWall, plus how many older pictures had to be released to fit (0 when everything was kept). */
 export function writeWallDetailed(stubs: Stub[]): { ok: boolean; released: number } {
+  if (readWall().status !== "known" || !readableWall(stubs)) return { ok: false, released: 0 };
   const total = releasable(stubs).length;
   const attempt = (n: number): unknown => {
     try {
@@ -98,7 +122,7 @@ export function writeWallDetailed(stubs: Stub[]): { ok: boolean; released: numbe
 /** True when the wall was stored. Callers that used to ignore the result still can. */
 export function saveWall(stubs: Stub[]): boolean {
   const ok = writeWall(stubs);
-  changed();
+  if (ok) changed();
   return ok;
 }
 
@@ -107,11 +131,9 @@ export type StubPresence = "present" | "absent" | "unknown";
 
 /** Presence from a raw stored wall value (a `storage` event's newValue, or a direct read). A malformed peer makes the wall unknown. */
 export function wallPresenceFromValue(raw: string | null, id: string): StubPresence {
-  if (raw === null) return "absent";
   try {
-    const wall = JSON.parse(raw) as unknown;
-    if (!Array.isArray(wall) || !wall.every(readableGenerationHistory)) return "unknown";
-    return wall.some((s) => (s as Stub | null)?.id === id) ? "present" : "absent";
+    const wall = wallFromValue(raw);
+    return wall.stubs.some(s => s.id === id) ? "present" : "absent";
   } catch {
     return "unknown";
   }
@@ -128,16 +150,10 @@ export function stubPresence(id: string): StubPresence {
 
 /** The stored copy of one stub with a typed outcome ("unknown" when the wall cannot be read). */
 export function readStoredStub(id: string): { status: "present"; stub: Stub } | { status: "absent" | "unknown" } {
-  try {
-    const raw = localStorage.getItem(KEY);
-    if (raw === null) return { status: "absent" };
-    const wall = JSON.parse(raw) as unknown;
-    if (!Array.isArray(wall) || !wall.every(readableGenerationHistory)) return { status: "unknown" };
-    const stub = (wall as Stub[]).find((s) => s?.id === id);
-    return stub ? { status: "present", stub } : { status: "absent" };
-  } catch {
-    return { status: "unknown" };
-  }
+  const read = readWall();
+  if (read.status === "unknown") return read;
+  const stub = read.stubs.find(s => s.id === id);
+  return stub ? { status: "present", stub } : { status: "absent" };
 }
 
 export function getStub(id: string): Stub | undefined {
@@ -146,32 +162,17 @@ export function getStub(id: string): Stub | undefined {
 
 /** Save one stub to the front of the wall. True when it is stored on this device; false means it lives in memory only. */
 export function upsertStub(stub: Stub): boolean {
-  // ONE read serves both the safety check and the merge, so nothing can change between them in this task. A wall that cannot be
-  // READ is not an empty wall: writing only this stub would erase every other project, so it is reported unsaved instead.
-  let raw: string | null;
-  try {
-    raw = localStorage.getItem(KEY);
-  } catch (e) {
-    storageFailure("wall", "read", e);
-    return false;
-  }
-  // Unparseable or non-list content is UNKNOWN, not empty: replacing it with just this stub would destroy whatever it holds.
-  let stored: Stub[] = [];
-  if (raw) {
-    try {
-      const parsed = JSON.parse(raw) as unknown;
-      if (!Array.isArray(parsed)) throw new Error("wall is not a list");
-      stored = parsed as Stub[];
-    } catch (e) {
-      storageFailure("wall", "read", e);
-      return false;
-    }
-  }
-  const wall = stored.filter((s) => s?.id !== stub.id);
-  const gone = loadDeleted();
-  if (gone.includes(stub.id)) saveDeleted(gone.filter((id) => id !== stub.id));
-  // a copy that had to let go of a picture takes it back from what is stored, if that still has it
-  return saveWall([{ ...retainArt(stub, stored.find((s) => s?.id === stub.id)), updatedAt: Date.now() }, ...wall]);
+  const read = readWall();
+  const deleted = readDeleted();
+  if (read.status !== "known" || deleted.status !== "known" || !readableWall([stub])) return false;
+  const stored = read.stubs;
+  const wall = stored.filter(s => s.id !== stub.id);
+  const next = [{ ...retainArt(stub, stored.find(s => s.id === stub.id)), updatedAt: Date.now() }, ...wall];
+  // Write first: a refused/failed wall mutation never clears a deletion or advertises a saved change.
+  if (!writeWall(next)) return false;
+  if (deleted.ids.includes(stub.id) && !saveDeleted(deleted.ids.filter(id => id !== stub.id))) return false;
+  changed();
+  return true;
 }
 
 /** A stub's correction history, oldest first. Entries are only ever appended (an undo is a new entry). */
@@ -200,9 +201,14 @@ export function undoStubCorrection(id: string, factId: string): Stub | undefined
 
 /** True when the stub is gone from storage too. */
 export function removeStub(id: string): boolean {
-  saveDeleted([...loadDeleted(), id]);
+  const read = readWall();
+  const deleted = readDeleted();
+  if (read.status !== "known" || deleted.status !== "known") return false;
+  if (!writeWall(read.stubs.filter(s => s.id !== id))) return false;
+  if (!saveDeleted([...deleted.ids, id])) return false;
   forgetStatus(id);
-  return saveWall(loadWall().filter((s) => s.id !== id));
+  changed();
+  return true;
 }
 
 /** Compact, URL-safe encoding of a stub for share links (photos dropped to keep URLs short). */

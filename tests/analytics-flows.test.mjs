@@ -421,6 +421,20 @@ describe("account outcomes", () => {
     ]);
   });
 
+  test("remote sync acknowledgement with failed local writes never emits saved telemetry", async () => {
+    store.upsertStub(privateStub());
+    reply = () => ({ status: 200, body: { stubs: [], deleted: [], now: 1 } });
+    localStorage.mode = "quota";
+    const result = await sync.syncNow();
+    assert.equal(result.ok, false);
+    assert.equal(result.remoteAcknowledged, true);
+    assert.equal(result.localPersistenceFailed, true);
+    assert.deepEqual(events("server_save"), [{ kind: "sync", result: "failed", error_code: "unavailable" }]);
+    localStorage.mode = "ok";
+    assert.equal((await sync.syncNow()).ok, true);
+    assert.deepEqual(events("server_save").map(e => e.result), ["failed", "saved"]);
+  });
+
   test("opening the sign-in sheet is a choice, once per opening; 'not now' is a skip; neither is a login", () => {
     signin.openSignIn({ reason: "claim", email: SEEDS.email, returnTo: `/claim/g/${SEEDS.token}` });
     signin.updateSignIn({ sent: { email: SEEDS.email } });

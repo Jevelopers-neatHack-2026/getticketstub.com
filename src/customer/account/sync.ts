@@ -1,14 +1,16 @@
 "use client";
 // Keeps the local wall and the account's wall the same. localStorage stays the cache and the
 // signed-out mode; signed in, every change goes up (debounced) and the merged wall comes back down.
-// A failed request changes nothing locally, so no stub is ever lost: the next trigger tries again.
-import { WALL_CHANGED, loadDeleted, loadWall, saveDeleted, writeWall } from "@/customer/studio/store";
+// Failed requests do not write a local result. A remote acknowledgement and local persistence are distinct outcomes;
+// neither localStorage reads nor multi-key writes establish a cross-tab transaction.
+import { WALL_CHANGED, readDeleted, readWall, readableWall, saveDeleted, writeWall } from "@/customer/studio/store";
 import type { Stub } from "@/customer/studio/types";
 import { retainArt } from "@/customer/studio/versions/retention";
 import { api } from "./api";
 import { isSavingOff } from "./saving";
 import { errorCode, flow } from "@/customer/flows/events";
 
+export const WALL_SYNC_RESULT = "ticketstub:wall-sync-result";
 export const WALL_SYNCED = "ticketstub:wall-synced";
 const DEBOUNCE_MS = 1500;
 
@@ -26,7 +28,7 @@ export function foldWall(current: Stub[], remote: Stub[], deleted: string[], sen
     if (!mine) out.push(s);
     // photos stay on the device: the server keeps none, so its copy never wipes ours
     // a version whose picture one side let go of takes it from the other, when that still has it
-    else out.push(at(mine) > at(s) ? retainArt(mine, s) : retainArt({ ...s, photos: mine.photos.length ? mine.photos : s.photos }, mine));
+    else out.push(at(mine) > at(s) ? retainArt(mine, s) : retainArt({ ...s, photos: mine.photos?.length ? mine.photos : s.photos }, mine));
   }
   for (const s of current) {
     if (seen.has(s.id)) continue;
@@ -43,6 +45,9 @@ export function foldWall(current: Stub[], remote: Stub[], deleted: string[], sen
 export interface SyncResult {
   ok: boolean;
   count: number;
+  remoteAcknowledged?: true;
+  localReadFailed?: true;
+  localPersistenceFailed?: true;
 }
 
 /** Ids the server has acknowledged this visit: a stub is "on the server" once a sync that carried it has come back. */
@@ -56,35 +61,56 @@ let lastSynced: boolean | null = null;
 
 /** One merge round trip. Calls overlapping a running one are folded into a single follow-up. */
 export function syncNow(): Promise<SyncResult> {
-  if (isSavingOff()) return Promise.resolve({ ok: true, count: loadWall().length }); // nothing to sync to
+  if (isSavingOff()) {
+    const read = readWall();
+    return Promise.resolve(read.status === "known" ? { ok: true, count: read.stubs.length } : { ok: false, count: 0, localReadFailed: true });
+  }
   if (running) {
     again = true;
     return running;
   }
   running = (async (): Promise<SyncResult> => {
     const sentAt = Date.now();
-    const local = loadWall();
-    const deleted = loadDeleted();
+    const initial = readWall();
+    const tombstones = readDeleted();
+    const local = initial.status === "known" ? initial.stubs : [];
+    let remoteAcknowledged = false;
+    const failLocal = (readFailed: boolean, count: number): SyncResult => {
+      flow("server_save", { kind: "sync", result: "failed", error_code: "unavailable" });
+      lastSynced = false;
+      return { ok: false, count, ...(remoteAcknowledged ? { remoteAcknowledged: true } : {}), ...(readFailed ? { localReadFailed: true } : { localPersistenceFailed: true }) };
+    };
+    if (initial.status !== "known" || tombstones.status !== "known") return failLocal(true, local.length);
+    const deleted = tombstones.ids;
     try {
       const reply = await api.sync(local, deleted);
+      if (!readableWall(reply.stubs) || !Array.isArray(reply.deleted) || !reply.deleted.every(id => typeof id === "string")) throw new Error("unreadable sync reply");
+      remoteAcknowledged = true;
+      // Server custody is distinct from local persistence. A local failure does not roll this acknowledgement back.
       for (const s of local) onServer.add(s.id);
       for (const s of reply.stubs) onServer.add(s.id);
       for (const id of reply.deleted) onServer.delete(id);
-      const merged = foldWall(loadWall(), reply.stubs, reply.deleted, sentAt);
-      writeWall(merged);
-      // the tombstones we just sent are on the server now; ones made since stay queued
+      const current = readWall();
+      const queued = readDeleted();
+      if (current.status !== "known" || queued.status !== "known") return failLocal(true, local.length);
+      const merged = foldWall(current.stubs, reply.stubs, reply.deleted, sentAt);
+      if (!writeWall(merged)) return failLocal(false, current.stubs.length);
+      // Only this acknowledged request's deletion snapshot is cleared, after the wall is safely handled.
       const sent = new Set(deleted);
-      saveDeleted(loadDeleted().filter((id) => !sent.has(id)));
+      if (!saveDeleted(queued.ids.filter(id => !sent.has(id)))) return failLocal(false, merged.length);
       window.dispatchEvent(new CustomEvent(WALL_SYNCED, { detail: { count: merged.length } }));
       if (lastSynced !== true) flow("server_save", { kind: "sync", result: "saved" });
       lastSynced = true;
-      return { ok: true, count: merged.length };
+      return { ok: true, count: merged.length, remoteAcknowledged: true };
     } catch (e) {
       flow("server_save", { kind: "sync", result: "failed", error_code: errorCode(e) });
       lastSynced = false;
-      return { ok: false, count: local.length };
+      return { ok: false, count: local.length, ...(remoteAcknowledged ? { remoteAcknowledged: true } : {}) };
     }
-  })().finally(() => {
+  })().then(result => {
+    window.dispatchEvent(new CustomEvent(WALL_SYNC_RESULT, { detail: result }));
+    return result;
+  }).finally(() => {
     running = null;
     if (again) {
       again = false;
