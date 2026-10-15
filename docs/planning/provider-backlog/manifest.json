@@ -1,0 +1,524 @@
+{
+  "schema_version": 1,
+  "updated": "2026-10-15",
+  "workflow": "local_only",
+  "implementation_baseline": "3ded8581283ba0890b77659c996c1cee107c6cf9",
+  "issues": [
+    {
+      "id": "PROVIDER-001",
+      "provider": "Events.com",
+      "file": "issues/events-com.md",
+      "title": "[Post deployment][P2] Events.com: Support event links and verify legacy Brown Paper Tickets redirects",
+      "status": "planned_local",
+      "priority": "P2",
+      "required_for_v1": false,
+      "labels": [
+        "enhancement",
+        "state:planned",
+        "type:implementation",
+        "priority:P2",
+        "area:product"
+      ],
+      "geography": "Events.com: US verified; international ticket inventory unverified.",
+      "evidence_dates": [
+        "2026-10-14"
+      ],
+      "origin": "saved_unpublished_draft",
+      "github_issue_number": null
+    },
+    {
+      "id": "PROVIDER-002",
+      "provider": "TicketSignup",
+      "file": "issues/ticketsignup.md",
+      "title": "[Post deployment][P2] TicketSignup: Preserve ticket-event parsing and refuse non-event pages",
+      "status": "planned_local",
+      "priority": "P2",
+      "required_for_v1": false,
+      "labels": [
+        "enhancement",
+        "state:planned",
+        "type:implementation",
+        "priority:P2",
+        "area:product"
+      ],
+      "geography": "TicketSignup: US verified. International inventory unknown.",
+      "evidence_dates": [
+        "2026-10-14"
+      ],
+      "origin": "saved_unpublished_draft",
+      "github_issue_number": null
+    },
+    {
+      "id": "PROVIDER-003",
+      "provider": "NIGHTOUT",
+      "file": "issues/nightout.md",
+      "title": "[Post deployment][P2] NIGHTOUT: Preserve buyer-event parsing and verify primary and resale link handling",
+      "status": "planned_local",
+      "priority": "P2",
+      "required_for_v1": false,
+      "labels": [
+        "enhancement",
+        "state:planned",
+        "type:implementation",
+        "priority:P2",
+        "area:product"
+      ],
+      "geography": "NIGHTOUT: US plus international. Verified: United States and Canada (Toronto).",
+      "evidence_dates": [
+        "2026-10-14"
+      ],
+      "origin": "saved_unpublished_draft",
+      "github_issue_number": null
+    },
+    {
+      "id": "PROVIDER-004",
+      "provider": "Ticketsolve",
+      "file": "issues/ticketsolve.md",
+      "title": "[Post deployment][P2] Ticketsolve: Verify venue event links and performance selection",
+      "status": "planned_local",
+      "priority": "P2",
+      "required_for_v1": false,
+      "labels": [
+        "enhancement",
+        "state:planned",
+        "type:implementation",
+        "priority:P2",
+        "area:product"
+      ],
+      "geography": "Ticketsolve: international, non-US. Verified operator footprint: United Kingdom and Ireland. Venue inventory: to sample.",
+      "evidence_dates": [
+        "2026-10-14"
+      ],
+      "origin": "saved_unpublished_draft",
+      "github_issue_number": null
+    },
+    {
+      "id": "PROVIDER-005",
+      "provider": "Ticketline",
+      "file": "issues/ticketline.md",
+      "title": "[Post deployment][P2] Ticketline: Handle UK event links without selecting a listing or error page",
+      "status": "planned_local",
+      "priority": "P2",
+      "required_for_v1": false,
+      "labels": [
+        "enhancement",
+        "state:planned",
+        "type:implementation",
+        "priority:P2",
+        "area:product"
+      ],
+      "geography": "Ticketline: international, non-US. Observed event inventory: United Kingdom.",
+      "evidence_dates": [
+        "2026-10-14"
+      ],
+      "origin": "saved_unpublished_draft",
+      "github_issue_number": null
+    },
+    {
+      "id": "PROVIDER-006",
+      "provider": "Eventfinda",
+      "file": "issues/eventfinda.md",
+      "title": "[Post deployment][P2] Eventfinda: Recognise NZ and Australian event links and blocked-page responses",
+      "status": "planned_local",
+      "priority": "P2",
+      "required_for_v1": false,
+      "labels": [
+        "enhancement",
+        "state:planned",
+        "type:implementation",
+        "priority:P2",
+        "area:product"
+      ],
+      "geography": "Eventfinda: international, non-US. Verified: New Zealand and Australia.",
+      "evidence_dates": [
+        "2026-10-14"
+      ],
+      "origin": "saved_unpublished_draft",
+      "github_issue_number": null
+    },
+    {
+      "id": "PROVIDER-007",
+      "provider": "Passline",
+      "file": "issues/passline.md",
+      "title": "[Post deployment][P2] Passline: Support Chilean, Peruvian and Colombian event links with blocked-page fallback",
+      "status": "planned_local",
+      "priority": "P2",
+      "required_for_v1": false,
+      "labels": [
+        "enhancement",
+        "state:planned",
+        "type:implementation",
+        "priority:P2",
+        "area:product"
+      ],
+      "geography": "Passline: international; Chile and Peru event inventory observed. Colombia city listing only; dated events unverified.",
+      "evidence_dates": [
+        "2026-10-14"
+      ],
+      "origin": "saved_unpublished_draft",
+      "github_issue_number": null
+    },
+    {
+      "id": "PROVIDER-008",
+      "provider": "TuEntrada",
+      "file": "issues/tuentrada.md",
+      "title": "[Post deployment][P2] TuEntrada: Support Argentine event links and performance selection",
+      "status": "planned_local",
+      "priority": "P2",
+      "required_for_v1": false,
+      "labels": [
+        "enhancement",
+        "state:planned",
+        "type:implementation",
+        "priority:P2",
+        "area:product"
+      ],
+      "geography": "TuEntrada: international, non-US. Observed event inventory: Argentina.",
+      "evidence_dates": [
+        "2026-10-14"
+      ],
+      "origin": "saved_unpublished_draft",
+      "github_issue_number": null
+    },
+    {
+      "id": "PROVIDER-009",
+      "provider": "Teleticket",
+      "file": "issues/teleticket.md",
+      "title": "[Post deployment][P2] Teleticket: Preserve artist titles and verify Peruvian event dates and venues",
+      "status": "planned_local",
+      "priority": "P2",
+      "required_for_v1": false,
+      "labels": [
+        "enhancement",
+        "state:planned",
+        "type:implementation",
+        "priority:P2",
+        "area:product"
+      ],
+      "geography": "Teleticket: international, non-US. Observed event inventory: Peru.",
+      "evidence_dates": [
+        "2026-10-14"
+      ],
+      "origin": "saved_unpublished_draft",
+      "github_issue_number": null
+    },
+    {
+      "id": "PROVIDER-010",
+      "provider": "Tuboleta",
+      "file": "issues/tuboleta.md",
+      "title": "[Post deployment][P2] Tuboleta: Support Colombian event links without inventing attraction dates",
+      "status": "planned_local",
+      "priority": "P2",
+      "required_for_v1": false,
+      "labels": [
+        "enhancement",
+        "state:planned",
+        "type:implementation",
+        "priority:P2",
+        "area:product"
+      ],
+      "geography": "Tuboleta: international, non-US. Observed event inventory: Colombia.",
+      "evidence_dates": [
+        "2026-10-14"
+      ],
+      "origin": "saved_unpublished_draft",
+      "github_issue_number": null
+    },
+    {
+      "id": "PROVIDER-011",
+      "provider": "Webtickets",
+      "file": "issues/webtickets.md",
+      "title": "[Post deployment][P2] Webtickets: Verify regional event links and local dates",
+      "status": "planned_local",
+      "priority": "P2",
+      "required_for_v1": false,
+      "labels": [
+        "enhancement",
+        "state:planned",
+        "type:implementation",
+        "priority:P2",
+        "area:product"
+      ],
+      "geography": "Webtickets: international, non-US. Official country catalogues: South Africa, Namibia, Botswana, Malawi.",
+      "evidence_dates": [
+        "2026-10-14"
+      ],
+      "origin": "saved_unpublished_draft",
+      "github_issue_number": null
+    },
+    {
+      "id": "PROVIDER-012",
+      "provider": "Computicket",
+      "file": "issues/computicket.md",
+      "title": "[Post deployment][P2] Computicket: Extract South African event dates and venues",
+      "status": "planned_local",
+      "priority": "P2",
+      "required_for_v1": false,
+      "labels": [
+        "enhancement",
+        "state:planned",
+        "type:implementation",
+        "priority:P2",
+        "area:product"
+      ],
+      "geography": "Computicket: international, non-US. Observed event inventory: South Africa.",
+      "evidence_dates": [
+        "2026-10-14"
+      ],
+      "origin": "saved_unpublished_draft",
+      "github_issue_number": null
+    },
+    {
+      "id": "PROVIDER-013",
+      "provider": "RunSignup",
+      "file": "issues/runsignup.md",
+      "title": "[Post deployment][P2] RunSignup: Decide racing-keepsake scope and verify public race metadata",
+      "status": "planned_local",
+      "priority": "P2",
+      "required_for_v1": false,
+      "labels": [
+        "enhancement",
+        "state:planned",
+        "type:implementation",
+        "priority:P2",
+        "area:product"
+      ],
+      "geography": "RunSignup: US verified. International inventory unknown.",
+      "evidence_dates": [
+        "2026-10-14"
+      ],
+      "origin": "saved_unpublished_draft",
+      "github_issue_number": null
+    },
+    {
+      "id": "PROVIDER-014",
+      "provider": "Prekindle",
+      "file": "issues/prekindle.md",
+      "title": "[Post deployment][P2] Prekindle (prekindle.com): event links, and stop expired-event redirects becoming wrong-event stubs",
+      "status": "planned_local",
+      "priority": "P2",
+      "required_for_v1": false,
+      "labels": [
+        "enhancement",
+        "state:planned",
+        "type:implementation",
+        "priority:P2",
+        "area:product"
+      ],
+      "geography": "US verified: United States; other countries unverified.",
+      "evidence_dates": [
+        "2026-10-14",
+        "2026-10-15"
+      ],
+      "origin": "local_continuation",
+      "github_issue_number": null
+    },
+    {
+      "id": "PROVIDER-015",
+      "provider": "TicketSwap",
+      "file": "issues/ticketswap.md",
+      "title": "[Post deployment][P2] TicketSwap (ticketswap.com): resale event links with dedupe, and an honest outcome for the verification page",
+      "status": "planned_local",
+      "priority": "P2",
+      "required_for_v1": false,
+      "labels": [
+        "enhancement",
+        "state:planned",
+        "type:implementation",
+        "priority:P2",
+        "area:product"
+      ],
+      "geography": "US plus international: United States, Netherlands.",
+      "evidence_dates": [
+        "2026-10-14",
+        "2026-10-15"
+      ],
+      "origin": "local_continuation",
+      "github_issue_number": null
+    },
+    {
+      "id": "PROVIDER-016",
+      "provider": "Ticket.io",
+      "file": "issues/ticketio.md",
+      "title": "[Post deployment][P2] Ticket.io (organiser subdomains): recognise event links and handle the security-check page honestly",
+      "status": "planned_local",
+      "priority": "P2",
+      "required_for_v1": false,
+      "labels": [
+        "enhancement",
+        "state:planned",
+        "type:implementation",
+        "priority:P2",
+        "area:product"
+      ],
+      "geography": "International, non-US: Germany.",
+      "evidence_dates": [
+        "2026-10-14",
+        "2026-10-15"
+      ],
+      "origin": "local_continuation",
+      "github_issue_number": null
+    },
+    {
+      "id": "PROVIDER-017",
+      "provider": "Reservix / ADticket",
+      "file": "issues/reservix-adticket.md",
+      "title": "[Post deployment][P2] Reservix / ADticket (reservix.de / reservix.at / adticket.de): one family issue with per-host verification",
+      "status": "planned_local",
+      "priority": "P2",
+      "required_for_v1": false,
+      "labels": [
+        "enhancement",
+        "state:planned",
+        "type:implementation",
+        "priority:P2",
+        "area:product"
+      ],
+      "geography": "International, non-US: Germany, Austria.",
+      "evidence_dates": [
+        "2026-10-14",
+        "2026-10-15"
+      ],
+      "origin": "local_continuation",
+      "github_issue_number": null
+    },
+    {
+      "id": "PROVIDER-018",
+      "provider": "LOKET",
+      "file": "issues/loket.md",
+      "title": "[Post deployment][P2] LOKET (loket.com): lock in Indonesian event parsing with timezone-suffixed dates and multi-day selection",
+      "status": "planned_local",
+      "priority": "P2",
+      "required_for_v1": false,
+      "labels": [
+        "enhancement",
+        "state:planned",
+        "type:implementation",
+        "priority:P2",
+        "area:product"
+      ],
+      "geography": "International, non-US: Indonesia.",
+      "evidence_dates": [
+        "2026-10-14",
+        "2026-10-15"
+      ],
+      "origin": "local_continuation",
+      "github_issue_number": null
+    },
+    {
+      "id": "PROVIDER-019",
+      "provider": "SM Tickets",
+      "file": "issues/smtickets.md",
+      "title": "[Post deployment][P2] SM Tickets (smtickets.com): Philippine event links with a queue/home-redirect outcome and no queue bypass",
+      "status": "planned_local",
+      "priority": "P2",
+      "required_for_v1": false,
+      "labels": [
+        "enhancement",
+        "state:planned",
+        "type:implementation",
+        "priority:P2",
+        "area:product"
+      ],
+      "geography": "International, non-US: Philippines.",
+      "evidence_dates": [
+        "2026-10-14",
+        "2026-10-15"
+      ],
+      "origin": "local_continuation",
+      "github_issue_number": null
+    },
+    {
+      "id": "PROVIDER-020",
+      "provider": "Ticket2Me",
+      "file": "issues/ticket2me.md",
+      "title": "[Post deployment][P2] Ticket2Me (ticket2me.net): Philippine event links behind a JS shell",
+      "status": "planned_local",
+      "priority": "P2",
+      "required_for_v1": false,
+      "labels": [
+        "enhancement",
+        "state:planned",
+        "type:implementation",
+        "priority:P2",
+        "area:product"
+      ],
+      "geography": "International, non-US: Philippines.",
+      "evidence_dates": [
+        "2026-10-14",
+        "2026-10-15"
+      ],
+      "origin": "local_continuation",
+      "github_issue_number": null
+    },
+    {
+      "id": "PROVIDER-021",
+      "provider": "Biletinial",
+      "file": "issues/biletinial.md",
+      "title": "[Post deployment][P2] Biletinial (biletinial.com): Turkish event links, separated from movie pages, with date selection",
+      "status": "planned_local",
+      "priority": "P2",
+      "required_for_v1": false,
+      "labels": [
+        "enhancement",
+        "state:planned",
+        "type:implementation",
+        "priority:P2",
+        "area:product"
+      ],
+      "geography": "International, non-US: Türkiye.",
+      "evidence_dates": [
+        "2026-10-14",
+        "2026-10-15"
+      ],
+      "origin": "local_continuation",
+      "github_issue_number": null
+    },
+    {
+      "id": "PROVIDER-022",
+      "provider": "Ticket360",
+      "file": "issues/ticket360.md",
+      "title": "[Post deployment][P2] Ticket360 (ticket360.com.br): Brazilian event links, separate from Sympla",
+      "status": "planned_local",
+      "priority": "P2",
+      "required_for_v1": false,
+      "labels": [
+        "enhancement",
+        "state:planned",
+        "type:implementation",
+        "priority:P2",
+        "area:product"
+      ],
+      "geography": "International, non-US: Brazil.",
+      "evidence_dates": [
+        "2026-10-14",
+        "2026-10-15"
+      ],
+      "origin": "local_continuation",
+      "github_issue_number": null
+    },
+    {
+      "id": "PROVIDER-023",
+      "provider": "Howler",
+      "file": "issues/howler.md",
+      "title": "[Post deployment][P2] Howler (howler.co.za and organiser subdomains): lock in South African and Namibian event parsing",
+      "status": "planned_local",
+      "priority": "P2",
+      "required_for_v1": false,
+      "labels": [
+        "enhancement",
+        "state:planned",
+        "type:implementation",
+        "priority:P2",
+        "area:product"
+      ],
+      "geography": "International, non-US: South Africa, Namibia.",
+      "evidence_dates": [
+        "2026-10-14",
+        "2026-10-15"
+      ],
+      "origin": "local_continuation",
+      "github_issue_number": null
+    }
+  ]
+}
