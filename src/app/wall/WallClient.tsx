@@ -362,9 +362,12 @@ export default function WallClient({ emailSent, pinnedId, liftId }: { emailSent:
   }
 
   function remove(id: string) {
-    flow("wall_remove", { storage: removeStub(id) ? "ok" : "failed" });
+    const removed = removeStub(id);
+    flow("wall_remove", { storage: removed ? "ok" : "failed" });
+    if (!removed) return false;
     setStubs((prev) => prev.filter((x) => x.id !== id));
     setLift(null);
+    return true;
   }
 
   return (
@@ -656,10 +659,11 @@ function NextSteps({ stub }: { stub: Stub }) {
 }
 
 /** A stub lifted under the lamp: the rest of the wall dims under a warm paper scrim, the stub tilts toward you, its tools sit on the cork. */
-function Lamp({ stub, lift, onPutBack, onDelete }: { stub: Stub; lift: Lift; onPutBack: () => void; onDelete: (id: string) => void }) {
+function Lamp({ stub, lift, onPutBack, onDelete }: { stub: Stub; lift: Lift; onPutBack: () => void; onDelete: (id: string) => boolean }) {
   const router = useRouter();
   const [flipped, setFlipped] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleteFailed, setDeleteFailed] = useState(false);
   const [status, setStatus] = useState("");
   const rootRef = useRef<HTMLDivElement>(null);
   const dragX = useRef<number | null>(null);
@@ -774,11 +778,14 @@ function Lamp({ stub, lift, onPutBack, onDelete }: { stub: Stub; lift: Lift; onP
                 onClick={() => {
                   if (confirmDelete) {
                     play("tear");
-                    onDelete(stub.id);
+                    if (!onDelete(stub.id)) {
+                      setDeleteFailed(true);
+                      setStatus("Could not save this removal. Your card is still on the wall. Keep this page open and retry.");
+                    }
                   } else setConfirmDelete(true);
                 }}
               >
-                {confirmDelete ? "Tap again to take it down" : "Take it down"}
+                {deleteFailed ? "Retry taking it down" : confirmDelete ? "Tap again to take it down" : "Take it down"}
               </TearLink>
             </div>
           </div>

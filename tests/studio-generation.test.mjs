@@ -1332,7 +1332,7 @@ describe("a server-externalized picture is the same body, not a conflict (PR100-
   });
 
   // Reason recorded: an earlier revision upgraded "unverifiable" to "same" when this tab's own WALL_SYNCED fired. The sync emits that
-  // event even when its local write failed (known open bug) and nothing binds the event to an authenticated reply or a project
+  // event even when its local write failed (historical false-success bug, repaired by the wall-write continuation). Nothing binds a forged event to a reply or a project
   // incarnation, so it is not evidence about bytes. These tests assert the proper guard instead: an event never makes two pictures the same.
   async function legacyRefScenario(fire) {
     const ed = openEditor();
@@ -1354,9 +1354,11 @@ describe("a server-externalized picture is the same body, not a conflict (PR100-
 
   for (const [label, fire] of [
     ["a foreign/forged WALL_SYNCED event", async () => window.dispatchEvent(new CustomEvent(sync.WALL_SYNCED, { detail: { count: 1 } }))],
-    ["a WALL_SYNCED whose local write FAILED (the sync's known false success)", async () => {
+    ["a sync whose local write FAILED (no successful WALL_SYNCED)", async () => {
       localStorage.mode = "blocked";
-      await sync.syncNow().catch(() => undefined);
+      const result = await sync.syncNow();
+      assert.equal(result.ok, false);
+      assert.equal(result.localPersistenceFailed, true);
       localStorage.mode = "ok";
     }],
     ["storage events", async () => window.dispatchEvent(new Event("storage"))],

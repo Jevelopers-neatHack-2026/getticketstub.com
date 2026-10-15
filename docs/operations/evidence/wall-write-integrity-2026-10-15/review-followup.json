@@ -1,0 +1,124 @@
+{
+  "implementationHead": "67e4e1e43cab9b9c3f14fb24a75120ce12e7dced",
+  "reviewedPreviousHead": "e59dd8421cb75170fa34af9f62f79163c30f57a3",
+  "base": "872a5c644b624d7f55fbdaf9fb48c06e2c816a92",
+  "createdAt": "2026-10-15T08:30:03.877616+00:00",
+  "findings": [
+    "APP-WALL-REVIEW-001",
+    "APP-WALL-REVIEW-002",
+    "APP-WALL-REVIEW-003"
+  ],
+  "checks": {
+    "exactPreviousHeadRed": {
+      "passed": 3,
+      "failed": 8
+    },
+    "recoveryActualSQLite": {
+      "passed": 11,
+      "failed": 0
+    },
+    "focused": {
+      "passed": 251,
+      "failed": 0
+    },
+    "fullUnits": {
+      "passed": 1052,
+      "failed": 0,
+      "skipped": 1
+    },
+    "browser": {
+      "childPassed": 18,
+      "wrapperPassed": 20,
+      "failed": 0,
+      "outboundAttempts": 0
+    },
+    "build": "exit 0",
+    "typecheck": "exit 0",
+    "lint": "exit 0; existing fixture $comment warning only"
+  },
+  "sourceDigests": [
+    {
+      "path": "scripts/check-wall-write-integrity.mjs",
+      "sha256": "a9095c22606b52c64629dc71b35c0cd21d06bc7e6e3129fea3ff805877bc7b90"
+    },
+    {
+      "path": "src/app/wall/WallClient.tsx",
+      "sha256": "1a60b61eac0999186cda50ea75493d1275e3248809da1982bc66f57dc7bb1939"
+    },
+    {
+      "path": "src/customer/account/AccountRoot.tsx",
+      "sha256": "8bf36ebed1c81ef794b61802244eeee44bac7610a21a8a757bdbcce187a359f4"
+    },
+    {
+      "path": "src/customer/account/sync.ts",
+      "sha256": "1ed3d07b4ae79050b26517a32def7cc49a2eddafa8638d646bd23e7fc3b01046"
+    },
+    {
+      "path": "src/customer/studio/generation/storage-snapshot.ts",
+      "sha256": "9c224272d2b7dfb978ccfd9cc0cf35f7e88c7ad238bfeb5c34918951deaebc55"
+    },
+    {
+      "path": "src/customer/studio/store.ts",
+      "sha256": "778ef07a75f9ec63d2eaed33718ca81f3a8fd60f735b9c40128cc176dbf4b4a7"
+    },
+    {
+      "path": "tests/studio-wall-mutation-recovery.test.mjs",
+      "sha256": "6a11d9de124e092a7c65db117d66c99628ca642f26bd7bcf3ec0e1e6fd4903ba"
+    },
+    {
+      "path": "tests/studio-wall-write-integrity.test.mjs",
+      "sha256": "d299f9c4f4ae7d946b8d6f495d4f08cc5b19eb16109aa0a32a0939ef1b5fcf70"
+    }
+  ],
+  "logs": [
+    {
+      "path": "/tmp/gt-wall-review-001-red-final-v2.log",
+      "sha256": "8fef563ed86b2eec2182bbcc31f623dde49a428e1b7f2a8f7e1e5a2373c73c2a"
+    },
+    {
+      "path": "/tmp/gt-wall-review-001-green-final.log",
+      "sha256": "1bf074aaaed9dcefd7ed2b7d53a3aa898d98b1eb5a3e7610dedacf3cfa1b2e5a"
+    },
+    {
+      "path": "/tmp/gt-wall-review-focused-final.log",
+      "sha256": "cad3571f05bcbefece6022c850379a8ecdbad68bc144a7e40db0c895f6db4425"
+    },
+    {
+      "path": "/tmp/gt-wall-review-units-final.log",
+      "sha256": "61bc7edf657a9d442f14accc937f31e5b5525fad0b53db4f33d8729a4bcf7ed8"
+    },
+    {
+      "path": "/tmp/gt-wall-review-build-final.log",
+      "sha256": "9d694e041acf1ab195de66f3e78ba022df9dd5f08df37d8212ba80a5715096d8"
+    },
+    {
+      "path": "/tmp/gt-wall-review-type-final.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/tmp/gt-wall-review-lint-final.log",
+      "sha256": "f0daaad4fe7229dc99f1d6563a331bebab03ffb30c73f4ec68332a6f9051380a"
+    },
+    {
+      "path": "/tmp/gt-wall-review-browser.log",
+      "sha256": "344c1c3db365a0029fb2d070cb496d8ffc96783d15cd4f5e3d1e792856771d00"
+    },
+    {
+      "path": "/tmp/gt-wall-review-browser/wall-integrity-2026-10-15T08-26-35-318Z.json",
+      "sha256": "dde2c12043a118a0567e1bee1a0571435141e26b3cf7405715263e3aa0e6e11d"
+    }
+  ],
+  "provenance": "Final executable bytes tested before implementation commit. Browser metadata may name e59dd842 with dirty=true. Historical receipt.json preserved unchanged. New hosted and independent exact-head review pending.",
+  "runtime": {
+    "node": "22.23.3",
+    "npm": "11.16.0",
+    "liveAccountProviderCalls": 0
+  },
+  "limits": [
+    "Preparation reserves extra local capacity; refusal leaves primary bytes unchanged.",
+    "Failed compensation keeps durable unknown state and blocks sync; differing peer bytes are never overwritten. Observed prepared state requires owner-directed recovery, not automatic rollback.",
+    "No cross-process atomicity or Product peer/fence policy chosen.",
+    "Previous explicit PostgreSQL host 5/5 and hosted passes are historical e59 evidence, not new-head qualification.",
+    "Synthetic evidence is not canonical acceptance; no deployment, merge or closure."
+  ]
+}

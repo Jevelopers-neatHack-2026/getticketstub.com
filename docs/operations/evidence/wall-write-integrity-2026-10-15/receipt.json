@@ -1,0 +1,218 @@
+{
+  "repository": "Jevelopers-neatHack-2026/getticketstub.com",
+  "refs": [
+    10,
+    97,
+    98
+  ],
+  "base": "872a5c644b624d7f55fbdaf9fb48c06e2c816a92",
+  "baseBranch": "fix/generation-state-observation-20261015",
+  "branch": "fix/wall-write-integrity-20261015",
+  "worktree": "/tmp/gt-wall-write-continuation-20261015",
+  "implementationHead": "b02de50233215355d5e915d73fcb463be3687eed",
+  "createdAt": "2026-10-15T08:11:54.014945+00:00",
+  "findings": {
+    "wallMutation": "Unknown reads no longer authorize writes or preceding tombstone/status side effects. Candidate rows/history validated before retention. Boolean APIs and {ok,released}, first use and quota retention preserved.",
+    "syncStatus": "Unreadable local data refuses remote sync. Remote acknowledgement is distinct from failed local persistence, with failure result/event and persistent user recovery; only safe local success emits WALL_SYNCED/server_save saved."
+  },
+  "redOnExactBase": {
+    "passed": 5,
+    "failed": 42,
+    "log": "/tmp/gt-wall-base-red.log",
+    "sourceChangedBeforeRed": false,
+    "newRegressionFileOnly": true
+  },
+  "checks": {
+    "focused": {
+      "passed": 240,
+      "failed": 0,
+      "skipped": 0
+    },
+    "fullUnits": {
+      "passed": 1041,
+      "failed": 0,
+      "skipped": 1,
+      "skip": "Default PostgreSQL test disabled; required explicit host suite separately passed 5/5."
+    },
+    "creativeHost": {
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0,
+      "mode": "Actual cached pinned PostgreSQL; intercepted offline provider transport"
+    },
+    "build": "exit 0",
+    "typecheck": "exit 0",
+    "lint": "exit 0; only existing fixture $comment warning",
+    "browser": {
+      "suite": "wall-integrity",
+      "childPassed": 11,
+      "counts": {
+        "passed": 13,
+        "failed": 0,
+        "skipped": 0
+      },
+      "exitCode": 0,
+      "blockedNetwork": [],
+      "receiptPath": "/tmp/gt-wall-browser-final/wall-integrity-2026-10-15T08-08-35-389Z.json",
+      "sha256": "e791992c8d4617bc4fdebab7f8b47a0f77a3ba0befebc81cc567a03285db74d5",
+      "gitMetadataSha": "872a5c644b624d7f55fbdaf9fb48c06e2c816a92",
+      "gitMetadataDirty": true
+    }
+  },
+  "sourceDigests": [
+    {
+      "path": ".github/workflows/runtime.yml",
+      "sha256": "a3b299fdd0f9358e8b18d323b9fa3e270985a949e23b75d0c5cb2ddc7c6272e4"
+    },
+    {
+      "path": "scripts/check-wall-write-integrity.mjs",
+      "sha256": "4a7f9115457de55f54e7bc37b3ed64529dc60ee6a734d74dabe49e4f67a932fb"
+    },
+    {
+      "path": "scripts/verify-product.mjs",
+      "sha256": "b6a419005bd3d6f8a6544500a761e4e4abf81c49e286e0156a712750d2fa6517"
+    },
+    {
+      "path": "src/customer/account/AccountRoot.tsx",
+      "sha256": "f00c2de401745bf106f80f947d7cf14deff23e252139d9d82300015333afecef"
+    },
+    {
+      "path": "src/customer/account/sync.ts",
+      "sha256": "081ae7a52df91fd8e0d0a680b33c44347733c96de38ec50cd97b0f1df8d5c205"
+    },
+    {
+      "path": "src/customer/studio/store.ts",
+      "sha256": "08226514be0ceab06fe599e9a40bfbf8bb7ca15ca13bc021ac0a4c43a5c2e477"
+    },
+    {
+      "path": "tests/analytics-flows.test.mjs",
+      "sha256": "73216c2bcfc3c61fdc65b1c93bf32cd243d5c786c4aa9bee3d646b643576521b"
+    },
+    {
+      "path": "tests/studio-generation.test.mjs",
+      "sha256": "442c5e60ac9efd5b704d161bfa238ee144c0d0df4c00bf59a18a40f5a45d6c1c"
+    },
+    {
+      "path": "tests/studio-wall-write-integrity.test.mjs",
+      "sha256": "3933a6531e01c31cea09d1c23d8f303b7be5febfab867e8aac8ed119bf5566d2"
+    }
+  ],
+  "sourceDigestsVerifiedAgainstImplementationHead": true,
+  "logs": [
+    {
+      "path": "/tmp/gt-wall-base-red.log",
+      "sha256": "86419f02a7132fae9c453d956b6c5a7f132746191b1d382b366b8d43deed6980"
+    },
+    {
+      "path": "/tmp/gt-wall-first.log",
+      "sha256": "9a008d37c6e929ef282f9343bae97b25deea13b33beab66e1884c21bb0c14a30"
+    },
+    {
+      "path": "/tmp/gt-wall-targeted.log",
+      "sha256": "2b7ddb68c2dce0f02cc5e341b8458f060321f1d55f9a25e823bba29b7688b908"
+    },
+    {
+      "path": "/tmp/gt-wall-targeted-final.log",
+      "sha256": "3251c3ae28f53995942a07e14bc1b3709aebfdf7405198df1d1e4f158a650d43"
+    },
+    {
+      "path": "/tmp/gt-wall-units.log",
+      "sha256": "ef7c7d6a6a4fbfb7e9c4e6c8044bdd84fb56a1b6780695a2013e1ac4d9adb7d4"
+    },
+    {
+      "path": "/tmp/gt-wall-units-final.log",
+      "sha256": "7796a54f26d72f694e0bf65110451077021e3a25a4bfd2958bfe83e18ec5408d"
+    },
+    {
+      "path": "/tmp/gt-wall-build-final.log",
+      "sha256": "bbc21f761449999b2d5ea6a8ff7f5f797d4326a140e49e2aa8be186dbc638b19"
+    },
+    {
+      "path": "/tmp/gt-wall-typecheck-final.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/tmp/gt-wall-lint-final.log",
+      "sha256": "f0daaad4fe7229dc99f1d6563a331bebab03ffb30c73f4ec68332a6f9051380a"
+    },
+    {
+      "path": "/tmp/gt-wall-creative-host.log",
+      "sha256": "05b74c9abb50a3da5eafc00c03e3424977f638068384166e54540b0afca7ac63"
+    },
+    {
+      "path": "/tmp/gt-wall-browser.log",
+      "sha256": "4e429d7b002403029f31c0d1defcedc96978581dda6d01abdb057830b64bd369"
+    },
+    {
+      "path": "/tmp/gt-wall-browser-2.log",
+      "sha256": "62f20b1b0d470c8aec8f6cf7e6d98d673ad6fe83fbca8ee30993e2fae090efd5"
+    },
+    {
+      "path": "/tmp/gt-wall-browser-final.log",
+      "sha256": "229b04df50238118a80cbc8b6bd18155ebdd98f173dc261c7d0966a72bc1e1f1"
+    },
+    {
+      "path": "/tmp/gt-wall-npm-ci.log",
+      "sha256": "e372038ce8d44d5ca32a6e3d4a2395c606162f7a930f227fe4f89d9cdf16779b"
+    }
+  ],
+  "inputs": [
+    {
+      "path": "/tmp/gt-wall-issue10.json",
+      "sha256": "622e387b4881b0a33815459471adc77bfd115eae202a117b8d14e632dc388b44"
+    },
+    {
+      "path": "/tmp/gt-wall-issue97.json",
+      "sha256": "8974f1e327eb4bc185ac9a2091e5ecc314c8c31fce44414784de40466caddcaa"
+    },
+    {
+      "path": "/tmp/gt-wall-issue98.json",
+      "sha256": "acb8064aa0816446062a6f08cda14ededcee46f55465be405fc2266f43c9fcf6"
+    },
+    {
+      "path": "/tmp/gt-wall-pr211.json",
+      "sha256": "78db60806579da3084032a790b0933582a12f6a9d718a091fe651c446cc353ef"
+    }
+  ],
+  "commands": [
+    "npm ci --ignore-scripts --cache /tmp/ticketstub-npm-cache",
+    "node --test tests/studio-wall-write-integrity.test.mjs (before repair: 42 failures)",
+    "node --test tests/studio-wall-write-integrity.test.mjs tests/studio-generation.test.mjs tests/studio-generation-recovery.test.mjs tests/studio-generation-status.test.mjs tests/studio-version-retention.test.mjs tests/analytics-flows.test.mjs",
+    "node --test tests/*.test.mjs",
+    "npm run verify:creative-host",
+    "npm run build",
+    "tsc --noEmit",
+    "eslint",
+    "npm run verify:product -- --suite wall-integrity --mode fixture --evidence-dir /tmp/gt-wall-browser-final"
+  ],
+  "priorFailedBrowserHarness": {
+    "log": "/tmp/gt-wall-browser.log",
+    "exitCode": 1,
+    "reason": "A global lexical fetch binding bypassed synthetic auth/sync interception. Renamed binding; repeat passed. Original failed receipt/log retained, never counted as a pass."
+  },
+  "runtime": {
+    "node": "v22.23.3",
+    "npm": "11.16.0",
+    "providerCalls": "Zero live account/art/provider calls; unit dependency ports and browser auth/sync responses synthetic; fixture network guard denied non-loopback",
+    "modelProfile": "Not exposed by execution runtime; not changed",
+    "graph": "entire graph search unavailable, command not found; focused inspection fallback"
+  },
+  "originalCheckout": {
+    "head": "c7a0f5fae5bc56cefc251e1c95aabd7e119a1f34",
+    "clean": true,
+    "notEdited": true
+  },
+  "provenance": "Final executable bytes checked before the code commit; build/browser Git metadata can identify base 872a5c6 and dirty=true. Evidence-only follow-up changes no executable bytes. Original branches not merged or pushed.",
+  "limits": [
+    "No cross-process atomicity/Web Lock/CAS/server deletion-incarnation fence; Product non-version peer edit/merge choice remains gated.",
+    "Multi-key writes are not transactions: a wall write may succeed before tombstone persistence fails. False is not rollback; some legacy callers intentionally retain optimistic in-memory UI.",
+    "Historical 200 percent text failure has unavailable raw measurements; not fixed, reproduced or waived by this patch.",
+    "Synthetic checks are not real account/provider/host, screen-reader or canonical product acceptance.",
+    "Only integration-evals owns master acceptance, requiring real app-owned pinned assembly and exact owner-run evidence.",
+    "GoDaddy manual Preview restore/isolation remains required after any separately authorized publication. No deployment/merge/closure."
+  ],
+  "independentReview": "pending landing_candidate_review of exact published candidate",
+  "canonicalAssembly": false,
+  "acceptance": "not_recorded",
+  "hostedChecks": "To monitor after publication; no hosted pass claimed in this pre-publication receipt."
+}

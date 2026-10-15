@@ -34,7 +34,7 @@ jobs:
         run: node scripts/check-analytics-journeys.mjs
       - name: Verify authentication, storage fixtures and the agent journey (Chrome, offline)
         run: |
-          for suite in foundation access pay-signin approval order-auth finance-context degraded mail-off backup-drill download agent; do
+          for suite in foundation access pay-signin approval order-auth finance-context degraded mail-off backup-drill download agent wall-integrity; do
             npm run verify:product -- --suite "$suite" --mode fixture --evidence-dir /tmp/ticketstub-product-evidence
           done
       - name: Verify production server on platform port
