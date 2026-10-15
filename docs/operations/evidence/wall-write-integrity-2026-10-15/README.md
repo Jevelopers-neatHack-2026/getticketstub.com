@@ -1,3 +1,13 @@
+## Recovery viewport correction (APP-WALL-REVIEW-005)
+
+Implementation `ebbf59d8831901cc33cb1a18386f46ba4e953a1a` changes only recovery CSS and browser assertions. [Viewport receipt](viewport-recovery-followup.json) binds prior unit evidence to identical protocol/component bytes and retains negative viewport/hosted evidence. Recovery is now fixed at 12px from the viewport top with bounded width/height and internal overflow. The action still requires explicit close/stop-other-tabs acknowledgment; rollback safeguards are unchanged.
+
+An unchanged c186 production build fails the new actual desktop viewport assertion. Final measurements at scrollY=0: desktop 1280×900 top12/bottom285.59375, phone390×844 top12/bottom429.59375. Both panels and native keyboard-reached enabled restore controls fit the viewport. Confirmation is labeled and required. Build/lint pass; offline browser passes30 child/32 wrapper assertions, including all prior failure/retry/reload/peer refusal checks. Prior 1,058 full-unit/257 affected passes are bound to unchanged source digests, not rerun for CSS.
+
+The superseded c186 hosted runtime failed seven phone entry/navigation checks (starting with landing loader dismissal); 281 journey assertions passed and runtime-order gates passed. Its failure log is retained, not waived or counted as passing. Final-revision hosted checks and independent review remain required. No deployment, merge or closure.
+
+---
+
 ## Interrupted-save recovery correction (APP-WALL-REVIEW-004)
 
 Implementation `b2a87c95fa27b271e646e0ed4251b33748f90836` supersedes the earlier statement that an observed prepared marker requires an unimplemented owner-directed task. [Interrupted recovery receipt](interrupted-recovery-followup.json) records exact source/log digests. Prior receipts and failure evidence are preserved unchanged.
