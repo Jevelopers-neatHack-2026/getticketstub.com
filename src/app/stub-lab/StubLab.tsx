@@ -5,6 +5,7 @@
 //                                              one stub alone (for screenshots); light = rest | tilt | <lx>,<ly>,<glow>
 import { useSearchParams } from "next/navigation";
 import { useMemo, useState, type CSSProperties } from "react";
+import { labBackground } from "./background";
 import { SvgStub } from "@/customer/studio/stub/svg/SvgStub";
 import { STUB_TEMPLATES, templateById } from "@/customer/studio/stub/svg/templates";
 import { SAMPLES } from "@/customer/studio/stub/svg/samples";
@@ -25,7 +26,7 @@ export function StubLab() {
     const w = Math.max(120, Math.min(1600, Number(q.get("w")) || (meta.orientation === "landscape" ? 1100 : 480)));
     const h = meta ? (w * meta.height) / meta.width : w * 2;
     return (
-      <main style={{ margin: 0, padding: 24, background: q.get("bg") ?? "#1a1a1a", minHeight: "100vh", boxSizing: "border-box", ...lightVars(q.get("light") ?? "rest") }}>
+      <main style={{ margin: 0, padding: 24, backgroundColor: labBackground(q.get("bg")), minHeight: "100vh", boxSizing: "border-box", ...lightVars(q.get("light") ?? "rest") }}>
         <div id="stub" style={{ width: w, height: h, filter: "drop-shadow(0 18px 30px rgb(0 0 0 / 0.45))" }}>
           <SvgStub
             template={t}
