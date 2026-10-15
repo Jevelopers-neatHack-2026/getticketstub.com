@@ -6,7 +6,7 @@ import { ensureDevice, getRequestContext, requireCapability } from "@/server/con
 import { requestIdOf } from "@/server/events";
 import { hashToken } from "@/server/crypto";
 import { recordEvent } from "@/server/event-log";
-import { HttpError, clientIp, errorJson, errorResponse, foreignOrigin } from "@/server/http";
+import { HttpError, clientIp, errorJson, errorResponse, foreignOrigin, readJson } from "@/server/http";
 import { getStorage, storageAvailable } from "@/server/index";
 import { annotate, observeRoute, providerObserver } from "@/server/observability/measure";
 import type { ArtQuota } from "@/server/storage";
@@ -71,8 +71,12 @@ export const POST = observeRoute("art", async (req: Request) => {
   }
   let body: ArtRequest;
   try {
-    body = (await req.json()) as ArtRequest;
-  } catch {
+    body = (await readJson(req, 256 * 1024)) as ArtRequest;
+  } catch (error) {
+    if (error instanceof HttpError) {
+      annotate({ code: error.code });
+      return errorResponse(error);
+    }
     annotate({ code: "bad_request" });
     return errorJson(400, "bad_request", "Send the event to remix.");
   }

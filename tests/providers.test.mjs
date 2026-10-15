@@ -50,6 +50,16 @@ const originalEnv = { ...process.env };
 afterEach(() => { globalThis.fetch = originalFetch; process.env = { ...originalEnv }; });
 const response = (body, status = 200) => Response.json(body, { status });
 const event = { type: "concert", title: "Offline Test", facts: [] };
+test("art rejects oversized declared and streamed UTF-8 bodies before provider dispatch", async () => {
+  process.env.TICKETSTUB_RUNTIME_MODE = "live";
+  globalThis.fetch = () => assert.fail("oversized art body dispatched a provider");
+  const body = JSON.stringify({ event, unused: "é".repeat(140000) });
+  for (const headers of [{ "content-length": String(Buffer.byteLength(body)) }, {}]) {
+    const res = await art.POST(new Request("http://localhost/api/art", { method: "POST", headers, body }));
+    assert.equal(res.status, 413);
+    assert.equal((await res.json()).error.code, "too_large");
+  }
+});
 const req = (body, signal) => new Request("http://localhost/api", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), signal });
 const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aY1cAAAAASUVORK5CYII=";
 function configure(capability = "agent", model = "anthropic/test-model") {
