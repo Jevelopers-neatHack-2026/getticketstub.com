@@ -1,0 +1,137 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 960" data-foil="ink" data-holo="pastel" data-holo-print="#e4e2f2">
+  <defs>
+    <radialGradient id="frost" cx="0.5" cy="0.42" r="0.7">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.34"/>
+      <stop offset="0.6" stop-color="#ffffff" stop-opacity="0.12"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="edge" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.22"/>
+      <stop offset="0.25" stop-color="#ffffff" stop-opacity="0"/>
+      <stop offset="0.85" stop-color="#7d86b8" stop-opacity="0"/>
+      <stop offset="1" stop-color="#7d86b8" stop-opacity="0.12"/>
+    </linearGradient>
+    <pattern id="grating" width="3.2" height="3.2" patternUnits="userSpaceOnUse" patternTransform="rotate(-32)">
+      <rect width="3.2" height="1" fill="#fff"/>
+    </pattern>
+    <linearGradient id="caustic" gradientUnits="userSpaceOnUse" x1="0" y1="80" x2="480" y2="420">
+      <stop offset="0.18" stop-color="#fff" stop-opacity="0"/>
+      <stop offset="0.34" stop-color="#fff" stop-opacity="0.32"/>
+      <stop offset="0.42" stop-color="#fff" stop-opacity="0.06"/>
+      <stop offset="0.56" stop-color="#fff" stop-opacity="0"/>
+      <stop offset="0.7" stop-color="#fff" stop-opacity="0.2"/>
+      <stop offset="0.8" stop-color="#fff" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="streak" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="480" y2="500">
+      <stop offset="0.2" stop-color="#ff9ad5" stop-opacity="0"/>
+      <stop offset="0.26" stop-color="#ff9ad5" stop-opacity="0.22"/>
+      <stop offset="0.29" stop-color="#8fe9ff" stop-opacity="0.26"/>
+      <stop offset="0.32" stop-color="#d7ff9a" stop-opacity="0"/>
+      <stop offset="0.62" stop-color="#9ab0ff" stop-opacity="0"/>
+      <stop offset="0.655" stop-color="#9ab0ff" stop-opacity="0.18"/>
+      <stop offset="0.68" stop-color="#ffe59a" stop-opacity="0.2"/>
+      <stop offset="0.71" stop-color="#ffe59a" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="filmnoise" x="0" y="0" width="1" height="1" filterUnits="objectBoundingBox">
+      <feTurbulence type="fractalNoise" baseFrequency="0.01 0.03" numOctaves="2" seed="21" result="n"/>
+      <feColorMatrix in="n" type="matrix" values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 1.8 0 -0.75"/>
+      <feComposite in2="SourceGraphic" operator="in"/>
+    </filter>
+    <linearGradient id="cardshade" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#000" stop-opacity="0.05"/>
+      <stop offset="0.06" stop-color="#000" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <g data-layer="paper">
+    <rect width="480" height="960" fill="#e9ebf3"/>
+    <rect y="500" width="480" height="460" fill="#f7f7f4"/>
+  </g>
+  <g data-layer="holo">
+    <path d="M26 0 H454 Q480 0 480 26 V485 A15 15 0 0 1 465 500 H15 A15 15 0 0 1 0 485 V26 Q0 0 26 0Z" fill="#fff"/>
+  </g>
+  <g data-layer="paper">
+    <path d="M26 0 H454 Q480 0 480 26 V485 A15 15 0 0 1 465 500 H15 A15 15 0 0 1 0 485 V26 Q0 0 26 0Z" fill="url(#frost)"/>
+    <path d="M26 0 H454 Q480 0 480 26 V485 A15 15 0 0 1 465 500 H15 A15 15 0 0 1 0 485 V26 Q0 0 26 0Z" fill="url(#caustic)"/>
+    <path d="M26 0 H454 Q480 0 480 26 V485 A15 15 0 0 1 465 500 H15 A15 15 0 0 1 0 485 V26 Q0 0 26 0Z" fill="url(#edge)"/>
+    <path d="M26 0 H454 Q480 0 480 26 V485 A15 15 0 0 1 465 500 H15 A15 15 0 0 1 0 485 V26 Q0 0 26 0Z" fill="url(#streak)" style="mix-blend-mode: multiply"/>
+    <path d="M26 0 H454 Q480 0 480 26 V485 A15 15 0 0 1 465 500 H15 A15 15 0 0 1 0 485 V26 Q0 0 26 0Z" fill="url(#grating)" opacity="0.09"/>
+    <path d="M26 0 H454 Q480 0 480 26 V485 A15 15 0 0 1 465 500 H15 A15 15 0 0 1 0 485 V26 Q0 0 26 0Z" fill="#fff" filter="url(#filmnoise)" opacity="0.14"/>
+    <rect width="480" height="500" fill="#fff" filter="url(#ts-grain-light)" opacity="0.18"/>
+    <rect y="500" width="480" height="460" fill="url(#cardshade)"/>
+  </g>
+  <g data-layer="ink">
+    <circle cx="40" cy="40" r="9" fill="none" stroke="#15161b" stroke-width="1.3"/><circle cx="440" cy="40" r="9" fill="none" stroke="#15161b" stroke-width="1.3"/>
+    <g fill="none" stroke="#15161b" stroke-width="1.4"><ellipse cx="240.0" cy="54" rx="34" ry="12"/><ellipse cx="240.0" cy="54" rx="28" ry="8.4" stroke-width="0.9"/><circle cx="240.0" cy="54" r="9"/><ellipse cx="240.0" cy="54" rx="4" ry="9" stroke-width="0.9"/><path d="M231 54 H249 M198 54 H204 M276 54 H282" stroke-width="0.9"/></g>
+    <text data-slot="subtitle" x="240.0" y="106" text-anchor="middle" font-family="'Space Grotesk', 'Zen Kaku Gothic New', sans-serif" font-size="12.5" font-weight="600" letter-spacing="1.8" fill="#15161b" data-case="upper" data-fit="404" data-min="6.6">.</text>
+    <text data-slot="date" data-hide-if="subtitle" x="240.0" y="106" text-anchor="middle" font-family="'Space Grotesk', 'Zen Kaku Gothic New', sans-serif" font-size="12.5" font-weight="600" letter-spacing="1.8" fill="#15161b" data-case="upper">.</text>
+    <mask id="titlecut" maskUnits="userSpaceOnUse" x="0" y="0" width="480" height="500">
+      <rect width="480" height="500" fill="#fff"/>
+      <path d="M51.21 285.00 A218 58 0 0 1 30.44 240.01" fill="none" stroke="#000" stroke-width="7.5" stroke-linecap="round" transform="rotate(-9 240.0 256)"/>
+    </mask>
+    <filter id="lineblob" x="-10%" y="-20%" width="120%" height="140%" filterUnits="objectBoundingBox">
+      <feMorphology in="SourceAlpha" operator="dilate" radius="18 7" result="d"/>
+      <feFlood flood-color="#000"/>
+      <feComposite in2="d" operator="in"/>
+    </filter>
+    <mask id="behind" maskUnits="userSpaceOnUse" x="0" y="0" width="480" height="500">
+      <rect width="480" height="500" fill="#fff"/>
+      <use href="#titletext" filter="url(#lineblob)"/>
+    </mask>
+    <path d="M30.44 240.01 A218 58 0 1 1 51.21 285.00" fill="none" stroke="#15161b" stroke-width="2.6" transform="rotate(-9 240.0 256)" mask="url(#behind)"/>
+    <text id="titletext" data-slot="title" mask="url(#titlecut)" x="240.0" y="332" text-anchor="middle" font-family="'Zen Kaku Gothic New', 'Space Grotesk', sans-serif" font-size="112" font-weight="900" letter-spacing="-1.2" fill="#15161b" style="font-variant-numeric: lining-nums" data-case="upper" data-wrap="356" data-lines="4" data-leading="0.94" data-anchor="bottom" data-min="26">.</text>
+    <path d="M51.21 285.00 A218 58 0 0 1 30.44 240.01" fill="none" stroke="#15161b" stroke-width="2.6" transform="rotate(-9 240.0 256)"/>
+    <circle cx="51.21" cy="285.00" r="4.5" fill="#15161b" transform="rotate(-9 240.0 256)"/>
+    <text data-slot="categoryLabel" x="240.0" y="392" text-anchor="middle" font-family="'Space Grotesk', 'Zen Kaku Gothic New', sans-serif" font-size="17" font-weight="600" letter-spacing="3" fill="#15161b" data-prefix="+   " data-suffix="   +">.</text>
+    <text data-slot="kicker" x="240.0" y="430" text-anchor="middle" font-family="'Zen Kaku Gothic New', 'Space Grotesk', sans-serif" font-size="11" font-weight="500" letter-spacing="2.4" fill="#15161b" data-case="upper" data-fit="300" data-min="7">.</text>
+    <rect x="170.0" y="442" width="140" height="10" rx="5" fill="none" stroke="#15161b" stroke-width="1.6"/>
+    <rect x="176.0" y="445.6" width="38" height="2.8" rx="1.4" fill="#15161b"/>
+  </g>
+  <g data-layer="ink">
+    <rect x="0" y="530" width="11" height="26" fill="#15161b"/>
+    <text x="40" y="535" fill="#15161b"><tspan font-family="'Zen Kaku Gothic New', 'Space Grotesk', sans-serif" font-size="7" font-weight="500">会場</tspan><tspan dx="4" font-family="'Space Grotesk', 'Zen Kaku Gothic New', sans-serif" font-size="7.8" font-weight="700" letter-spacing="0.9">VENUE</tspan><tspan data-slot="city" dx="6" font-family="'Space Grotesk', 'Zen Kaku Gothic New', sans-serif" font-size="7.8" font-weight="600" letter-spacing="1.2" fill="#6c6d76" data-case="upper" data-prefix="/  ">.</tspan></text>
+    <text data-slot="venue" x="40" y="559" font-family="'Space Grotesk', 'Zen Kaku Gothic New', sans-serif" font-size="21" font-weight="700" letter-spacing="0.6" fill="#15161b" data-case="upper" data-wrap="268" data-lines="3" data-leading="1.04" data-min="11">.</text>
+    <text x="40" y="621" font-family="'Zen Kaku Gothic New', 'Space Grotesk', sans-serif" font-size="7" font-weight="500" fill="#15161b" letter-spacing="0.6">開演時間</text><text x="40" y="631" font-family="'Space Grotesk', 'Zen Kaku Gothic New', sans-serif" font-size="8.5" font-weight="700" fill="#15161b" letter-spacing="0.9">START TIME</text>
+    <text data-slot="time" data-default="—" x="104" y="632" font-family="'Zen Kaku Gothic New', 'Space Grotesk', sans-serif" font-size="22" font-weight="700" fill="#15161b" style="font-variant-numeric: lining-nums tabular-nums" data-fit="110" data-min="9.9" >.</text>
+    <text data-slot="day" x="420" y="568" text-anchor="end" font-family="'Zen Kaku Gothic New', 'Space Grotesk', sans-serif" font-size="48" font-weight="700" letter-spacing="-0.5" fill="#15161b">.</text>
+    <text data-slot="month" x="420" y="606" text-anchor="end" font-family="'Zen Kaku Gothic New', 'Space Grotesk', sans-serif" font-size="28" font-weight="700" letter-spacing="1" fill="#15161b">.</text>
+    <text x="420" y="630" text-anchor="end" fill="#15161b" font-family="'Space Grotesk', 'Zen Kaku Gothic New', sans-serif" font-size="8" font-weight="600" letter-spacing="1.4"><tspan data-slot="weekday">.</tspan><tspan>  ·  </tspan><tspan data-slot="year">.</tspan></text>
+    <g fill="#15161b"><rect x="428" y="536" width="4" height="4"/><rect x="428" y="550" width="4" height="4"/><rect x="428" y="576" width="4" height="4"/><rect x="428" y="590" width="4" height="4"/></g>
+  </g>
+  <g data-layer="ink">
+    <path d="M24 652 H456 M24 806 H456 M24 652 V806 M456 652 V806" fill="none" stroke="#15161b" stroke-width="1.3"/>
+    <g data-show-if="section"><path d="M240 670 V788" stroke="#15161b" stroke-width="0.7" stroke-dasharray="1.5 3"/><text x="56" y="695" font-family="'Zen Kaku Gothic New', 'Space Grotesk', sans-serif" font-size="7" font-weight="500" fill="#15161b" letter-spacing="0.6">ゲート</text><text x="56" y="705" font-family="'Space Grotesk', 'Zen Kaku Gothic New', sans-serif" font-size="8.5" font-weight="700" fill="#15161b" letter-spacing="0.9">GATE</text><text data-slot="gate" data-default="—" x="130" y="711" font-family="'Zen Kaku Gothic New', 'Space Grotesk', sans-serif" font-size="36" font-weight="700" fill="#15161b" style="font-variant-numeric: lining-nums tabular-nums" data-fit="104" data-min="16.2" >.</text><text x="268" y="695" font-family="'Zen Kaku Gothic New', 'Space Grotesk', sans-serif" font-size="7" font-weight="500" fill="#15161b" letter-spacing="0.6">区画</text><text x="268" y="705" font-family="'Space Grotesk', 'Zen Kaku Gothic New', sans-serif" font-size="8.5" font-weight="700" fill="#15161b" letter-spacing="0.9">SECTION</text><text data-slot="section" data-default="—" x="342" y="711" font-family="'Zen Kaku Gothic New', 'Space Grotesk', sans-serif" font-size="36" font-weight="700" fill="#15161b" style="font-variant-numeric: lining-nums tabular-nums" data-fit="104" data-min="16.2" >.</text><text x="56" y="763" font-family="'Zen Kaku Gothic New', 'Space Grotesk', sans-serif" font-size="7" font-weight="500" fill="#15161b" letter-spacing="0.6">列</text><text x="56" y="773" font-family="'Space Grotesk', 'Zen Kaku Gothic New', sans-serif" font-size="8.5" font-weight="700" fill="#15161b" letter-spacing="0.9">ROW</text><text data-slot="row" data-default="—" x="130" y="779" font-family="'Zen Kaku Gothic New', 'Space Grotesk', sans-serif" font-size="36" font-weight="700" fill="#15161b" style="font-variant-numeric: lining-nums tabular-nums" data-fit="104" data-min="16.2" >.</text><text x="268" y="763" font-family="'Zen Kaku Gothic New', 'Space Grotesk', sans-serif" font-size="7" font-weight="500" fill="#15161b" letter-spacing="0.6">座席</text><text x="268" y="773" font-family="'Space Grotesk', 'Zen Kaku Gothic New', sans-serif" font-size="8.5" font-weight="700" fill="#15161b" letter-spacing="0.9">SEAT</text><text data-slot="seat" data-default="—" x="342" y="779" font-family="'Zen Kaku Gothic New', 'Space Grotesk', sans-serif" font-size="36" font-weight="700" fill="#15161b" style="font-variant-numeric: lining-nums tabular-nums" data-fit="104" data-min="16.2" >.</text></g>
+    <g data-hide-if="section">
+      <text x="240.0" y="696" text-anchor="middle" font-family="'Zen Kaku Gothic New', 'Space Grotesk', sans-serif" font-size="9" font-weight="500" letter-spacing="6" fill="#15161b">一般入場</text>
+      <text x="240.0" y="738" text-anchor="middle" font-family="'Zen Kaku Gothic New', 'Space Grotesk', sans-serif" font-size="34" font-weight="900" letter-spacing="0.5" fill="#15161b">GENERAL ADMISSION</text>
+      <path d="M180.0 756 H300.0" stroke="#15161b" stroke-width="0.8"/>
+      <text x="240.0" y="776" text-anchor="middle" font-family="'Space Grotesk', 'Zen Kaku Gothic New', sans-serif" font-size="8.5" font-weight="600" letter-spacing="2.4" fill="#15161b">UNRESERVED · STANDING &amp; SEATED</text>
+      <text data-slot="gate" x="44" y="794" font-family="'Space Grotesk', 'Zen Kaku Gothic New', sans-serif" font-size="7.6" font-weight="700" letter-spacing="1" fill="#15161b" data-prefix="GATE  " data-case="upper">.</text>
+      <text data-slot="seat" x="436" y="794" text-anchor="end" font-family="'Space Grotesk', 'Zen Kaku Gothic New', sans-serif" font-size="7.6" font-weight="700" letter-spacing="1" fill="#15161b" data-prefix="SEAT  " data-case="upper">.</text>
+    </g>
+  </g>
+  <g data-layer="ink">
+    <text x="40" y="834" fill="#15161b"><tspan font-family="'Zen Kaku Gothic New', 'Space Grotesk', sans-serif" font-size="6.8" font-weight="500">日付</tspan><tspan dx="3" font-family="'Space Grotesk', 'Zen Kaku Gothic New', sans-serif" font-size="7.4" font-weight="700" letter-spacing="0.6">DATE:</tspan></text><text data-slot="dateDots" x="94" y="834" font-family="'Space Grotesk', 'Zen Kaku Gothic New', sans-serif" font-size="7.6" font-weight="500" letter-spacing="0.5" fill="#15161b">.</text>
+    <text x="40" y="848" fill="#15161b"><tspan font-family="'Zen Kaku Gothic New', 'Space Grotesk', sans-serif" font-size="6.8" font-weight="500">種別</tspan><tspan dx="3" font-family="'Space Grotesk', 'Zen Kaku Gothic New', sans-serif" font-size="7.4" font-weight="700" letter-spacing="0.6">TYPE:</tspan></text><text data-slot="categoryLabel" x="94" y="848" font-family="'Space Grotesk', 'Zen Kaku Gothic New', sans-serif" font-size="7.6" font-weight="500" letter-spacing="0.5" fill="#15161b">.</text>
+    <text x="190" y="834" fill="#15161b"><tspan font-family="'Zen Kaku Gothic New', 'Space Grotesk', sans-serif" font-size="6.8" font-weight="500">価格</tspan><tspan dx="3" font-family="'Space Grotesk', 'Zen Kaku Gothic New', sans-serif" font-size="7.4" font-weight="700" letter-spacing="0.6">PRICE:</tspan></text><text data-slot="price" data-default="—" x="246" y="834" font-family="'Space Grotesk', 'Zen Kaku Gothic New', sans-serif" font-size="7.6" font-weight="500" letter-spacing="0.5" fill="#15161b" data-fit="84">.</text>
+    <text x="190" y="848" fill="#15161b"><tspan font-family="'Zen Kaku Gothic New', 'Space Grotesk', sans-serif" font-size="6.8" font-weight="500">入場</tspan><tspan dx="3" font-family="'Space Grotesk', 'Zen Kaku Gothic New', sans-serif" font-size="7.4" font-weight="700" letter-spacing="0.6">ADMIT:</tspan></text><text data-slot="admit" data-default="ADMIT ONE" x="246" y="848" font-family="'Space Grotesk', 'Zen Kaku Gothic New', sans-serif" font-size="7.6" font-weight="500" letter-spacing="0.5" fill="#15161b" data-case="upper" data-fit="84">.</text>
+    <g fill="#15161b"><rect x="40" y="864" width="5.2" height="5.2"/><rect x="50.4" y="864" width="5.2" height="5.2"/><rect x="60.8" y="864" width="5.2" height="5.2"/><rect x="71.2" y="864" width="5.2" height="5.2"/><rect x="81.6" y="864" width="5.2" height="5.2"/><rect x="92" y="864" width="5.2" height="5.2"/><rect x="102.4" y="864" width="5.2" height="5.2"/><rect x="45.2" y="869.2" width="5.2" height="5.2"/><rect x="55.6" y="869.2" width="5.2" height="5.2"/><rect x="66" y="869.2" width="5.2" height="5.2"/><rect x="76.4" y="869.2" width="5.2" height="5.2"/><rect x="86.8" y="869.2" width="5.2" height="5.2"/><rect x="97.2" y="869.2" width="5.2" height="5.2"/><rect x="107.6" y="869.2" width="5.2" height="5.2"/></g>
+    <g data-slot="barcode" data-w="150" data-h="21" data-color="#15161b" transform="translate(122 863)"></g>
+    <text data-slot="serial" x="122" y="896" font-family="'Space Grotesk', 'Zen Kaku Gothic New', sans-serif" font-size="7" font-weight="500" letter-spacing="2.6" fill="#15161b">.</text>
+    <path d="M358 827 V818 H367 M433 818 H442 V827 M442 893 V902 H433 M367 902 H358 V893" fill="none" stroke="#15161b" stroke-width="1.3"/>
+    <g>
+      <circle cx="400" cy="860" r="30" fill="none" stroke="#15161b" stroke-width="1.4"/>
+      <circle cx="400" cy="860" r="21" fill="none" stroke="#15161b" stroke-width="0.7"/>
+      <path id="stampring" d="M376.6 860 a23.4 23.4 0 1 1 46.8 0 a23.4 23.4 0 1 1 -46.8 0" fill="none"/>
+      <text font-family="'Space Grotesk', 'Zen Kaku Gothic New', sans-serif" font-size="5.8" font-weight="700" fill="#15161b"><textPath href="#stampring" textLength="144.03" lengthAdjust="spacing">TICKETSTUB · KEEPSAKE · NO ENTRY · </textPath></text>
+      <ellipse cx="400" cy="860" rx="15" ry="5.4" fill="none" stroke="#15161b" stroke-width="1.2" transform="rotate(-14 400 860)"/>
+      <circle cx="400" cy="860" r="6" fill="#15161b"/>
+      <circle cx="413.6" cy="855.4" r="1.8" fill="#15161b"/>
+    </g>
+    <path d="M40 912 H330" stroke="#15161b" stroke-width="0.6"/>
+    <text x="40" y="927" fill="#15161b"><tspan font-family="'Zen Kaku Gothic New', 'Space Grotesk', sans-serif" font-size="6.8" font-weight="500">無断転売禁止</tspan><tspan dx="5" font-family="'Space Grotesk', 'Zen Kaku Gothic New', sans-serif" font-size="6.8" font-weight="600" letter-spacing="0.9">COMMEMORATIVE KEEPSAKE · NOT VALID FOR ENTRY</tspan></text>
+  </g>
+  <g data-layer="paper" pointer-events="none">
+    <rect y="500" width="480" height="460" fill="#000" filter="url(#ts-grain)" opacity="0.07"/>
+  </g>
+  <path data-layer="dieline" d="M26 0 H454 Q480 0 480 26 V485 A15 15 0 0 1 465 500 A15 15 0 0 1 480 515 V934 Q480 960 454 960 H26 Q0 960 0 934 V515 A15 15 0 0 1 15 500 A15 15 0 0 1 0 485 V26 Q0 0 26 0Z M33.5 40 a6.5 6.5 0 1 0 13 0 a6.5 6.5 0 1 0 -13 0Z M433.5 40 a6.5 6.5 0 1 0 13 0 a6.5 6.5 0 1 0 -13 0Z M24.8 499.1 h4.4 a0.9 0.9 0 0 1 0 1.8 h-4.4 a0.9 0.9 0 0 1 0 -1.8Z M33.8 499.1 h4.4 a0.9 0.9 0 0 1 0 1.8 h-4.4 a0.9 0.9 0 0 1 0 -1.8Z M42.8 499.1 h4.4 a0.9 0.9 0 0 1 0 1.8 h-4.4 a0.9 0.9 0 0 1 0 -1.8Z M51.8 499.1 h4.4 a0.9 0.9 0 0 1 0 1.8 h-4.4 a0.9 0.9 0 0 1 0 -1.8Z M60.8 499.1 h4.4 a0.9 0.9 0 0 1 0 1.8 h-4.4 a0.9 0.9 0 0 1 0 -1.8Z M69.8 499.1 h4.4 a0.9 0.9 0 0 1 0 1.8 h-4.4 a0.9 0.9 0 0 1 0 -1.8Z M78.8 499.1 h4.4 a0.9 0.9 0 0 1 0 1.8 h-4.4 a0.9 0.9 0 0 1 0 -1.8Z M87.8 499.1 h4.4 a0.9 0.9 0 0 1 0 1.8 h-4.4 a0.9 0.9 0 0 1 0 -1.8Z M96.8 499.1 h4.4 a0.9 0.9 0 0 1 0 1.8 h-4.4 a0.9 0.9 0 0 1 0 -1.8Z M105.8 499.1 h4.4 a0.9 0.9 0 0 1 0 1.8 h-4.4 a0.9 0.9 0 0 1 0 -1.8Z M114.8 499.1 h4.4 a0.9 0.9 0 0 1 0 1.8 h-4.4 a0.9 0.9 0 0 1 0 -1.8Z M123.8 499.1 h4.4 a0.9 0.9 0 0 1 0 1.8 h-4.4 a0.9 0.9 0 0 1 0 -1.8Z M132.8 499.1 h4.4 a0.9 0.9 0 0 1 0 1.8 h-4.4 a0.9 0.9 0 0 1 0 -1.8Z M141.8 499.1 h4.4 a0.9 0.9 0 0 1 0 1.8 h-4.4 a0.9 0.9 0 0 1 0 -1.8Z M150.8 499.1 h4.4 a0.9 0.9 0 0 1 0 1.8 h-4.4 a0.9 0.9 0 0 1 0 -1.8Z M159.8 499.1 h4.4 a0.9 0.9 0 0 1 0 1.8 h-4.4 a0.9 0.9 0 0 1 0 -1.8Z M168.8 499.1 h4.4 a0.9 0.9 0 0 1 0 1.8 h-4.4 a0.9 0.9 0 0 1 0 -1.8Z M177.8 499.1 h4.4 a0.9 0.9 0 0 1 0 1.8 h-4.4 a0.9 0.9 0 0 1 0 -1.8Z M186.8 499.1 h4.4 a0.9 0.9 0 0 1 0 1.8 h-4.4 a0.9 0.9 0 0 1 0 -1.8Z M195.8 499.1 h4.4 a0.9 0.9 0 0 1 0 1.8 h-4.4 a0.9 0.9 0 0 1 0 -1.8Z M204.8 499.1 h4.4 a0.9 0.9 0 0 1 0 1.8 h-4.4 a0.9 0.9 0 0 1 0 -1.8Z M213.8 499.1 h4.4 a0.9 0.9 0 0 1 0 1.8 h-4.4 a0.9 0.9 0 0 1 0 -1.8Z M222.8 499.1 h4.4 a0.9 0.9 0 0 1 0 1.8 h-4.4 a0.9 0.9 0 0 1 0 -1.8Z M231.8 499.1 h4.4 a0.9 0.9 0 0 1 0 1.8 h-4.4 a0.9 0.9 0 0 1 0 -1.8Z M240.8 499.1 h4.4 a0.9 0.9 0 0 1 0 1.8 h-4.4 a0.9 0.9 0 0 1 0 -1.8Z M249.8 499.1 h4.4 a0.9 0.9 0 0 1 0 1.8 h-4.4 a0.9 0.9 0 0 1 0 -1.8Z M258.8 499.1 h4.4 a0.9 0.9 0 0 1 0 1.8 h-4.4 a0.9 0.9 0 0 1 0 -1.8Z M267.8 499.1 h4.4 a0.9 0.9 0 0 1 0 1.8 h-4.4 a0.9 0.9 0 0 1 0 -1.8Z M276.8 499.1 h4.4 a0.9 0.9 0 0 1 0 1.8 h-4.4 a0.9 0.9 0 0 1 0 -1.8Z M285.8 499.1 h4.4 a0.9 0.9 0 0 1 0 1.8 h-4.4 a0.9 0.9 0 0 1 0 -1.8Z M294.8 499.1 h4.4 a0.9 0.9 0 0 1 0 1.8 h-4.4 a0.9 0.9 0 0 1 0 -1.8Z M303.8 499.1 h4.4 a0.9 0.9 0 0 1 0 1.8 h-4.4 a0.9 0.9 0 0 1 0 -1.8Z M312.8 499.1 h4.4 a0.9 0.9 0 0 1 0 1.8 h-4.4 a0.9 0.9 0 0 1 0 -1.8Z M321.8 499.1 h4.4 a0.9 0.9 0 0 1 0 1.8 h-4.4 a0.9 0.9 0 0 1 0 -1.8Z M330.8 499.1 h4.4 a0.9 0.9 0 0 1 0 1.8 h-4.4 a0.9 0.9 0 0 1 0 -1.8Z M339.8 499.1 h4.4 a0.9 0.9 0 0 1 0 1.8 h-4.4 a0.9 0.9 0 0 1 0 -1.8Z M348.8 499.1 h4.4 a0.9 0.9 0 0 1 0 1.8 h-4.4 a0.9 0.9 0 0 1 0 -1.8Z M357.8 499.1 h4.4 a0.9 0.9 0 0 1 0 1.8 h-4.4 a0.9 0.9 0 0 1 0 -1.8Z M366.8 499.1 h4.4 a0.9 0.9 0 0 1 0 1.8 h-4.4 a0.9 0.9 0 0 1 0 -1.8Z M375.8 499.1 h4.4 a0.9 0.9 0 0 1 0 1.8 h-4.4 a0.9 0.9 0 0 1 0 -1.8Z M384.8 499.1 h4.4 a0.9 0.9 0 0 1 0 1.8 h-4.4 a0.9 0.9 0 0 1 0 -1.8Z M393.8 499.1 h4.4 a0.9 0.9 0 0 1 0 1.8 h-4.4 a0.9 0.9 0 0 1 0 -1.8Z M402.8 499.1 h4.4 a0.9 0.9 0 0 1 0 1.8 h-4.4 a0.9 0.9 0 0 1 0 -1.8Z M411.8 499.1 h4.4 a0.9 0.9 0 0 1 0 1.8 h-4.4 a0.9 0.9 0 0 1 0 -1.8Z M420.8 499.1 h4.4 a0.9 0.9 0 0 1 0 1.8 h-4.4 a0.9 0.9 0 0 1 0 -1.8Z M429.8 499.1 h4.4 a0.9 0.9 0 0 1 0 1.8 h-4.4 a0.9 0.9 0 0 1 0 -1.8Z M438.8 499.1 h4.4 a0.9 0.9 0 0 1 0 1.8 h-4.4 a0.9 0.9 0 0 1 0 -1.8Z M447.8 499.1 h4.4 a0.9 0.9 0 0 1 0 1.8 h-4.4 a0.9 0.9 0 0 1 0 -1.8Z" fill="none" fill-rule="evenodd" clip-rule="evenodd" stroke="#ec008c" stroke-width="0.5"/>
+</svg>

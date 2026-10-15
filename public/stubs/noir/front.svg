@@ -1,0 +1,95 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 960" data-foil="red">
+  <defs>
+    <pattern id="weave" patternUnits="userSpaceOnUse" width="5" height="5" patternTransform="rotate(-38)">
+      <rect width="5" height="5" fill="#0d0b0b"/>
+      <rect y="0" width="5" height="1.9" fill="#181515"/>
+      <rect y="2.6" width="5" height="0.5" fill="#050404"/>
+    </pattern>
+    <pattern id="twill" patternUnits="userSpaceOnUse" width="20" height="5" patternTransform="rotate(-38)">
+      <rect x="0" y="0" width="9" height="1.9" fill="#231f1f" opacity="0.5"/>
+      <rect x="11" y="2.5" width="7" height="1" fill="#000" opacity="0.45"/>
+    </pattern>
+    <radialGradient id="sunG" cx="0.5" cy="0.38" r="0.62">
+      <stop offset="0" stop-color="#5a0a0d"/>
+      <stop offset="0.75" stop-color="#3c0608"/>
+      <stop offset="1" stop-color="#290405"/>
+    </radialGradient>
+    <clipPath id="sunClip"><circle cx="240" cy="310" r="192"/></clipPath>
+    <clipPath id="sunClip2"><circle cx="240" cy="330" r="196"/></clipPath>
+    <filter id="duo" color-interpolation-filters="sRGB">
+      <feColorMatrix type="matrix" values="0.33 0.55 0.12 0 0  0.33 0.55 0.12 0 0  0.33 0.55 0.12 0 0  0 0 0 1 0"/>
+      <feComponentTransfer>
+        <feFuncR type="table" tableValues="0.01 0.02 0.10 0.50 0.86 1"/>
+        <feFuncG type="table" tableValues="0.01 0.01 0.01 0.04 0.20 0.52"/>
+        <feFuncB type="table" tableValues="0.01 0.01 0.02 0.05 0.19 0.46"/>
+      </feComponentTransfer>
+    </filter>
+    <linearGradient id="fadeG" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="960">
+      <stop offset="0.058" stop-color="#000"/>
+      <stop offset="0.092" stop-color="#fff"/>
+      <stop offset="0.42" stop-color="#fff"/>
+      <stop offset="0.56" stop-color="#000"/>
+    </linearGradient>
+    <linearGradient id="hfadeG" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="480" y2="0">
+      <stop offset="0.035" stop-color="#000"/>
+      <stop offset="0.11" stop-color="#fff"/>
+      <stop offset="0.89" stop-color="#fff"/>
+      <stop offset="0.965" stop-color="#000"/>
+    </linearGradient>
+    <mask id="hfade" maskUnits="userSpaceOnUse" x="0" y="0" width="480" height="960">
+      <rect width="480" height="960" fill="url(#hfadeG)"/>
+    </mask>
+    <mask id="fade" maskUnits="userSpaceOnUse" x="0" y="0" width="480" height="960">
+      <g mask="url(#hfade)"><rect width="480" height="960" fill="url(#fadeG)"/></g>
+    </mask>
+  </defs>
+  <g data-layer="paper">
+    <rect width="480" height="960" fill="url(#weave)"/>
+    <rect width="480" height="960" fill="url(#twill)"/>
+    <g data-show-if="art">
+      <circle cx="240" cy="310" r="192" fill="url(#sunG)"/>
+      <g clip-path="url(#sunClip)"><path d="M240 360 L-182.4 360 L-180.79 323.19Z M240 360 L-175.98 286.65 L-168.01 250.67Z M240 360 L-156.93 215.53 L-142.82 181.49Z M240 360 L-125.81 148.8 L-106.01 117.72Z M240 360 L-83.58 88.49 L-58.68 61.32Z M240 360 L-31.51 36.42 L-2.28 13.99Z M240 360 L28.8 -5.81 L61.49 -22.82Z M240 360 L95.53 -36.93 L130.67 -48.01Z M240 360 L166.65 -55.98 L203.19 -60.79Z M240 360 L240 -62.4 L276.81 -60.79Z M240 360 L313.35 -55.98 L349.33 -48.01Z M240 360 L384.47 -36.93 L418.51 -22.82Z M240 360 L451.2 -5.81 L482.28 13.99Z M240 360 L511.51 36.42 L538.68 61.32Z M240 360 L563.58 88.49 L586.01 117.72Z M240 360 L605.81 148.8 L622.82 181.49Z M240 360 L636.93 215.53 L648.01 250.67Z M240 360 L655.98 286.65 L660.79 323.19Z" fill="#000" opacity="0.22"/><rect x="44" y="360" width="392" height="1.4" fill="#0d0b0b"/><rect x="44" y="372" width="392" height="2.85" fill="#0d0b0b"/><rect x="44" y="384" width="392" height="4.3" fill="#0d0b0b"/><rect x="44" y="396" width="392" height="5.75" fill="#0d0b0b"/><rect x="44" y="408" width="392" height="7.2" fill="#0d0b0b"/><rect x="44" y="420" width="392" height="8.65" fill="#0d0b0b"/><rect x="44" y="432" width="392" height="10.1" fill="#0d0b0b"/><rect x="44" y="444" width="392" height="11.55" fill="#0d0b0b"/><rect x="44" y="456" width="392" height="13" fill="#0d0b0b"/><rect x="44" y="468" width="392" height="14.45" fill="#0d0b0b"/><rect x="44" y="480" width="392" height="15.9" fill="#0d0b0b"/><rect x="44" y="492" width="392" height="17.35" fill="#0d0b0b"/><rect x="44" y="504" width="392" height="18.8" fill="#0d0b0b"/></g>
+    </g>
+    <g data-hide-if="art">
+      <circle cx="240" cy="330" r="196" fill="url(#sunG)"/>
+      <g clip-path="url(#sunClip2)"><path d="M240 390 L-191.2 390 L-189.56 352.42Z M240 390 L-184.65 315.12 L-176.51 278.4Z M240 390 L-165.2 242.52 L-150.8 207.77Z M240 390 L-133.43 174.4 L-113.22 142.67Z M240 390 L-90.32 112.83 L-64.9 85.1Z M240 390 L-37.17 59.68 L-7.33 36.78Z M240 390 L24.4 16.57 L57.77 -0.8Z M240 390 L92.52 -15.2 L128.4 -26.51Z M240 390 L165.12 -34.65 L202.42 -39.56Z M240 390 L240 -41.2 L277.58 -39.56Z M240 390 L314.88 -34.65 L351.6 -26.51Z M240 390 L387.48 -15.2 L422.23 -0.8Z M240 390 L455.6 16.57 L487.33 36.78Z M240 390 L517.17 59.68 L544.9 85.1Z M240 390 L570.32 112.83 L593.22 142.67Z M240 390 L613.43 174.4 L630.8 207.77Z M240 390 L645.2 242.52 L656.51 278.4Z M240 390 L664.65 315.12 L669.56 352.42Z" fill="#000" opacity="0.22"/><rect x="40" y="390" width="400" height="1.4" fill="#0d0b0b"/><rect x="40" y="402" width="400" height="2.85" fill="#0d0b0b"/><rect x="40" y="414" width="400" height="4.3" fill="#0d0b0b"/><rect x="40" y="426" width="400" height="5.75" fill="#0d0b0b"/><rect x="40" y="438" width="400" height="7.2" fill="#0d0b0b"/><rect x="40" y="450" width="400" height="8.65" fill="#0d0b0b"/><rect x="40" y="462" width="400" height="10.1" fill="#0d0b0b"/><rect x="40" y="474" width="400" height="11.55" fill="#0d0b0b"/><rect x="40" y="486" width="400" height="13" fill="#0d0b0b"/><rect x="40" y="498" width="400" height="14.45" fill="#0d0b0b"/><rect x="40" y="510" width="400" height="15.9" fill="#0d0b0b"/><rect x="40" y="522" width="400" height="17.35" fill="#0d0b0b"/></g>
+    </g>
+  </g>
+  <g data-layer="art" mask="url(#fade)">
+    <image data-slot="art" x="16" y="60" width="448" height="520" preserveAspectRatio="xMidYMax meet" filter="url(#duo)"/>
+  </g>
+  <g data-layer="paper">
+    <rect width="480" height="960" fill="#fff" filter="url(#ts-grain-light)" opacity="0.06"/>
+    <path d="M16 0 L28.36 0 L28.36 8 Q28.36 12 32.36 12 L40.36 12 Q44.36 12 44.36 8 L44.36 0 L69.09 0 L69.09 8 Q69.09 12 73.09 12 L81.09 12 Q85.09 12 85.09 8 L85.09 0 L109.82 0 L109.82 8 Q109.82 12 113.82 12 L121.82 12 Q125.82 12 125.82 8 L125.82 0 L150.55 0 L150.55 8 Q150.55 12 154.55 12 L162.55 12 Q166.55 12 166.55 8 L166.55 0 L191.27 0 L191.27 8 Q191.27 12 195.27 12 L203.27 12 Q207.27 12 207.27 8 L207.27 0 L232 0 L232 8 Q232 12 236 12 L244 12 Q248 12 248 8 L248 0 L272.73 0 L272.73 8 Q272.73 12 276.73 12 L284.73 12 Q288.73 12 288.73 8 L288.73 0 L313.45 0 L313.45 8 Q313.45 12 317.45 12 L325.45 12 Q329.45 12 329.45 8 L329.45 0 L354.18 0 L354.18 8 Q354.18 12 358.18 12 L366.18 12 Q370.18 12 370.18 8 L370.18 0 L394.91 0 L394.91 8 Q394.91 12 398.91 12 L406.91 12 Q410.91 12 410.91 8 L410.91 0 L435.64 0 L435.64 8 Q435.64 12 439.64 12 L447.64 12 Q451.64 12 451.64 8 L451.64 0 L464 0 A16 16 0 0 0 480 16 L480 829 A9 9 0 0 0 480 847 L480 944 A16 16 0 0 0 464 960 L451.64 960 L451.64 952 Q451.64 948 447.64 948 L439.64 948 Q435.64 948 435.64 952 L435.64 960 L410.91 960 L410.91 952 Q410.91 948 406.91 948 L398.91 948 Q394.91 948 394.91 952 L394.91 960 L370.18 960 L370.18 952 Q370.18 948 366.18 948 L358.18 948 Q354.18 948 354.18 952 L354.18 960 L329.45 960 L329.45 952 Q329.45 948 325.45 948 L317.45 948 Q313.45 948 313.45 952 L313.45 960 L288.73 960 L288.73 952 Q288.73 948 284.73 948 L276.73 948 Q272.73 948 272.73 952 L272.73 960 L248 960 L248 952 Q248 948 244 948 L236 948 Q232 948 232 952 L232 960 L207.27 960 L207.27 952 Q207.27 948 203.27 948 L195.27 948 Q191.27 948 191.27 952 L191.27 960 L166.55 960 L166.55 952 Q166.55 948 162.55 948 L154.55 948 Q150.55 948 150.55 952 L150.55 960 L125.82 960 L125.82 952 Q125.82 948 121.82 948 L113.82 948 Q109.82 948 109.82 952 L109.82 960 L85.09 960 L85.09 952 Q85.09 948 81.09 948 L73.09 948 Q69.09 948 69.09 952 L69.09 960 L44.36 960 L44.36 952 Q44.36 948 40.36 948 L32.36 948 Q28.36 948 28.36 952 L28.36 960 L16 960 A16 16 0 0 0 0 944 L0 847 A9 9 0 0 0 0 829 L0 16 A16 16 0 0 0 16 0Z" fill="none" stroke="#5c1013" stroke-width="5"/>
+  </g>
+  <g data-layer="ink" fill="#b01a1e">
+    <text x="30" y="40" font-family="'Chakra Petch', 'Barlow Condensed', sans-serif" font-size="10" font-weight="700" letter-spacing="1.8">TICKETSTUB ORIGINAL TICKET</text>
+    <text data-slot="edition" x="450" y="40" text-anchor="end" font-family="'Chakra Petch', 'Barlow Condensed', sans-serif" font-size="10" font-weight="700" letter-spacing="1.2" style="font-variant-numeric: lining-nums">.</text>
+    <text transform="translate(22 310) rotate(-90)" text-anchor="middle" font-family="'Chakra Petch', 'Barlow Condensed', sans-serif" font-size="8.5" font-weight="600" letter-spacing="3.4" fill="#b01a1e" data-slot="kicker" data-case="upper" data-fit="300" data-default="ORIGINAL TICKET">.</text>
+    <text transform="translate(458 310) rotate(90)" text-anchor="middle" font-family="'Chakra Petch', 'Barlow Condensed', sans-serif" font-size="8.5" font-weight="600" letter-spacing="3.4" fill="#b01a1e" data-slot="categoryLabel" data-suffix="  ·  ADMIT ONE">.</text>
+    <text data-slot="subtitle" x="240.0" y="742" text-anchor="middle" font-family="'Chakra Petch', 'Barlow Condensed', sans-serif" font-size="12.5" font-weight="600" letter-spacing="3.6" fill="#d23a33" data-case="upper" data-wrap="416" data-lines="1" data-min="8.5" data-default="ONE NIGHT · ONE STUB">.</text>
+    <text x="40" y="806" font-family="'Chakra Petch', 'Barlow Condensed', sans-serif" font-size="13.5" font-weight="600" letter-spacing="0.8" fill="#d23a33" style="font-variant-numeric: lining-nums"><tspan data-slot="dateDots">.</tspan><tspan data-slot="time" data-prefix="  ">.</tspan></text>
+    <text data-slot="place" x="200" y="806" font-family="'Chakra Petch', 'Barlow Condensed', sans-serif" font-size="13.5" font-weight="600" letter-spacing="0.8" fill="#d23a33" data-case="upper" data-wrap="240" data-lines="2" data-leading="1.18" data-anchor="bottom" data-min="10.5">.</text>
+    <text x="40" y="774" font-family="'Chakra Petch', 'Barlow Condensed', sans-serif" font-size="8.5" font-weight="600" letter-spacing="2.2" fill="#b01a1e">DATE · TIME</text>
+    <text x="200" y="774" font-family="'Chakra Petch', 'Barlow Condensed', sans-serif" font-size="8.5" font-weight="600" letter-spacing="2.2" fill="#b01a1e">VENUE</text>
+  </g>
+  <g data-layer="foil" fill="#b3161b">
+    <path d="M30 50 H450" stroke="#b3161b" stroke-width="0.9" fill="none"/>
+    <g data-show-if="art"><path d="M42.22 360 A204 204 0 1 1 437.78 360" fill="none" stroke="#b3161b" stroke-width="0.9"/><path d="M30 360 H36.22 M443.78 360 H450" stroke="#b3161b" stroke-width="0.9" fill="none"/></g>
+    <g data-hide-if="art"><path d="M42.93 390 A206 206 0 1 1 437.07 390" fill="none" stroke="#b3161b" stroke-width="0.9"/><path d="M30 390 H36.93 M443.07 390 H450" stroke="#b3161b" stroke-width="0.9" fill="none"/></g>
+    <text data-slot="title" x="240.0" y="700" text-anchor="middle" font-family="'Big Shoulders Display', 'Oswald', 'Barlow Condensed', sans-serif" font-weight="900" font-size="136" letter-spacing="1" data-case="upper" data-wrap="424" data-lines="4" data-leading="0.86" data-anchor="bottom" data-min="30" style="font-variant-numeric: lining-nums" data-ink="" fill="#b3161b">.</text>
+    <text data-slot="title" x="240.0" y="700" text-anchor="middle" font-family="'Big Shoulders Display', 'Oswald', 'Barlow Condensed', sans-serif" font-weight="900" font-size="136" letter-spacing="1" data-case="upper" data-wrap="424" data-lines="4" data-leading="0.86" data-anchor="bottom" data-min="30" style="font-variant-numeric: lining-nums" opacity="0.3">.</text>
+    <path d="M30 718 H450" stroke="#b3161b" stroke-width="0.9" fill="none"/>
+    <path d="M30 758 H450 M30 820 H450 M190 758 V820" stroke="#b3161b" stroke-width="0.7" fill="none"/>
+    <path data-ink="" d="M24 838 H456" stroke="#b3161b" stroke-width="1.1" stroke-dasharray="1.2 4.8" stroke-linecap="round" fill="none"/>
+    <text data-ink="" fill="#b3161b" x="30" y="888" font-family="'Big Shoulders Display', 'Oswald', 'Barlow Condensed', sans-serif" font-weight="800" font-size="36" letter-spacing="2">ADMIT ONE</text>
+    <text opacity="0.3" x="30" y="888" font-family="'Big Shoulders Display', 'Oswald', 'Barlow Condensed', sans-serif" font-weight="800" font-size="36" letter-spacing="2">ADMIT ONE</text>
+    <g data-slot="barcode" data-w="150" data-h="38" transform="translate(300 858)"></g>
+  </g>
+  <g data-layer="ink" fill="#b01a1e" font-family="'Chakra Petch', 'Barlow Condensed', sans-serif">
+    <text data-slot="seatLine" x="31" y="910" font-size="10.5" font-weight="600" letter-spacing="1.6" fill="#d23a33" data-fit="240" data-min="7" data-default="GENERAL ADMISSION">.</text>
+    <text data-slot="serial" x="375" y="910" text-anchor="middle" font-size="8.5" letter-spacing="3.4" fill="#d23a33">.</text>
+    <text x="240.0" y="934" text-anchor="middle" font-size="7.2" letter-spacing="1.2" fill="#d23a33">© TICKETSTUB · COMMEMORATIVE KEEPSAKE · NOT VALID FOR ENTRY</text>
+  </g>
+  <path data-layer="dieline" d="M16 0 L28.36 0 L28.36 8 Q28.36 12 32.36 12 L40.36 12 Q44.36 12 44.36 8 L44.36 0 L69.09 0 L69.09 8 Q69.09 12 73.09 12 L81.09 12 Q85.09 12 85.09 8 L85.09 0 L109.82 0 L109.82 8 Q109.82 12 113.82 12 L121.82 12 Q125.82 12 125.82 8 L125.82 0 L150.55 0 L150.55 8 Q150.55 12 154.55 12 L162.55 12 Q166.55 12 166.55 8 L166.55 0 L191.27 0 L191.27 8 Q191.27 12 195.27 12 L203.27 12 Q207.27 12 207.27 8 L207.27 0 L232 0 L232 8 Q232 12 236 12 L244 12 Q248 12 248 8 L248 0 L272.73 0 L272.73 8 Q272.73 12 276.73 12 L284.73 12 Q288.73 12 288.73 8 L288.73 0 L313.45 0 L313.45 8 Q313.45 12 317.45 12 L325.45 12 Q329.45 12 329.45 8 L329.45 0 L354.18 0 L354.18 8 Q354.18 12 358.18 12 L366.18 12 Q370.18 12 370.18 8 L370.18 0 L394.91 0 L394.91 8 Q394.91 12 398.91 12 L406.91 12 Q410.91 12 410.91 8 L410.91 0 L435.64 0 L435.64 8 Q435.64 12 439.64 12 L447.64 12 Q451.64 12 451.64 8 L451.64 0 L464 0 A16 16 0 0 0 480 16 L480 829 A9 9 0 0 0 480 847 L480 944 A16 16 0 0 0 464 960 L451.64 960 L451.64 952 Q451.64 948 447.64 948 L439.64 948 Q435.64 948 435.64 952 L435.64 960 L410.91 960 L410.91 952 Q410.91 948 406.91 948 L398.91 948 Q394.91 948 394.91 952 L394.91 960 L370.18 960 L370.18 952 Q370.18 948 366.18 948 L358.18 948 Q354.18 948 354.18 952 L354.18 960 L329.45 960 L329.45 952 Q329.45 948 325.45 948 L317.45 948 Q313.45 948 313.45 952 L313.45 960 L288.73 960 L288.73 952 Q288.73 948 284.73 948 L276.73 948 Q272.73 948 272.73 952 L272.73 960 L248 960 L248 952 Q248 948 244 948 L236 948 Q232 948 232 952 L232 960 L207.27 960 L207.27 952 Q207.27 948 203.27 948 L195.27 948 Q191.27 948 191.27 952 L191.27 960 L166.55 960 L166.55 952 Q166.55 948 162.55 948 L154.55 948 Q150.55 948 150.55 952 L150.55 960 L125.82 960 L125.82 952 Q125.82 948 121.82 948 L113.82 948 Q109.82 948 109.82 952 L109.82 960 L85.09 960 L85.09 952 Q85.09 948 81.09 948 L73.09 948 Q69.09 948 69.09 952 L69.09 960 L44.36 960 L44.36 952 Q44.36 948 40.36 948 L32.36 948 Q28.36 948 28.36 952 L28.36 960 L16 960 A16 16 0 0 0 0 944 L0 847 A9 9 0 0 0 0 829 L0 16 A16 16 0 0 0 16 0Z" fill="none" stroke="#ec008c" stroke-width="0.5"/>
+</svg>
