@@ -10,7 +10,7 @@ import { currentVersion } from "../types";
 import { addArtVersion } from "../editor/ops";
 import { readGenerationStorage } from "./storage-snapshot";
 import { reconcileVersions } from "./reconcile";
-import { forgetStatus, loadStatus, saveStatus, type GenerationOp, type GenerationVia } from "./status-store";
+import { forgetStatus, loadStatus, saveStatus, readyRecoveryMessage, type GenerationOp, type GenerationVia } from "./status-store";
 
 export type { GenerationOp, GenerationPhase, GenerationVia } from "./status-store";
 
@@ -139,8 +139,8 @@ export class GenerationController {
       e.ac.abort();
       this.finish(runId, {
         phase: "interrupted",
-        code: "interrupted",
-        message: "Generation was interrupted when the editor closed. We can't tell whether it finished, and nothing was applied.",
+        code: op.phase === "ready" ? "ready_unavailable" : "interrupted",
+        message: op.phase === "ready" ? readyRecoveryMessage(op.fallback) : "Generation was interrupted when the editor closed. We can't tell whether it finished, and nothing was applied.",
       });
     }
   }

@@ -1,6 +1,6 @@
 // Narrow persistence for the art-generation status shown beside the artwork. Only a small status record per stub is kept
 // (never art bytes, requests or provider detail). A request cannot outlive its page, so on load a pending or unapplied
-// record is rewritten as "interrupted": the outcome is honestly unknown. Storage can throw: every access is guarded.
+// record is recovered as "interrupted": pending outcome is unknown; a ready preview finished but is no longer available. Storage can throw: every access is guarded.
 
 const KEY = "ticketstub.generation.v1";
 
@@ -35,6 +35,15 @@ type Record_ = Pick<GenerationOp, "runId" | "stubId" | "sourceVersionId" | "sour
 
 export const INTERRUPTED_MESSAGE =
   "This page was closed or reloaded while new art was generating. We can't tell whether it finished, and nothing was applied. Your current art is unchanged. Starting again is a new request.";
+
+export const READY_RECOVERY_MESSAGE =
+  "A preview was ready but was not applied. That preview is no longer available after reopening. Open Remix to start again.";
+
+export const PROCEDURAL_READY_RECOVERY_MESSAGE =
+  "Procedural art was ready but was not applied. No generated image was made. That preview is no longer available after reopening. Open Remix to start again.";
+
+export const readyRecoveryMessage = (fallback?: boolean): string =>
+  fallback ? PROCEDURAL_READY_RECOVERY_MESSAGE : READY_RECOVERY_MESSAGE;
 
 const PHASES = new Set<GenerationPhase>(["pending", "ready", "applied", "failed", "canceled", "discarded", "interrupted"]);
 const VIAS = new Set<GenerationVia>(["sheet", "note", "agent", "photo"]);
@@ -112,7 +121,7 @@ export function loadStatus(stubId: string, storage: Storage | undefined = defaul
   if (!all || !Object.hasOwn(all, stubId) || !valid(all[stubId], stubId)) return null;
   const rec = select(all[stubId]);
   if (rec.phase === "pending" || rec.phase === "ready") {
-    return { ...rec, phase: "interrupted", code: "interrupted", endedAt: rec.endedAt ?? Date.now(), message: INTERRUPTED_MESSAGE };
+    return { ...rec, phase: "interrupted", code: rec.phase === "ready" ? "ready_unavailable" : "interrupted", endedAt: rec.endedAt ?? Date.now(), message: rec.phase === "ready" ? readyRecoveryMessage(rec.fallback) : INTERRUPTED_MESSAGE };
   }
   return KEEP.has(rec.phase) ? { ...rec } : null;
 }

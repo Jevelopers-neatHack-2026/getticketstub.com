@@ -15,7 +15,7 @@ globalThis.fetch = () => { throw new Error("Network forbidden in generation stat
 const { GenerationController } = await import("../src/customer/studio/generation/operations.ts");
 const { subscribeGenerationAnnouncements } = await import("../src/customer/studio/generation/announcements.ts");
 const { GenerationStatus } = await import("../src/customer/studio/generation/GenerationStatus.tsx");
-const { loadStatus, saveStatus, forgetStatus, INTERRUPTED_MESSAGE } = await import("../src/customer/studio/generation/status-store.ts");
+const { loadStatus, saveStatus, forgetStatus, INTERRUPTED_MESSAGE, READY_RECOVERY_MESSAGE } = await import("../src/customer/studio/generation/status-store.ts");
 const KEY = "ticketstub.generation.v1";
 class MemoryStorage {
   values = new Map(); writes = 0; blockedRead = false; blockedWrite = false;
@@ -52,7 +52,7 @@ for (const phase of phases) test(`valid ${phase} status follows the recovery pol
   const storage = saved({ "synthetic-status": status(phase) }), raw = storage.getItem(KEY);
   const { op, html } = render(storage);
   if (["pending", "ready"].includes(phase)) {
-    assert.equal(op.phase, "interrupted"); assert.equal(op.message, INTERRUPTED_MESSAGE);
+    assert.equal(op.phase, "interrupted"); assert.equal(op.message, phase === "ready" ? READY_RECOVERY_MESSAGE : INTERRUPTED_MESSAGE);
     assert.ok(html.includes("Open Remix"));
   } else if (["failed", "interrupted"].includes(phase)) {
     assert.equal(op.phase, phase); assert.ok(html.includes("Art generation status"));
@@ -77,13 +77,13 @@ test("Editor installs the live announcement subscriber before adopting a persist
     let unsubscribe = subscribeGenerationAnnouncements(controller, (message) => heard.push(message));
     try {
       controller.attach();
-      assert.deepEqual(heard, [INTERRUPTED_MESSAGE], `${phase} is adopted and announced exactly once during initialization`);
+      assert.deepEqual(heard, [phase === "ready" ? READY_RECOVERY_MESSAGE : INTERRUPTED_MESSAGE], `${phase} is adopted and announced exactly once during initialization`);
       assert.equal(controller.get("synthetic-status").phase, "interrupted");
       unsubscribe();
       controller.detach();
       unsubscribe = subscribeGenerationAnnouncements(controller, (message) => heard.push(message));
       controller.attach();
-      assert.deepEqual(heard, [INTERRUPTED_MESSAGE], "a Strict Mode style detach/reattach does not announce the same status twice");
+      assert.deepEqual(heard, [phase === "ready" ? READY_RECOVERY_MESSAGE : INTERRUPTED_MESSAGE], "a Strict Mode style detach/reattach does not announce the same status twice");
     } finally { unsubscribe(); controller.detach(); }
   }
 });
@@ -203,4 +203,35 @@ test("unavailable reads and blocked writes do not erase a stored reminder", () =
   storage.blockedWrite = true; saveStatus(status("interrupted"), "synthetic-status", storage); forgetStatus("synthetic-status", storage);
   storage.blockedWrite = false;
   assert.equal(storage.getItem(KEY), raw); assert.equal(storage.writes, 0); assert.equal(render(storage).op.phase, "failed");
+});
+
+for (const fallback of [false, true]) test(`a completed held ${fallback ? "procedural" : "image"} result reloads truthfully without applying or resuming`, async () => {
+  const storage = new MemoryStorage(); let commits = 0, requests = 0, resolve;
+  const v0 = { id: "v0", edition: "researched", art: { kind: "procedural", seed: 1 }, createdAt: "2026-10-01T00:00:00Z" };
+  let stub = { id: "synthetic-status", versions: [v0, { ...v0, id: "v1" }], currentVersionId: "v0" };
+  const host = { current: () => stub, revision: () => 0, isGone: () => false, commit() { commits++; return true; } };
+  const controller = new GenerationController(host, storage); controller.attach();
+  const request = controller.start({ via: "sheet", run: () => { requests++; return new Promise(r => { resolve = r; }); } });
+  stub = { ...stub, currentVersionId: "v1" };
+  resolve(fallback ? { art: { kind: "procedural", seed: 2 }, limitNote: "Daily limit reached" } : { art: { kind: "image", src: "/synthetic-finished.png", seed: 2, provenance: "simulated" } });
+  const { op } = await request; assert.equal(op.phase, "ready"); assert.equal(commits, 0);
+  const raw = storage.getItem(KEY); assert.equal(JSON.parse(raw)[stub.id].phase, "ready");
+  // A process interruption cannot run detach; reconstruct the controller from only its persisted reminder.
+  const reopenedStorage = new MemoryStorage(); reopenedStorage.setItem(KEY, raw);
+  const reopened = new GenerationController(host, reopenedStorage), heard = [];
+  const off = subscribeGenerationAnnouncements(reopened, message => heard.push(message));
+  try {
+    reopened.attach(); const recovered = reopened.get(stub.id);
+    assert.equal(recovered.phase, "interrupted"); assert.match(recovered.message, fallback ? /procedural art was ready but was not applied/i : /preview was ready but was not applied/i);
+    assert.equal(recovered.fallback, fallback);
+    if (fallback) assert.match(recovered.message, /No generated image was made/);
+    assert.match(recovered.message, /no longer available/i); assert.doesNotMatch(recovered.message, /can't tell|whether it finished/i);
+    assert.deepEqual(heard, [recovered.message]); assert.equal(reopened.canRetry(op.runId), false); assert.equal(reopened.retry(op.runId), null);
+    reopened.apply(op.runId); assert.equal(commits, 0); assert.equal(requests, 1);
+    const html = renderToStaticMarkup(React.createElement(GenerationStatus, { controller: reopened, stubId: stub.id, onOpenRemix() {} }));
+    assert.ok(html.includes("Preview unavailable")); assert.ok(html.includes("Open Remix")); assert.ok(!html.includes("Apply as new version"));
+    assert.equal(reopenedStorage.getItem(KEY), raw);
+    controller.detach();
+    assert.match(loadStatus(stub.id, storage).message, fallback ? /procedural art was ready but was not applied.*No generated image was made/i : /preview was ready but was not applied/i, "clean navigation preserves the same known-ready truth");
+  } finally { off(); reopened.detach(); controller.detach(); }
 });
