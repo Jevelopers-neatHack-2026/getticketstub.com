@@ -1,4 +1,4 @@
-import { factKey, resolveFact } from "../facts/identity";
+import { factKey } from "../facts/identity";
 // Applying one agent action to a stub. Pure: it returns the next stub, or a bounded reason it refused. It goes through
 // the same edit functions the editor's own controls use (corrections for facts and the title, setEdition,
 // setMaterial, setFinish, addArtVersion), so versions, kept facts and the correction history come out the same as when
@@ -6,7 +6,7 @@ import { factKey, resolveFact } from "../facts/identity";
 import { addArtVersion, setEdition, setFinish, setMaterial, setFactValue, setHidden, toggleKept } from "../editor/ops";
 import { currentVersion } from "../types";
 import type { ArtLayer, Stub } from "../types";
-import { parseAction } from "./protocol";
+import { parseAction, sourceFactForAgent } from "./protocol";
 import type { Action } from "./protocol";
 
 export type Applied = { ok: true; stub: Stub } | { ok: false; code: "invalid_value" | "not_found" | "unchanged" };
@@ -21,7 +21,7 @@ export function applyToStub(stub: Stub, action: Action, opts: { allowSimulate?: 
   switch (a.type) {
     case "set_fact": {
       if (a.field === "keep" || a.field === "unkeep") {
-        const f = a.value.startsWith("ce_") ? undefined : resolveFact(stub.event.facts, a.value);
+        const f = sourceFactForAgent(stub.event.facts, a.value);
         if (!f) return refuse("not_found");
         if (f.provenance === "pending") return refuse("invalid_value");
         if (!!f.kept === (a.field === "keep")) return refuse("unchanged");

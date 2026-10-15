@@ -6,7 +6,7 @@
 // Validation is strict on both sides: an unknown type, an unknown field, a wrong type or an oversized string
 // rejects the whole message, and nothing is repaired or truncated silently.
 import { EDITIONS, MATERIALS } from "../types";
-import type { Edition, Finish, Material, Provenance, Stub } from "../types";
+import type { Edition, Fact, Finish, Material, Provenance, Stub } from "../types";
 import { currentVersion } from "../types";
 
 export const AGENT_SCHEMA = "ticketstub.agent-action/1";
@@ -372,14 +372,21 @@ export function parseRequest(raw: unknown): Parsed<AgentRequest> {
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1).trimEnd()}…` : s);
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
+/** Source-only boundary shared by summary and apply: never manufacture an ID or accept a client targeting key. */
+export function sourceFactForAgent(facts: readonly Fact[], id: unknown): Fact | undefined {
+  if (typeof id !== "string" || !FACT_ID.test(id) || id.startsWith("ce_")) return undefined;
+  const matches = facts.filter(f => f.id === id);
+  return matches.length === 1 ? matches[0] : undefined;
+}
+
 /** The stub as the agent may see it. Excludes guest name, friends, photos, seat, notes and links (the Apply chip reads the local note itself); strings are clipped to the limits. */
 export function summarize(stub: Stub): StateSummary {
   const ev = stub.event;
   const v = currentVersion(stub);
   const out: StateSummary = {
     title: clip(ev.title || "Untitled", LIMITS.title),
-    facts: ev.facts.filter(f => !f.id.startsWith("ce_") && ev.facts.filter(x => x.id === f.id).length === 1).slice(0, LIMITS.facts).map((f) => ({
-      id: /^[A-Za-z0-9_-]{1,40}$/.test(f.id) ? f.id : "fact",
+    facts: ev.facts.filter(f => sourceFactForAgent(ev.facts, f.id) === f).slice(0, LIMITS.facts).map((f) => ({
+      id: f.id,
       label: clip(f.label || "fact", LIMITS.label),
       value: clip(f.value ?? "", LIMITS.value),
       kept: !!f.kept,

@@ -10,7 +10,7 @@ const { foldWall } = await import("../src/customer/account/sync.ts");
 const { includedExtraFacts } = await import("../src/customer/studio/facts/inclusion.ts");
 const { toCreativeBrief, toBriefCreatePayload, toEditPlan } = await import("../src/customer/studio/creative/adapter.ts");
 const { studioControls } = await import("../src/customer/studio/creative/controls.ts");
-const { summarize } = await import("../src/customer/studio/agent/protocol.ts");
+const { summarize, describeAction, describeDone, parseRequest, AGENT_SCHEMA } = await import("../src/customer/studio/agent/protocol.ts");
 const { applyToStub } = await import("../src/customer/studio/agent/apply.ts");
 const { printedSummary, printedRowKeys } = await import("../src/customer/studio/approval/printed.ts");
 const { bindStub } = await import("../src/server/approval-token.ts");
@@ -161,4 +161,40 @@ test("approval review rows use local keys while their serialized summary omits c
   const wire = JSON.stringify(printedSummary(s));
   assert.equal(wire.includes("clientEntityKey"),false);
   for (const key of s.event.facts.map(factKey)) assert.equal(wire.includes(key),false);
+});
+
+
+test("agent summary, proposal description and apply agree for empty/malformed IDs beside literal fact", () => {
+  for (const id of ["", " ", "bad.id", "bad id", "<bad>", "x".repeat(41), "ce_local-looking", null, undefined, 17, {}, []]) {
+    for (const reverse of [false,true]) {
+      const incoming = [fact(id,"Unavailable row"),fact("fact","Literal source row")];
+      const s = stub(reverse ? incoming.reverse() : incoming);
+      const before = structuredClone(s);
+      const unavailable = s.event.facts.find(f=>f.label==="Unavailable row");
+      const literal = s.event.facts.find(f=>f.label==="Literal source row");
+      const state = summarize(s);
+      assert.deepEqual(state.facts.map(f=>[f.id,f.label]),[["fact","Literal source row"]]);
+      assert.equal(parseRequest({schema:AGENT_SCHEMA,state,message:"Keep Literal source row"}).ok,true);
+      const action = {type:"set_fact",field:"keep",value:"fact"};
+      assert.equal(describeAction(action,state),"Keep Literal source row on the stub");
+      const applied = applyToStub(s,action);
+      assert.equal(applied.ok,true);
+      assert.equal(applied.stub.event.facts.find(f=>factKey(f)===factKey(literal)).kept,true);
+      assert.deepEqual(applied.stub.event.facts.find(f=>factKey(f)===factKey(unavailable)),unavailable);
+      assert.equal(describeDone(action,summarize(applied.stub)),"Literal source row kept");
+      assert.deepEqual(s,before,"boundary does not rewrite source IDs, provenance or local identity");
+      assert.equal(openQuestions(s).some(q=>questionKey(q)===factKey(unavailable)),true,"omitted source remains discoverable in local review");
+      assert.equal(toggleKept(s,factKey(unavailable)).event.facts.find(f=>factKey(f)===factKey(unavailable)).kept,true,"local entity control remains available");
+    }
+  }
+});
+
+test("unusable or duplicate source IDs create no agent aliases and refuse actions without changing local entities", () => {
+  const s = stub([fact("","Empty row"),fact("bad.id","Malformed row"),fact("note","First note"),fact("note","Second note")]);
+  const before = structuredClone(s);
+  assert.deepEqual(summarize(s).facts,[]);
+  for (const value of ["fact","bad.id","", "note", factKey(s.event.facts[0])]) assert.equal(applyToStub(s,{type:"set_fact",field:"keep",value}).ok,false);
+  assert.deepEqual(s,before);
+  const capped = stub([...Array.from({length:20},()=>fact("", "Unavailable")),fact("fact","Visible literal")]);
+  assert.deepEqual(summarize(capped).facts.map(f=>f.id),["fact"],"omission happens before the summary cap");
 });
