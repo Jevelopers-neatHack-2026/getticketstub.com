@@ -24,5 +24,6 @@ Start with [CURRENT-STATE.md](architecture/CURRENT-STATE.md) for the host's sour
 - [Assembly evidence](integration/assembly-evidence.md): local inventory and claim checks; a local pass is not master acceptance.
 - [Product capabilities](product/capabilities.md) and [accessibility](product/accessibility.md): implemented behavior and documented limitations.
 - [Studio documents](studio/README.md): studio flow, product intent, research notes and design references.
+- [Local provider backlog](planning/provider-backlog/README.md): P2 event-link integration drafts, geographic evidence and historical issue triage; committed locally and not published.
 
 For clean local setup, supported scripts and test commands, see the root [README](../README.md). Historical reports and source snapshots remain dated evidence; read their source revision and scope before treating them as current behavior.
