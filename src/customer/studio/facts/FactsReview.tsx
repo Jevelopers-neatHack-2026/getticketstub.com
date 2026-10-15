@@ -160,7 +160,7 @@ export function FactInclusion({ stub, fact, onToggleFact }: { stub: Stub; fact: 
   if (isCoreFact(fact)) return <span className={styles.source}>{included ? "Included by default" : "Core detail hidden or missing"}</span>;
   const action = included ? "Remove from stub" : "Add to stub";
   return <span className={styles.inclusion}>
-    <span id={statusId} className={styles.source}>{included ? "On stub" : "Not on stub"}</span>
+    <span id={statusId} className={styles.source}>{included ? "Selected for stub" : "Not selected"}</span>
     <Tag aria-label={`${action}: ${fact.label}`} aria-describedby={statusId} onClick={() => onToggleFact(stub.id, fact.id)}>{action}</Tag>
   </span>;
 }

@@ -57,7 +57,7 @@ test("inclusion actions agree with rendered faces and preserve uncertainty, sour
     assert.equal(isFactIncluded(stub, stub.event.facts[0]), true);
     assert.equal(includedExtraFacts(stub).length, 1);
     assert.match(action(), /Remove from stub: 17/);
-    assert.match(action(), /On stub/);
+    assert.match(action(), /Selected for stub/);
     assert.match(renderToStaticMarkup(createElement(StubView, { stub })), /17°C|17°C/i);
     assert.deepEqual({ ...stub.event.facts[0], kept: false }, before);
     stub = toggleKept(stub, "weather");
