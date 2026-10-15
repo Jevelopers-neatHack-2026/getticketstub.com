@@ -43,6 +43,8 @@ export function foldWall(current: Stub[], remote: Stub[], deleted: string[], sen
 export interface SyncResult {
   ok: boolean;
   count: number;
+  /** The server accepted the request, but this browser could not persist its result. */
+  localPersistenceFailed?: true;
 }
 
 /** Ids the server has acknowledged this visit: a stub is "on the server" once a sync that carried it has come back. */
@@ -71,10 +73,18 @@ export function syncNow(): Promise<SyncResult> {
       for (const s of reply.stubs) onServer.add(s.id);
       for (const id of reply.deleted) onServer.delete(id);
       const merged = foldWall(loadWall(), reply.stubs, reply.deleted, sentAt);
-      writeWall(merged);
+      if (!writeWall(merged)) {
+        // Keep deletion acknowledgements queued until the merged wall is durable locally.
+        // A later focus/change retries the same idempotent account merge.
+        lastSynced = false;
+        return { ok: false, count: loadWall().length, localPersistenceFailed: true };
+      }
       // the tombstones we just sent are on the server now; ones made since stay queued
       const sent = new Set(deleted);
-      saveDeleted(loadDeleted().filter((id) => !sent.has(id)));
+      if (!saveDeleted(loadDeleted().filter((id) => !sent.has(id)))) {
+        lastSynced = false;
+        return { ok: false, count: merged.length, localPersistenceFailed: true };
+      }
       window.dispatchEvent(new CustomEvent(WALL_SYNCED, { detail: { count: merged.length } }));
       if (lastSynced !== true) flow("server_save", { kind: "sync", result: "saved" });
       lastSynced = true;

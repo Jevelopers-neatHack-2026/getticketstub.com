@@ -421,6 +421,35 @@ describe("account outcomes", () => {
     ]);
   });
 
+  test("sync retains the local wall and deletion queue after failed persistence, then recovers", async () => {
+    const local = privateStub();
+    store.upsertStub(local);
+    store.saveDeleted(["deleted-stub"]);
+    const remote = { ...local, id: "remote-stub" };
+    reply = () => ({ status: 200, body: { stubs: [remote], deleted: ["deleted-stub"], now: 3 } });
+    const notices = [];
+    const onSync = (e) => notices.push(e.detail);
+    window.addEventListener(sync.WALL_SYNCED, onSync);
+    try {
+      localStorage.mode = "quota";
+      const failed = await sync.syncNow();
+      assert.equal(failed.ok, false);
+      assert.equal(failed.localPersistenceFailed, true);
+      assert.deepEqual(store.loadWall().map((s) => s.id), [local.id]);
+      assert.deepEqual(store.loadDeleted(), ["deleted-stub"]);
+      assert.deepEqual(notices, []);
+      assert.equal(sync.isOnServer(local.id), true);
+      localStorage.mode = "ok";
+      assert.equal((await sync.syncNow()).ok, true);
+      assert.deepEqual(store.loadWall().map((s) => s.id), [remote.id, local.id]);
+      assert.deepEqual(store.loadDeleted(), []);
+      assert.deepEqual(notices, [{ count: 2 }]);
+    } finally {
+      localStorage.mode = "ok";
+      window.removeEventListener(sync.WALL_SYNCED, onSync);
+    }
+  });
+
   test("opening the sign-in sheet is a choice, once per opening; 'not now' is a skip; neither is a login", () => {
     signin.openSignIn({ reason: "claim", email: SEEDS.email, returnTo: `/claim/g/${SEEDS.token}` });
     signin.updateSignIn({ sent: { email: SEEDS.email } });

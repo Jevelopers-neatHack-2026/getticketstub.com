@@ -15,7 +15,7 @@ import s from "./account.module.css";
 /** The emailed link's return is reported once per page load, even when a remount (Strict Mode) runs the effect again. */
 let returnReported = false;
 
-type Slip = { id: number; kind: "saved"; text: string } | { id: number; kind: "expired" } | { id: number; kind: "offline" };
+type Slip = { id: number; kind: "saved"; text: string } | { id: number; kind: "expired" } | { id: number; kind: "offline" | "local-storage" };
 
 const stubs = (n: number) => `${n} ${n === 1 ? "stub" : "stubs"}`;
 
@@ -59,7 +59,7 @@ export function AccountRoot() {
       const r = await syncNow();
       if (!live) return;
       haptic([14]);
-      setSlip(r.ok ? { id: Date.now(), kind: "saved", text: r.count > 0 ? `Saved. ${stubs(r.count)} on your wall.` : "Saved. Your wall is ready." } : { id: Date.now(), kind: "offline" });
+      setSlip(r.ok ? { id: Date.now(), kind: "saved", text: r.count > 0 ? `Saved. ${stubs(r.count)} on your wall.` : "Saved. Your wall is ready." } : { id: Date.now(), kind: r.localPersistenceFailed ? "local-storage" : "offline" });
     })();
     return () => {
       live = false;
@@ -120,6 +120,8 @@ export function AccountRoot() {
               <Stamped>Saved</Stamped>
               <p className={s.toastText} data-announce>{slip.text.replace(/^Saved\.\s*/, "")}</p>
             </>
+          ) : slip.kind === "local-storage" ? (
+            <p className={s.toastText} data-announce>Your account received your wall, but this browser couldn&apos;t save the updated copy. Free some browser storage, then return to retry.</p>
           ) : slip.kind === "offline" ? (
             <p className={s.toastText} data-announce>You&apos;re signed in. We&apos;ll save your wall as soon as we can reach the server.</p>
           ) : (
