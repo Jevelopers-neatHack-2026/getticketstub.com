@@ -11,6 +11,10 @@ import { launchBrowser } from './lib/cdp.mjs';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const arg = process.argv.indexOf('--evidence-dir');
+const hostArg = process.argv.indexOf('--ra-host');
+const raHost = hostArg < 0 ? 'ra.co' : process.argv[hostArg + 1];
+assert.ok(['ra.co', 'de.ra.co', 'ja.ra.co'].includes(raHost), 'use a verified RA host');
+const sourceUrl = `https://${raHost}/events/2200000`;
 const evidence = arg >= 0 ? resolve(process.argv[arg + 1]) : mkdtempSync(join(tmpdir(), 'ticketstub-manual-browser-'));
 mkdirSync(evidence, { recursive: true });
 const temp = mkdtempSync(join(tmpdir(), 'ticketstub-manual-data-'));
@@ -24,7 +28,7 @@ Object.assign(env, { NODE_ENV: 'production', TICKETSTUB_RUNTIME_MODE: 'demo', AP
 const server = spawn(process.execPath, ['node_modules/next/dist/bin/next', 'start', '--hostname', '127.0.0.1', '--port', String(port)], { cwd: root, env, stdio: ['ignore', 'pipe', 'pipe'] });
 let log = '';
 server.stdout.on('data', d => { log += d; }); server.stderr.on('data', d => { log += d; });
-const result = { mode: 'offline-browser-demo-server', scenarios: [], evidence };
+const result = { mode: 'offline-browser-demo-server', raHost, scenarios: [], evidence };
 let browser;
 try {
   let ready = false;
@@ -34,7 +38,7 @@ try {
   }
   assert.ok(ready, 'production server starts');
   browser = await launchBrowser();
-  for (const width of [390, 1280]) for (const path of ['/make', '/new?url=https%3A%2F%2Fra.co%2Fevents%2F2200000']) {
+  for (const width of [390, 1280]) for (const path of ['/make', `/new?url=${encodeURIComponent(sourceUrl)}`]) {
     const page = await browser.newPage({ width, height: 844, reducedMotion: true });
     const requests = [], failures = [];
     let manualRequests = 0;
@@ -52,7 +56,7 @@ try {
         manualRequests++;
         page.send('Fetch.continueRequest', { requestId }).catch(e => failures.push(e.message));
       } else {
-        const response = { error: { code: 'access_restricted', message: 'This site blocks automated reads.' }, fallback: { kind: 'manual_event', provider: 'ra', url: 'https://ra.co/events/2200000', title: '' } };
+        const response = { error: { code: 'access_restricted', message: 'This site blocks automated reads.' }, fallback: { kind: 'manual_event', provider: 'ra', url: sourceUrl, title: '' } };
         page.send('Fetch.fulfillRequest', { requestId, responseCode: 422, responseHeaders: [{ name: 'content-type', value: 'application/json' }], body: Buffer.from(JSON.stringify(response)).toString('base64') }).catch(e => failures.push(e.message));
       }
     });
@@ -61,15 +65,19 @@ try {
     if (path === '/make') {
       assert.ok(await page.waitFor('document.querySelector("input[inputmode=url]")'));
       await page.eval('document.querySelector("input[inputmode=url]").focus()');
-      await page.type('https://ra.co/events/2200000');
+      await page.type(sourceUrl);
       await page.key('Enter');
     }
     assert.ok(await page.waitFor('!!document.querySelector("input[name=title]")', 20000), 'fallback is shown');
     assert.match(await page.eval('document.body.innerText'), /Resident Advisor blocks automated page reads/);
     assert.ok(await page.eval('document.activeElement.tagName === "H2"'), 'fallback heading receives focus');
     assert.equal(await page.eval('document.documentElement.scrollWidth > innerWidth'), false, 'no horizontal overflow');
-    const link = await page.eval(`document.querySelector('a[href="https://ra.co/events/2200000"]').outerHTML`);
+    const link = await page.eval(`document.querySelector(${JSON.stringify(`a[href="${sourceUrl}"]`)}).outerHTML`);
     assert.match(link, /noopener/);
+    assert.match(link, /noreferrer/);
+    assert.match(link, /new tab/);
+    await page.key('Tab');
+    assert.equal(await page.eval('document.activeElement.href'), sourceUrl, 'event link is reachable by keyboard');
     assert.ok(await page.eval('Array.from(document.querySelectorAll("input[name]")).every(e => !!document.querySelector(`label[for="${e.id}"]`))'), 'every field is labelled');
     // Native browser required-field validation runs before the API.
     await page.eval('document.querySelector("input[name=title]").form.requestSubmit()');

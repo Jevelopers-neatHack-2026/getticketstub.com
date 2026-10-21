@@ -3,7 +3,7 @@ export const PROVIDERS = [
   { id: "axs", label: "AXS", hosts: ["axs.com"], subdomains: true },
   { id: "seatgeek", label: "SeatGeek", hosts: ["seatgeek.com", "seatgeek.ca"], subdomains: true },
   { id: "stubhub", label: "StubHub", hosts: ["stubhub.com", "stubhub.ca", "stubhub.co.uk", "stubhub.ie", "viagogo.com"], subdomains: true },
-  { id: "ra", label: "Resident Advisor", hosts: ["ra.co", "residentadvisor.net"], subdomains: false },
+  { id: "ra", label: "Resident Advisor", hosts: ["ra.co", "www.ra.co", "residentadvisor.net", "www.residentadvisor.net", "de.ra.co", "ja.ra.co"], subdomains: false },
   { id: "eventim", label: "EVENTIM", hosts: ["eventim.com", "eventim.us", "eventim.de", "eventim.co.uk"], subdomains: true },
   { id: "see_tickets", label: "See Tickets", hosts: ["seetickets.com", "seetickets.us"], subdomains: true },
   { id: "shotgun", label: "Shotgun", hosts: ["shotgun.live"], subdomains: true },
@@ -21,7 +21,7 @@ export interface ManualFallback {
 }
 
 export function providerForUrl(url: URL) {
-  const host = url.hostname.toLowerCase().replace(/\.$/, "").replace(/^www\./, "");
+  const host = url.hostname.toLowerCase().replace(/\.$/, "");
   return PROVIDERS.find((p) => p.hosts.some((root) => host === root || (p.subdomains && host.endsWith(`.${root}`))));
 }
 
