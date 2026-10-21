@@ -58,14 +58,14 @@ test('provider recognition uses exact roots and subdomain boundaries', () => {
     assert.equal(providerForUrl(new URL(`https://${host}/`))?.id, id);
     assert.equal(providerForUrl(new URL(`https://${host}.evil.example/`)), undefined);
   }
-  for (const host of ['evilra.co','ra.co.evil.com','de.ra.co','notaxs.com']) assert.equal(providerForUrl(new URL(`https://${host}/`)), undefined);
+  for (const host of ['evilra.co','ra.co.evil.com','unverified.ra.co','www.de.ra.co','de.ra.co.evil.com','ja.ra.co.evil.com','notaxs.com']) assert.equal(providerForUrl(new URL(`https://${host}/`)), undefined);
 });
 test('RA numeric event paths are recognised, non-events are not', () => {
   for (const path of ['/events/2200000','/events/2200000/?ref=x']) assert.ok(isRestrictedEvent(new URL(`https://ra.co${path}`)));
   for (const path of ['/','/events/us/newyork','/dj/example','/events/2200000/extra','/events/not-an-id']) assert.equal(isRestrictedEvent(new URL(`https://ra.co${path}`)), false);
 });
-test('RA event requests return manual fallback without any fetch, including legacy host', async () => {
-  for (const host of ['ra.co','www.ra.co','residentadvisor.net','www.residentadvisor.net','ra.co.']) {
+test('RA event requests return manual fallback without any fetch, including legacy and verified locale hosts', async () => {
+  for (const host of ['ra.co','www.ra.co','residentadvisor.net','www.residentadvisor.net','ra.co.','de.ra.co','ja.ra.co','DE.RA.CO','ja.ra.co.']) {
     const res = await POST(request({url:`https://${host}/events/2200000?private=secret#fragment`}));
     assert.equal(res.status,422);
     const body=await res.json();
@@ -78,13 +78,28 @@ test('RA event requests return manual fallback without any fetch, including lega
 });
 test('preview keeps demo-only outcome for RA and performs no fetch', async () => {
   process.env.TICKETSTUB_RUNTIME_MODE='demo';
-  const res=await POST(request({url:'https://ra.co/events/2200000'}));
-  assert.equal((await res.json()).error.code,'demo_only'); assert.equal(calls,0);
+  for (const host of ['ra.co','de.ra.co','ja.ra.co']) {
+    const res=await POST(request({url:`https://${host}/events/2200000`}));
+    assert.equal((await res.json()).error.code,'demo_only');
+  }
+  assert.equal(calls,0);
 });
-test('RA listing, profile and private API paths are rejected without fetching',async()=>{
-  for (const path of ['/','/events/us/newyork','/dj/example','/api/events','/graphql']) {
-    const res=await POST(request({url:`https://ra.co${path}`}));
-    assert.equal((await res.json()).error.code,'unsupported_url');
+test('RA listing, profile and private API paths are rejected without fetching on every verified host',async()=>{
+  for (const host of ['ra.co','www.residentadvisor.net','de.ra.co','ja.ra.co']) {
+    for (const path of ['/','/events/us/newyork','/dj/example','/club/1','/promoters/1','/api/events','/graphql']) {
+      const res=await POST(request({url:`https://${host}${path}`}));
+      assert.equal((await res.json()).error.code,'unsupported_url',`${host}${path}`);
+    }
+  }
+  assert.equal(calls,0);
+});
+test('verified locale fallbacks preserve the event destination but drop tracking parameters',async()=>{
+  for (const host of ['de.ra.co','ja.ra.co']) {
+    const body=await (await POST(request({url:`https://${host}/events/2200000?private=secret#track`}))).json();
+    const fallback=readManualFallback(body.fallback);
+    assert.equal(fallback.url,`https://${host}/events/2200000`);
+    assert.equal(fallback.provider,'ra');
+    assert.equal(fallback.title,'');
   }
   assert.equal(calls,0);
 });
