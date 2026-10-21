@@ -162,7 +162,7 @@ export function agentStep(fields: { step: "plan" | "result" | "followup" | "fail
 }
 
 export type SourceName = "event_page" | "ticketmaster" | "weather_geocode" | "weather_forecast";
-export type SourceOutcome = "ok" | "http_error" | "timeout" | "network_error" | "no_match" | "no_data" | "pending" | "skipped" | "rate_limited" | "auth_failed" | "not_found" | "bad_response";
+export type SourceOutcome = "ok" | "http_error" | "timeout" | "network_error" | "no_match" | "no_data" | "pending" | "skipped" | "rate_limited" | "auth_failed" | "not_found" | "bad_response" | "access_restricted";
 
 /** A started clock for a source fetch; call the result to record how it ended. No-op outside an operation. */
 export function sourceTimer(source: SourceName): (outcome: SourceOutcome, upstreamStatus?: number) => void {

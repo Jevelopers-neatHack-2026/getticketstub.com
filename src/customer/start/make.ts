@@ -64,7 +64,8 @@ export function keepStub(event: EventData, id: string): string {
 }
 
 /** Where a print's input came from, in the analytics catalog's words. */
-export function inputSource(input: PrintInput, picked = false): "link" | "query" | "demo" | "picked" {
+export function inputSource(input: PrintInput, picked = false): "link" | "query" | "demo" | "picked" | "manual" {
+  if (input.event?.facts.some((f) => f.provenance === "customer")) return "manual";
   if (input.event) return picked ? "picked" : "demo";
   return input.url ? "link" : "query";
 }

@@ -46,6 +46,11 @@ export const FAQ_GROUPS: FaqGroup[] = [
         ),
       },
       {
+        id: "blocked-event-links",
+        q: "What if a ticket site blocks the link?",
+        a: <><p>Some ticket sites block automated reads. When we detect that, you can enter the event name and date, with an optional venue and city, and still make your stub. Those details are marked “Entered by you”. Weather is looked up separately when a city is supplied and live research is available.</p><p>You can also open the event in your own browser to check the details. The site may show a verification step there too.</p></>,
+      },
+      {
         id: "where-facts-come-from",
         q: "Where do the facts come from?",
         a: (

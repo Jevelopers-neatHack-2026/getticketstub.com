@@ -21,7 +21,7 @@ const money = { kind: "money" } as const;
 export const MONEY_MAX = 100_000;
 
 export const ENTRY = oneOf("home", "make", "new_page", "search");
-export const INPUT_SOURCE = oneOf("link", "query", "demo", "picked");
+export const INPUT_SOURCE = oneOf("link", "query", "demo", "picked", "manual");
 /** The bounded server/browser error catalog (feedback-messages); never an error message. */
 export const ERROR_CODE = oneOf(...MESSAGE_CODES);
 /** Where a result came from. `live` is a real provider; commerce is always `sandbox`. */

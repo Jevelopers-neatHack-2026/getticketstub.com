@@ -9,6 +9,8 @@ import { DEMO_EVENTS, demoStubId } from "@/customer/studio/fixtures";
 import { Printing } from "@/customer/studio/research/Printing";
 import { existingStub, inputSource, isDemoKey, keepStubResult } from "@/customer/start/make";
 import { errorCode, flow } from "@/customer/flows/events";
+import { ManualEvent } from "@/customer/start/ManualEvent";
+import { readManualFallback, type ManualFallback } from "@/customer/studio/research/access";
 import styles from "./new.module.css";
 
 /** Search results hand their event over through sessionStorage so we don't research it twice. */
@@ -41,6 +43,8 @@ export function NewStub() {
   const demo = isDemoKey(demoParam) ? demoParam : undefined;
   const pick = params.get("pick") === "1";
   const [error, setError] = useState<string | null>(null);
+  const [manual, setManual] = useState<ManualFallback | undefined>();
+  const [manualEvent, setManualEvent] = useState<EventData | undefined>();
   const client = useIsClient();
   const ready = !pick || client;
   const picked = useMemo(() => {
@@ -54,12 +58,13 @@ export function NewStub() {
   const stubId = demo ? demoStubId(demo) : freshId;
 
   const input = useMemo(() => {
+    if (manualEvent) return { event: manualEvent };
     const event = demo ? structuredClone(DEMO_EVENTS[demo]) : picked;
     if (event) return { event };
     if (url) return { url };
     if (q) return { query: q };
     return null;
-  }, [demo, picked, url, q]);
+  }, [manualEvent, demo, picked, url, q]);
 
   // Opening a demo twice reopens the stub that is already on the wall.
   const already = useMemo(() => (client && demo ? existingStub(undefined, demoStubId(demo)) : undefined), [client, demo]);
@@ -79,6 +84,12 @@ export function NewStub() {
   useEffect(() => {
     if (ready && !input) router.replace("/make");
   }, [ready, input, router]);
+
+  if (manual) return (
+    <main className={`desk-surface ${styles.stage} ${styles.errorPage}`}>
+      <ManualEvent fallback={manual} onDone={(event) => { setManualEvent(event); setManual(undefined); setError(null); }} onCancel={() => router.push("/make")} />
+    </main>
+  );
 
   if (error) {
     return (
@@ -125,6 +136,8 @@ export function NewStub() {
         }}
         onError={(message, err) => {
           flow("creation_error", { entry: "new_page", input_source: inputSource(input, !!picked), error_code: errorCode(err) });
+          const fallback = readManualFallback((err as { fallback?: unknown } | null)?.fallback);
+          if (fallback) { setManual(fallback); return; }
           setError(message || "Try a different link, or search for the show instead.");
         }}
       />

@@ -59,6 +59,7 @@ export const MESSAGES = {
   payments_off: { message: "Payments aren't switched on here yet. Nothing was charged.", action: WALL },
   bad_signature: { message: "We couldn't verify that request, so it was ignored. Nothing was changed.", action: RETRY, retryable: true },
   unreadable_link: { message: "We couldn't read that link. Paste the event page address, or search for the event by name.", action: RETRY, retryable: true },
+  access_restricted: { message: "This site blocks automated reads. Enter the event details to make your stub." },
   unsupported_url: { message: "That link can't be read. Paste the full address of a public event webpage, with no username or password.", action: RETRY, retryable: true },
   unsupported_input: { message: "Uploads and extra sources aren't supported yet. Paste one event page link instead.", action: RETRY, retryable: true },
   demo_only: { message: "This preview only knows its demo events. Try neatHack, The Pale Hours or Harbour FC.", action: RETRY, retryable: true },

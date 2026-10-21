@@ -5,7 +5,7 @@ import type { ProviderMetadata } from "@/server/ai/providers";
 
 /** How a value was obtained. Every claim the demo shows carries one (acceptance item EVAL-03). */
 export type BillingMode = "live" | "sandbox" | "simulated";
-export type Provenance = "live" | "sandbox" | "simulated" | "estimated" | "pending";
+export type Provenance = "live" | "sandbox" | "simulated" | "estimated" | "pending" | "customer";
 
 export type EventType = "concert" | "game" | "show" | "generic";
 

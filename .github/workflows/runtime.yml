@@ -28,6 +28,8 @@ jobs:
           env -i PATH="$PATH" HOME="$HOME" TMPDIR="$RUNNER_TEMP" npm run verify:creative-host
       - run: npm run typecheck
       - run: npm run build
+      - name: Verify blocked-link manual entry on phone and desktop (Chrome, offline)
+        run: node scripts/check-manual-entry.mjs --evidence-dir /tmp/ticketstub-product-evidence/manual-entry
       - name: Verify landing motion, fallback, responsive navigation and social metadata (Chrome, offline)
         run: node scripts/check-landing.mjs --evidence-dir /tmp/ticketstub-product-evidence/landing
       - name: Verify analytics consent and page-view ordering in Chrome (offline, synthetic ID)

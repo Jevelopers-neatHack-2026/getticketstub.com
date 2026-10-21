@@ -18,6 +18,7 @@ import { GROUP_TITLE, whenLabel } from "../facts/FactsReview";
 import { clock, errorCode, flow, since } from "@/customer/flows/events";
 import styles from "./Printing.module.css";
 import { useReducedMotion } from "@/customer/landing/MotionContext";
+import { inputSource } from "@/customer/start/make";
 
 const MIN_MS = 2500;
 const STAGGER_MS = 450;
@@ -105,7 +106,7 @@ export function Printing(props: {
 }) {
   const { input } = props;
   const entry = props.entry ?? "new_page";
-  const source = input.event ? (props.picked ? "picked" : "demo") : input.url ? "link" : "query";
+  const source = inputSource(input, props.picked);
   const reduced = useReducedMotion();
   const [event, setEvent] = useState<EventData | undefined>(() => input.event ? normalizeEventFacts(input.event) : undefined);
   const [staggered, setShown] = useState(0);

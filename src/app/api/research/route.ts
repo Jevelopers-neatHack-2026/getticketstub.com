@@ -9,6 +9,8 @@ import { lookupTicketmaster, parseTicketmasterUrl, type TicketmasterUrl, type Tm
 import { buildEventIntelligencePackage } from "@/customer/studio/research/ticketmasterPackage";
 import { BlockedDestinationError, fetchPublic, INTAKE_LIMITS, parseIntakeUrl, readCapped, UNSUPPORTED_FIELDS, type IntakeRejection } from "@/server/intake-url";
 import { annotate, fetchFailure, observeRoute, providerObserver, recordParse, sourceTimer, type SourceName, type SourceOutcome } from "@/server/observability/measure";
+import { AccessRestrictedError, isAccessChallenge, isRestrictedEvent, manualFallback, providerForUrl, providerLabel } from "@/customer/studio/research/access";
+import { eventFromManual, readManualDetails } from "@/customer/studio/research/manual";
 
 // Research an event from a link. Real page fetch + schema.org parse + Open-Meteo weather.
 // Every fact carries source + provenance: "live" only for values fetched in this request,
@@ -86,23 +88,35 @@ async function fetchPage(url: string): Promise<string> {
       if (attempt === 0 && outcome === "network_error") continue;
       throw error;
     }
-    if (!res.ok) {
-      done("http_error", res.status);
-      // Release the unused body so the discarded connection is not left open.
+    if (isAccessChallenge(res.status, res.headers)) {
+      done("access_restricted", res.status);
       await res.body?.cancel().catch(() => {});
-      if (attempt === 0 && res.status >= 500) continue;
+      throw new AccessRestrictedError();
+    }
+    if (res.status >= 500) {
+      done("http_error", res.status);
+      await res.body?.cancel().catch(() => {});
+      if (attempt === 0) continue;
       throw new Error(`HTTP ${res.status}`);
     }
+    let text: string;
     try {
-      const text = await readCapped(res, INTAKE_LIMITS.pageBytes);
-      done("ok", res.status);
-      return text;
+      text = await readCapped(res, INTAKE_LIMITS.pageBytes);
     } catch (error) {
-      const outcome = fetchFailure(error);
-      done(outcome);
-      if (attempt === 0 && outcome === "network_error") continue;
+      done(fetchFailure(error));
+      if (attempt === 0 && fetchFailure(error) === "network_error") continue;
       throw error;
     }
+    if (isAccessChallenge(res.status, res.headers, text)) {
+      done("access_restricted", res.status);
+      throw new AccessRestrictedError();
+    }
+    if (!res.ok) {
+      done("http_error", res.status);
+      throw new Error(`HTTP ${res.status}`);
+    }
+    done("ok", res.status);
+    return text;
   }
   throw new Error("Event page request did not complete.");
 }
@@ -439,6 +453,13 @@ async function readError(req: Request, status = 422) {
   return errorJson(status, "unreadable_link", READ_ERROR);
 }
 
+async function restricted(req: Request, url: URL) {
+  const fallback = manualFallback(url);
+  annotate({ code: "access_restricted", provider: fallback.provider, fallback: "manual" });
+  await recordEvent(req, "intake_rejected", { code: "access_restricted", provider: fallback.provider });
+  return errorJson(422, "access_restricted", `${providerLabel(fallback.provider)} doesn't let us read this page automatically. Enter the event details to make your stub.`, { fallback });
+}
+
 /** A provider failure in the one error envelope; the code and fixed message come from providerFailure. */
 const providerEnvelope = (failure: NonNullable<ReturnType<typeof providerFailure>>) => {
   annotate({ code: failure.body.code, dependency: "provider" });
@@ -496,6 +517,22 @@ export const POST = route(observeRoute("research", async (req: Request) => {
   // Every provided field is validated before any branch is chosen, so a second field can't hide behind the first.
   if (typeof body.query === "string" && body.query.length > INTAKE_LIMITS.queryChars) return intakeRefusal(req, 422, "too_large", "That search is too long. Try the event name.");
 
+  if (body.manual !== undefined) {
+    const details = readManualDetails(body.manual);
+    if (!details || body.query !== undefined) return intakeRefusal(req, 400, "bad_request", "Enter an event name and a valid date, with an optional venue and city.");
+    const checked = body.url === undefined ? undefined : parseIntakeUrl(body.url as string);
+    if (checked && !checked.ok) return intakeRefusal(req, 422, "unsupported_url", "Use a public event page link.");
+    const event = eventFromManual(details, checked?.ok ? manualFallback(checked.url).url : undefined);
+    annotate({ operation: "research_manual", dependency: "manual", facts: event.facts.length });
+    await recordEvent(req, "intake_submitted", { source: "manual" });
+    if (details.city && process.env.TICKETSTUB_RUNTIME_MODE === "live") {
+      const weather = await weatherFact(details.city, details.dateISO, 1).catch(() => undefined);
+      if (weather) event.facts.push(weather);
+    }
+    if (!event.facts.some((f) => f.id === "weather")) event.facts.push({ id: "weather", label: "Weather: pending", value: details.city ? "Weather lookup unavailable" : "Needs a city", source: "Open-Meteo", confidence: 0.2, provenance: "pending" });
+    return NextResponse.json(event);
+  }
+
   if (typeof body.query === "string" && !body.url) {
     await recordEvent(req, "intake_submitted", { source: "search" });
     const results = searchFixtures(body.query);
@@ -526,6 +563,8 @@ export const POST = route(observeRoute("research", async (req: Request) => {
   // Demo preview (the default) never calls Ticketmaster or fetches pages; only live mode does.
   await recordEvent(req, "intake_submitted", { source: "link" });
   const live = process.env.TICKETSTUB_RUNTIME_MODE === "live";
+  if (url && live && isRestrictedEvent(url)) return restricted(req, url);
+  if (url && live && providerForUrl(url)?.id === "ra") return intakeRefusal(req, 422, "unsupported_url", "Use a Resident Advisor event link, not a listing or profile page.");
   const tmLink = url && live ? parseTicketmasterUrl(url) : undefined;
   let tmMeta: TicketmasterMeta | undefined;
   if (tmLink) {
@@ -619,6 +658,7 @@ export const POST = route(observeRoute("research", async (req: Request) => {
     annotate({ facts: event.facts.length });
     return NextResponse.json(withTm(event));
   } catch (error) {
+    if (error instanceof AccessRestrictedError) return restricted(req, url);
     const failure = providerFailure(error);
     if (failure) return providerEnvelope(failure);
     // A redirect or resolved address that left the public web is refused, not papered over with a slug guess.
