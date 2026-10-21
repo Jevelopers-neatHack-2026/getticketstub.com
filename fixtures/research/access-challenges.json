@@ -1,0 +1,11 @@
+{
+  "provenance": "Synthetic offline fixtures authored 2026-10-21 from publicly documented challenge markers and issue #144/#155 observations; not captured production responses.",
+  "cases": [
+    { "name": "Cloudflare 403", "status": 403, "headers": { "cf-mitigated": "challenge" }, "body": "<title>Just a moment...</title>" },
+    { "name": "DataDome 403", "status": 403, "headers": { "x-datadome": "protected" }, "body": "<title>Verification Required</title>" },
+    { "name": "Akamai 403", "status": 403, "headers": {}, "body": "<title>Access Denied</title><p>Unusual traffic. Reference #18.</p>" },
+    { "name": "AWS WAF 202", "status": 202, "headers": { "x-amzn-waf-action": "challenge" }, "body": "<title>Human verification</title>" },
+    { "name": "Vercel 429", "status": 429, "headers": {}, "body": "<title>Vercel Security Checkpoint</title>" },
+    { "name": "challenge served as 200", "status": 200, "headers": {}, "body": "<title>Just a moment...</title><script src=\"https://challenges.cloudflare.com/turnstile/v0/api.js\"></script>" }
+  ]
+}

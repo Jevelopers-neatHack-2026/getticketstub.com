@@ -13,7 +13,7 @@ export const AGENT_SCHEMA = "ticketstub.agent-action/1";
 
 export const FINISHES: readonly Finish[] = ["matte", "foil", "holo"];
 const MATERIAL_IDS: readonly Material[] = MATERIALS.map((m) => m.id);
-const PROVENANCES: readonly Provenance[] = ["live", "sandbox", "simulated", "estimated", "pending"];
+const PROVENANCES: readonly Provenance[] = ["live", "sandbox", "simulated", "estimated", "pending", "customer"];
 
 export const LIMITS = {
   message: 400,

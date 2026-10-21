@@ -46,7 +46,7 @@ export const GROUP_TITLE: Record<FactGroup, string> = {
   missing: "Missing",
 };
 const GROUP_NOTE: Record<FactGroup, string> = {
-  source: "Read from a page or service we can name. Check the mark for whether it was live or a sample.",
+  source: "Check each source mark: details may come from a page, a service, a sample, or your own entry.",
   corrected: "You changed these. The original stays on record.",
   unsure: "Low confidence, or the sources disagree.",
   missing: "We couldn't find these. They stay unknown until you add them.",

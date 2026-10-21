@@ -1,0 +1,40 @@
+# Blocked event pages and manual entry
+
+Application scope: getticketstub.com #144. Reviewed 2026-10-21. This is the customer application's support matrix and producer handoff for event-intelligence #7/#9, not a claim that those service contracts have shipped. The service's `ACCESS_RESTRICTED` outcome maps to the application's `access_restricted` error code.
+
+## Runtime behavior
+
+`src/customer/studio/research/access.ts` owns exact provider roots, boundary-aware subdomain matching, the manual fallback descriptor and challenge markers. The registry currently covers AXS, SeatGeek, StubHub, Resident Advisor, EVENTIM, See Tickets, Shotgun, Etix, Tixr and Skiddle. It is for recognition and copy; it does not grant access.
+
+- In live mode, numeric event links on `ra.co`, `www.ra.co`, `residentadvisor.net` and `www.residentadvisor.net` return a manual fallback without a page request. Other paths on these RA hosts are refused as non-event input. Unverified RA country subdomains are not recognised as RA.
+- Other public URLs retain the existing validated, address-pinned fetch path. A response with a known Cloudflare, DataDome, Akamai, AWS WAF or Vercel challenge marker is refused before event extraction, with no retry or alternative transport. Ordinary timeouts and non-challenge errors retain their existing outcomes. A challenge served with HTTP 200 or 202 cannot become a title-only stub.
+- A recognised provider is named in the fallback. Unknown blocked hosts use generic copy. Any prefilled event title is only a suggestion derived from an AXS or StubHub URL slug; customers confirm it. RA numeric IDs carry no title suggestion.
+- Both the shared landing/`/make` desk and `/new?url=...` render the same form. Event name and a real calendar date are required; venue and city are optional. Limits are 200 characters for name/venue, 100 for city and 8 KiB for the request. Validation runs on both client and server. Credentialed, private or non-HTTP(S) source links still fail the existing intake boundary.
+- Submitted facts use `customer` provenance, displayed as **Entered by you**, never `live`. Weather uses the entered city/date and existing Open-Meteo configuration and supported date window. Missing/disabled/failed weather remains pending. No event-page fetch or LLM call occurs when submitting manual details.
+- **Open event in your browser** is an optional user-initiated link, not a promise of access. It carries neither referrer access through `window.opener` nor automatic navigation. It may show a challenge in the user's browser too. Query strings and fragments are removed from fallback links and stored manual source references.
+- Preview/demo research remains `demo_only` for non-fixture links. A manually submitted event can be built without upstream calls in preview mode; no preview result claims live enrichment.
+- Operational telemetry records only the fixed provider ID, `access_restricted`, the manual fallback and counters. It excludes event URLs, page bodies, entered details, query strings and challenge tokens.
+
+## Access assessment and implementation decision
+
+These are bounded technical assessments from official sources checked on 2026-10-21, not legal clearance or confirmation of an account's entitlements. **Decision for this change: fallback only for every provider below; no new API, credential, partnership or contract is activated.** A future adapter needs owner authorization, current provider terms and verified arbitrary-event coverage. Existing provider issues retain that work.
+
+| Provider / tracked issue | Official evidence | Arbitrary public event lookup and decision |
+| --- | --- | --- |
+| AXS #153 | [Terms URL](https://www.axs.com/terms-of-use) was inaccessible to the research reader; [official purchase agreement](https://www.axs.com/about-purchase-agreement_US_v6.html) discusses automated-software restrictions. | Public arbitrary-event API entitlement not established. Fallback only; no inference of permission from a readable page. |
+| SeatGeek #182 | [Platform documentation](https://seatgeek.github.io/) describes event-by-ID lookup; [API terms](https://seatgeek.com/api-terms) require authorized API use. | Documented API capability exists; current client authorization and keepsake use are unverified. Fallback only; evaluate adapter in #182. |
+| StubHub #183/#184 | [Official Catalog API](https://developer.stubhub.com/api-reference/catalog/) documents event lookup and OAuth2; [authentication](https://developer.stubhub.com/docs/authentication/) distinguishes application and user access. | Documented lookup exists; credentials, territory/platform mapping and content rights are unverified. Fallback only; adapters remain in provider issues. |
+| Resident Advisor #155 | [Website terms](https://ra.co/terms), section 3.2(f), require prior written authorization for automated access. No official public arbitrary-event API was established. | Fallback only, with no fetch for recognised numeric event links. Owner may separately request official access; private API/GraphQL is excluded. |
+| EVENTIM / See Tickets #178 | [EVENTIM](https://www.eventim.com/) currently links See Tickets migration information; [See Tickets ticketing](https://group.seetickets.com/ticketing/) describes integrations, not an open arbitrary-event contract. | Public lookup permission and coverage unverified. Fallback only; migration aliases and API access remain in #178. |
+| Shotgun #159 | [Official integrations help](https://support-pro.shotgun.live/hc/en-us/sections/28745449411218-APIs) documents organizer IDs/tokens for authorized organizer data. | Organizer access is not evidence of arbitrary-event access. Fallback only; no organizer token requested. |
+| Etix #164 | [API Partner Terms](https://www.etix.com/ticket/online3/apiPartnerTerms.jsp) require an API Partner Agreement; [integration page](https://hello.etix.com/clients/integrations-partnerships) describes partner access. | Entitlement and arbitrary-event coverage unverified. Fallback only; no agreement accepted. |
+| Tixr #154 | [Official integrations](https://creators.tixr.com/products/integrations) and [terms](https://www.tixr.com/termsofservice) establish the platform; partner-scoped data is not public arbitrary-event authorization. | Public lookup permission and coverage unverified. Fallback only. |
+| Skiddle #145 | [Official API portal](https://www.skiddle.com/api/) is the existing separate commercial-access workstream. | Keep #145's authorization gate; this change only handles blocked HTML. |
+
+Historical block observations are retained in #144 (2026-10-14) and the [attributed RA report](https://github.com/Jevelopers-neatHack-2026/getticketstub.com/issues/155#issuecomment-6308518867) (test time 2026-10-20). Browser automation in that report covered the RA homepage only. A normal user browser's success remains unverified. This work does not depend on or call Herald.
+
+## Verification and closure evidence
+
+The fixtures in `fixtures/research/access-challenges.json` are **synthetic**, authored 2026-10-21 from the reported/documented markers, not captured provider pages. `tests/research-access.test.mjs` exercises the real route with offline transport: provider roots/lookalikes, RA no-fetch behavior, challenge refusal before parsing, retry suppression, unknown-provider copy, manual input and URL boundaries, safe telemetry, and weather isolation.
+
+Run the pinned Node 22.23.3 toolchain: `npm run lint`, `npm run typecheck`, `npm test`, `npm run build`. The browser check `node scripts/check-manual-entry.mjs` uses the production build and locally intercepted API fixtures at phone and desktop sizes; it does not contact providers. Record these results with the PR and final revision. Hosted Preview/production and paid providers are separate acceptance surfaces and are not claimed by local or CI checks.

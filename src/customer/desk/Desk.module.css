@@ -544,6 +544,11 @@
 .mark[data-p="pending"] {
   border: 1.2px dashed currentColor;
 }
+.mark[data-p="customer"] {
+  border-radius: 1px;
+  background: linear-gradient(135deg, transparent 40%, currentColor 40% 60%, transparent 60%);
+  box-shadow: inset 0 0 0 1px currentColor;
+}
 .mark[data-p="sandbox"] {
   border-radius: 1px;
   box-shadow: inset 0 0 0 1.4px currentColor;

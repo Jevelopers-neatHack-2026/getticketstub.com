@@ -26,6 +26,8 @@ import {
 import { errorCode, flow } from "@/customer/flows/events";
 import { useIdleSway } from "./useIdleSway";
 import { useReducedMotion } from "@/customer/landing/MotionContext";
+import { ManualEvent } from "./ManualEvent";
+import { readManualFallback, type ManualFallback } from "@/customer/studio/research/access";
 import s from "./StudioStart.module.css";
 
 type Phase = "idle" | "feeding" | "printing" | "leaving";
@@ -59,6 +61,7 @@ export function StudioStart({ fill = false }: { fill?: boolean } = {}) {
   const [message, setMessage] = useState<string | null>(null);
   const [phase, setPhase] = useState<Phase>("idle");
   const [job, setJob] = useState<Job | null>(null);
+  const [manual, setManual] = useState<ManualFallback | undefined>();
 
   useIdleSway(showcase);
 
@@ -92,6 +95,7 @@ export function StudioStart({ fill = false }: { fill?: boolean } = {}) {
   };
 
   const begin = (next: Job) => {
+    setManual(undefined);
     setMessage(null);
     setJob(next);
     setPhase("feeding");
@@ -169,10 +173,14 @@ export function StudioStart({ fill = false }: { fill?: boolean } = {}) {
         fill && s.fill,
         inPress && s.press,
       )}
-      aria-labelledby={titleId}
+      aria-labelledby={manual ? undefined : titleId}
     >
       <div className={s.frame}>
-        {printing ? (
+        {manual ? (
+          <ManualEvent fallback={manual}
+            onDone={(event) => begin({ input: { event }, stubId: freshId() })}
+            onCancel={() => { setManual(undefined); requestAnimationFrame(() => inputRef.current?.focus()); }} />
+        ) : printing ? (
           job && (
             <div
               className={cx(s.printing, phase === "leaving" && s.printingOut)}
@@ -190,6 +198,8 @@ export function StudioStart({ fill = false }: { fill?: boolean } = {}) {
                   flow("creation_error", { entry, input_source: inputSource(job.input), error_code: errorCode(err) });
                   setPhase("idle");
                   setJob(null);
+                  const fallback = readManualFallback((err as { fallback?: unknown } | null)?.fallback);
+                  if (fallback) { setManual(fallback); setMessage(null); return; }
                   setMessage(
                     msg || "Try a different link, or search for your show.",
                   );

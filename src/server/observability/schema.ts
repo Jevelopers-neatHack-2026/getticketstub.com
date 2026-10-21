@@ -21,12 +21,13 @@ export const OPS_SPEC = {
   /** One per product operation (an API request), emitted when the handler returns or throws. */
   api_request: {
     route: ["research", "art", "agent"],
-    operation: ["research_link", "research_search", "art_generate", "agent_reply", "agent_plan", "agent_followup", "unknown"],
+    operation: ["research_link", "research_search", "research_manual", "art_generate", "agent_reply", "agent_plan", "agent_followup", "unknown"],
     status: "status",
     outcome: OUTCOMES,
     durationMs: "ms",
-    dependency: ["none", "demo", "fixture", "page", "ticketmaster", "provider", "procedural"],
-    fallback: ["none", "simulated", "procedural", "slug", "rules", "no_enrichment"],
+    dependency: ["none", "demo", "fixture", "page", "ticketmaster", "provider", "procedural", "manual"],
+    fallback: ["none", "simulated", "procedural", "slug", "rules", "no_enrichment", "manual"],
+    provider: ["axs", "seatgeek", "stubhub", "ra", "eventim", "see_tickets", "shotgun", "etix", "tixr", "skiddle", "unknown"],
     code: "code",
     aborted: "flag",
     attempts: "count",
@@ -59,7 +60,7 @@ export const OPS_SPEC = {
   /** One per source API / page fetch (these are data sources, not AI provider usage). */
   source_fetch: {
     source: ["event_page", "ticketmaster", "weather_geocode", "weather_forecast"],
-    outcome: ["ok", "http_error", "timeout", "network_error", "no_match", "no_data", "pending", "skipped", "rate_limited", "auth_failed", "not_found", "bad_response"],
+    outcome: ["ok", "http_error", "timeout", "network_error", "no_match", "no_data", "pending", "skipped", "rate_limited", "auth_failed", "not_found", "bad_response", "access_restricted"],
     upstreamStatus: "status",
     durationMs: "ms",
   },

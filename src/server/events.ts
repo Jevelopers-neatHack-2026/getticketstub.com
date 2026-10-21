@@ -20,8 +20,8 @@ type Kind = "ref" | "code" | "count" | "ts" | "flag" | readonly string[];
 
 /** The taxonomy: every event type and the fields it may carry. */
 export const EVENT_SPEC = {
-  intake_submitted: { source: ["link", "search"] },
-  intake_rejected: { code: "code" },
+  intake_submitted: { source: ["link", "search", "manual"] },
+  intake_rejected: { code: "code", provider: ["axs", "seatgeek", "stubhub", "ra", "eventim", "see_tickets", "shotgun", "etix", "tixr", "skiddle", "unknown"] },
   research_started: { source: ["fixture", "link", "ticketmaster"], facts: "count" },
   fact_corrected: { fact: "ref", versions: "count" },
   art_requested: { first: "flag" },

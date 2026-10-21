@@ -357,6 +357,7 @@ const MARK_WORDS: Record<MarkKind, string> = {
   sandbox: "Sandbox",
   simulated: "Simulated",
   estimated: "Estimate",
+  customer: "Entered by you",
   pending: "Not known yet",
 };
 

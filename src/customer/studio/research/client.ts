@@ -6,6 +6,8 @@ import { normalizeEventFacts } from "../facts/identity";
 import { codeOf, messageFor } from "@/customer/feedback-messages/messages";
 import { track, type EventParams } from "@/customer/analytics/track";
 import { AGENT_SCHEMA, parsePlan, type AgentRequest, type AgentResponse } from "../agent/protocol";
+import { readManualFallback, providerLabel } from "./access";
+import type { ManualDetails } from "./manual";
 
 const READ_ERROR = "We couldn't read that link.";
 
@@ -40,6 +42,7 @@ function errorClass(code: string | undefined, status: number): NonNullable<ApiCa
     case "unsupported_url":
     case "unreadable_link":
     case "demo_only":
+    case "access_restricted":
       return "unsupported_url";
     case "bad_origin":
     case "unauthorized":
@@ -82,6 +85,11 @@ export function failureCopy(e: unknown, fallback: string): string {
 /** An Error whose message is the catalog copy for the server's code, and which carries that code for useProgress. */
 function apiError(data: unknown, fallback: string): Error {
   const code = codeOf(data);
+  if (code === "access_restricted") {
+    const manual = readManualFallback((data as { fallback?: unknown })?.fallback);
+    const message = manual ? `${providerLabel(manual.provider)} doesn't let us read this page automatically. Enter the details to make your stub.` : messageFor(code).message;
+    return Object.assign(new Error(message), { code, fallback: manual });
+  }
   if (code === "unknown") {
     // Older bodies carried a bare string; show it only when it is plain copy, never a code or a stack.
     const legacy = (data as { error?: unknown } | null)?.error;
@@ -152,6 +160,10 @@ export async function researchEvent(input: { url?: string; query?: string }): Pr
     return results[0];
   }
   throw new Error("Paste a link or search for your show.");
+}
+
+export async function createManualEvent(details: ManualDetails, url: string): Promise<EventData> {
+  return pickEvent(await postJson<EventData>("research", "/api/research", { manual: details, url }, "We couldn't save those event details. Try again."));
 }
 
 /** Search fallback. Results are demo events, labelled simulated. */
