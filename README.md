@@ -217,4 +217,4 @@ Follow the organisation [contribution guidance](https://github.com/Jevelopers-ne
 
 ## License
 
-No license file is declared in this repository.
+Code and documentation are released under the [MIT License](LICENSE).
