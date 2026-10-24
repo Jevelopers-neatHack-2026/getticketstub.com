@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import type { EventData } from "@/customer/studio/types";
 
-// Optional free-text agent replies. Only answers when ANTHROPIC_API_KEY is configured;
-// otherwise 204 and the client uses its rule-based, clearly labelled simulated agent.
+// Optional free-text replies require live runtime mode and ANTHROPIC_API_KEY.
+// Preview mode, a missing key, or model failure returns 204 so the client uses simulated replies.
 
 export async function POST(req: Request) {
   if (process.env.TICKETSTUB_RUNTIME_MODE !== "live") return new NextResponse(null, { status: 204 });

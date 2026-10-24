@@ -1,8 +1,9 @@
 // Studio domain types. Field names follow the shared-contracts catalog where one exists
 // (EventIntelligencePackage facts, DesignVersion, FulfillmentQuote); studio-only fields are marked.
 
-/** How a value was obtained. Every claim the demo shows carries one (acceptance item EVAL-03). */
+/** Whether billing is live, sandboxed, or simulated. */
 export type BillingMode = "live" | "sandbox" | "simulated";
+/** How a value was obtained (acceptance item EVAL-03). */
 export type Provenance = "live" | "sandbox" | "simulated" | "estimated" | "pending";
 
 export type EventType = "concert" | "game" | "show" | "generic";
@@ -64,7 +65,9 @@ export interface ArtLayer {
   provenance: Provenance; // "live" only when a real image model produced it
 }
 
-/** DesignVersion: art changes only. Type, chips and material are personalization on the same version. */
+/** A version pairs an edition with art. Art remixes create versions; edition switches may reuse one.
+ * Typography, facts and material edits do not create versions.
+ */
 export interface DesignVersion {
   id: string;
   parentId?: string;

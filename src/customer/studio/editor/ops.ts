@@ -1,4 +1,5 @@
-// Pure stub edits used by the studio editor. Every function returns a new Stub; callers persist with upsertStub.
+// Immutable stub edits and editor helpers. Edits may return the original Stub for a no-op;
+// callers persist changes with upsertStub. New versions receive generated IDs and timestamps.
 import { EDITIONS, currentVersion } from "../types";
 import type { ArtLayer, DesignVersion, Edition, Finish, Material, Stub } from "../types";
 
@@ -97,7 +98,7 @@ export function cycleFont(stub: Stub): Stub {
   return { ...stub, personal: { ...stub.personal, titleFont: next } };
 }
 
-/** "" means the edition picks the colour from the art. */
+/** "" uses the edition's default title colour. */
 export const TITLE_SWATCHES: { value: string; label: string }[] = [
   { value: "", label: "From the art" },
   { value: "#17140F", label: "Ink" },

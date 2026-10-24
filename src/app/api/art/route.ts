@@ -2,8 +2,8 @@ import { NextResponse } from "next/server";
 import { buildArtPrompt } from "@/customer/studio/research/artPrompt";
 import type { ArtLayer, Edition, EventData } from "@/customer/studio/types";
 
-// Art layer generation. "live" only when a real image model returned pixels in this request;
-// otherwise a deterministic procedural layer (seed + vibe) marked "simulated".
+// Live mode can return generated pixels marked "live". Otherwise return simulated art:
+// the bundled image for an initial researched edition without a vibe, or procedural art.
 
 interface ArtRequest {
   event?: EventData;

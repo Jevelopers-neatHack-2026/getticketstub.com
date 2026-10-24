@@ -14,7 +14,7 @@ export function loadWall(): Stub[] {
   }
 }
 
-/** Drop inline image data from non-current versions: live art is a 200-400 KB data URL each. */
+/** Drop inline image data from non-current versions to reduce stored history size. */
 function slim(stub: Stub): Stub {
   return {
     ...stub,
@@ -28,7 +28,7 @@ export function saveWall(stubs: Stub[]): void {
   try {
     localStorage.setItem(KEY, JSON.stringify(stubs.map(slim)));
   } catch {
-    /* storage unavailable or full: the session still works in memory */
+    /* storage unavailable or full: nothing is persisted; callers retain their own state */
   }
 }
 
@@ -47,7 +47,7 @@ export function removeStub(id: string): void {
 
 /** Compact, URL-safe encoding of a stub for share links (photos dropped to keep URLs short). */
 export function encodeStub(stub: Stub): string {
-  // Share links can't carry inline images: data-URL art falls back to its procedural seed.
+  // Omit data-URL art to limit link size; recipients render its procedural seed instead.
   const lean: Stub = {
     ...stub,
     photos: [],

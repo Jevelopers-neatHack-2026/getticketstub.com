@@ -78,7 +78,7 @@ export interface CartItem {
   addedAt: string;
 }
 
-/** Unclaimed seats get a decision after 7 days (simulated): print seat-only, gift by name, or drop for a refund. */
+/** Manual sandbox choices for unclaimed seats; no seven-day timer or real refund is implemented. */
 export type SeatDecision = "seat-only" | "gift" | "drop";
 export interface CartSeat {
   name: string;
@@ -87,7 +87,7 @@ export interface CartSeat {
   decision?: SeatDecision;
 }
 
-/** Seats that are still paid for (dropped seats are refunded). */
+/** Count seats not marked "drop", with a minimum charge of one seat per cart item. */
 export function billableSeats(item: CartItem): number {
   return Math.max(1, item.seats.filter((x) => x.decision !== "drop").length);
 }

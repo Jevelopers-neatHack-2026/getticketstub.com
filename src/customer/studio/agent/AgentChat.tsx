@@ -1,6 +1,6 @@
 "use client";
 // Research agent side chat. Narrates facts with source + provenance, lets the person keep or fix them,
-// and remixes the art (a remix pushes a new DesignVersion). Rule-based unless the server has a model;
+// and remixes the art (a remix pushes a new DesignVersion). Free-text replies can use the live server model;
 // rule-based replies are labelled "simulated agent".
 
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";

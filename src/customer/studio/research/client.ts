@@ -53,7 +53,7 @@ export async function remixArt(stub: Stub, vibe?: string): Promise<ArtLayer> {
   );
 }
 
-/** Optional server agent reply. Returns undefined when no model is configured (caller falls back to rules). */
+/** Optional server reply. Preview mode, missing configuration or request failure falls back to rules. */
 export async function askAgent(stub: Stub, message: string): Promise<{ reply: string; provenance: "live" } | undefined> {
   try {
     const res = await fetch("/api/agent", {

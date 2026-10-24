@@ -2,9 +2,9 @@ import { NextResponse } from "next/server";
 import { HARBOUR_GAME, NEATHACK, PALE_HOURS } from "@/customer/studio/fixtures";
 import type { EventData, EventType, Fact } from "@/customer/studio/types";
 
-// Research an event from a link. Real page fetch + schema.org parse + Open-Meteo weather.
-// Every fact carries source + provenance: "live" only for values fetched in this request,
-// "simulated" for fixtures, "pending" for unknowns (EVAL-03 / AGT-01).
+// Preview mode serves demo fixtures; live mode also fetches event pages and Open-Meteo weather.
+// Facts carry source + provenance: fetched values are "live", unsupported model claims are
+// "estimated", and demo or unknown facts are "simulated" or "pending" (EVAL-03 / AGT-01).
 
 const UA = "TicketStubResearch/0.1 (+https://getticketstub.com; event research for personal keepsakes)";
 const READ_ERROR = "We couldn't read that link.";
@@ -209,7 +209,7 @@ function extract(html: string, url: string): Extracted | undefined {
     };
   }
 
-  // Title-only fallback
+  // Without event JSON-LD, use page metadata and look for a date in metadata or page text.
   const title = metaContent(html, "og:title") ?? titleTag(html);
   if (!title) return undefined;
   const desc = metaContent(html, "og:description") ?? metaContent(html, "description") ?? "";
@@ -293,7 +293,8 @@ ${text.slice(0, 6000)}`;
       .filter((i) => i.label && i.value)
       .slice(0, 4)
       .map((i, n) => {
-        // Only trust as "live" when the quoted evidence really appears on the fetched page.
+        // Mark "live" when the first 60 evidence characters match page text, ignoring case.
+        // This substring check does not verify that the evidence supports the claimed value.
         const grounded = !!i.evidence && lowerText.includes(i.evidence.toLowerCase().slice(0, 60));
         return {
           id: `${i.id && i.id !== "other" ? i.id : "note"}${event.facts.some((f) => f.id === i.id) ? `-${n}` : ""}`,
@@ -339,7 +340,7 @@ export async function POST(req: Request) {
     url = undefined;
   }
 
-  // Demo keywords / known demo URLs return the fixture with its provenance as set.
+  // Demo keywords / matching URLs return fixtures; preview mode relabels non-pending facts as simulated.
   const fixture = matchFixture(raw);
   if (fixture) {
     const e = clone(fixture);
