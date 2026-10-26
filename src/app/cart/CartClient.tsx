@@ -16,10 +16,10 @@ import { flow, major, variantId } from "@/customer/flows/events";
 import s from "./cart.module.css";
 
 function seatStatus(seat: CartSeat): string {
+  if (seat.decision === "drop") return "Dropped, not charged";
   if (seat.claimed) return "Claimed";
   if (seat.decision === "seat-only") return "Prints with the seat number only";
   if (seat.decision === "gift") return "Sent as a gift";
-  if (seat.decision === "drop") return "Dropped, refunded";
   return "Not claimed yet";
 }
 
@@ -79,25 +79,26 @@ export default function CartClient() {
     }
   }
 
-  // Every line goes back through the capability map before it can be paid: a line saved before the map, or under another
+  // Every retained line goes back through the capability map before it can be paid: a line saved before the map, or under another
   // version, has to be chosen again, and the gate holds back anything that can't be ordered in this mode.
   const mode = runtimeMode();
-  const stale = items.filter((i) => cartItemState(i).state === "choose-again");
-  const blocked = items.map((i) => orderGate(variantFor(i.material, i.size, i.finish), mode)).find((g) => !g.ok);
+  const retained = items.filter((i) => billableSeats(i) > 0);
+  const stale = retained.filter((i) => cartItemState(i).state === "choose-again");
+  const blocked = retained.map((i) => orderGate(variantFor(i.material, i.size, i.finish), mode)).find((g) => !g.ok);
   const hold = stale.length > 0 ? `${stale.length === 1 ? "One stub needs" : `${stale.length} stubs need`} you to choose again before you can pay.` : blocked && !blocked.ok ? blocked.message : "";
 
   // Signed out, Pay opens the sign-in sheet first; "Continue as guest" (or being signed in) goes straight on.
   function pay() {
-    if (paid) return;
+    if (paid || retained.length === 0) return;
     if (!hold && !receipt.problem && askToSignIn(receipt, () => guestPlacement.current?.())) return;
     placeAsGuest();
   }
   function placeAsGuest() {
-    if (paidRef.current || paid || items.length === 0) return;
+    if (paidRef.current || paid || retained.length === 0) return;
     if (!checkoutBegun.current) {
       checkoutBegun.current = true;
       const t = cartTotals(items);
-      flow("begin_checkout", { currency: "USD", value: major(t.totalMinor), item_id: items.length === 1 ? variantId(items[0].material, items[0].finish, items[0].size) : undefined, item_count: items.length, context: "cart", capability: "sandbox" });
+      flow("begin_checkout", { currency: "USD", value: major(t.totalMinor), item_id: retained.length === 1 ? variantId(retained[0].material, retained[0].finish, retained[0].size) : undefined, item_count: retained.length, context: "cart", capability: "sandbox" });
     }
     if (hold) {
       flow("checkout_invalid", { reason: stale.length > 0 ? "choose_again" : "variant_blocked" });
@@ -116,17 +117,17 @@ export default function CartClient() {
     flow("add_payment_info", { payment_type: "card", capability: "sandbox" });
     const totals = cartTotals(items);
     placeOrder({
-      stubIds: items.map((i) => i.stubId),
-      lines: items.map((i) => ({ title: i.title, material: i.material, finish: i.finish, size: i.size, totalMinor: i.unitMinor * billableSeats(i), variantStatus: variantFor(i.material, i.size, i.finish)?.status })),
+      stubIds: retained.map((i) => i.stubId),
+      lines: retained.map((i) => ({ title: i.title, material: i.material, finish: i.finish, size: i.size, totalMinor: i.unitMinor * billableSeats(i), variantStatus: variantFor(i.material, i.size, i.finish)?.status })),
       capabilityVersion: CAPABILITY_VERSION,
       totalMinor: totals.totalMinor,
       currency: "USD",
       // one quote names the order only when the cart holds one priced item
-      quoteId: items.length === 1 ? items[0].quoteId : undefined,
+      quoteId: retained.length === 1 ? retained[0].quoteId : undefined,
       method: "card",
       email: receipt.email || undefined,
     }, () => {
-      for (const i of items) {
+      for (const i of retained) {
         const st = stubs[i.stubId];
         if (st) upsertStub({ ...st, material: i.material, finish: i.finish, torn: true });
       }
@@ -147,6 +148,10 @@ export default function CartClient() {
     <PageShell back={{ href: "/wall", label: "Wall" }} title="Your cart">
       {!mounted ? null : items.length === 0 ? (
         <EmptyState kind="cart" title="Nothing in your cart yet." body="Print a stub from your wall, or build a matching set for the people you went with. It lands here until you pay.">
+          <StampLink href="/wall">Open your wall</StampLink>
+        </EmptyState>
+      ) : retained.length === 0 && !paid ? (
+        <EmptyState kind="cart" title="No seats left to check out." body="This cart has no retained seats. Nothing will be charged. Add a stub from your wall to start again.">
           <StampLink href="/wall">Open your wall</StampLink>
         </EmptyState>
       ) : (
@@ -177,12 +182,13 @@ export default function CartClient() {
                           </TearLink>
                         </div>
                       </div>
-                      {item.seats.length > 1 ? (
+                      {Array.isArray(item.seats) && item.seats.length > 1 ? (
                         <div className={s.seats}>
                           <Rule kind="perf" />
                           <p className="desk-label">Matching set · {item.seats.length} seats</p>
                           <ul className={s.seatList}>
                             {item.seats.map((seat, i) => {
+                              if (!seat || typeof seat !== "object") return null;
                               const open = !seat.claimed && !seat.decision;
                               const label = `${seat.name}${seat.seat ? ` · ${seat.seat}` : ""}`;
                               return (

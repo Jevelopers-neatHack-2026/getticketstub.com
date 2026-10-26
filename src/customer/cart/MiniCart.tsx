@@ -21,9 +21,10 @@ import m from "./MiniCart.module.css";
 type Phase = "closed" | "open" | "closing";
 
 function seatLine(item: CartItem): string {
+  if (billableSeats(item) === 0) return "No retained seats · not charged";
   if (item.seats.length < 2) return "Just you";
-  const open = item.seats.filter((s) => !s.claimed && !s.decision).length;
-  const claimed = item.seats.filter((s) => s.claimed).length;
+  const open = item.seats.filter((s) => s && typeof s === "object" && !s.claimed && !s.decision).length;
+  const claimed = item.seats.filter((s) => s && typeof s === "object" && s.claimed).length;
   return `Set of ${item.seats.length} · ${claimed} claimed${open ? `, ${open} not claimed yet` : ""}`;
 }
 
@@ -236,7 +237,9 @@ export function MiniCart() {
             </dl>
             <Stamp
               block
+              disabled={!items.some((item) => billableSeats(item) > 0)}
               onClick={() => {
+                if (!items.some((item) => billableSeats(item) > 0)) return;
                 closeMiniCart();
                 router.push("/cart#pay");
               }}

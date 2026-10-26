@@ -184,14 +184,15 @@ export interface CartSeat {
   decision?: SeatDecision;
 }
 
-/** Seats that are still paid for (dropped seats are refunded). */
+/** Seats retained in the quote. Empty or missing legacy seat arrays never imply a one-seat purchase. */
 export function billableSeats(item: CartItem): number {
-  return Math.max(1, item.seats.filter((x) => x.decision !== "drop").length);
+  if (!Array.isArray(item.seats)) return 0;
+  return item.seats.filter((x) => x && typeof x === "object" && x.decision !== "drop").length;
 }
 
 export function cartTotals(items: CartItem[]) {
   const itemsMinor = items.reduce((sum, i) => sum + i.unitMinor * billableSeats(i), 0);
-  const shippingMinor = items.some((i) => i.material !== "digital") ? SHIPPING_ESTIMATE_MINOR : 0;
+  const shippingMinor = items.some((i) => i.material !== "digital" && billableSeats(i) > 0) ? SHIPPING_ESTIMATE_MINOR : 0;
   return { itemsMinor, shippingMinor, totalMinor: itemsMinor + shippingMinor };
 }
 
