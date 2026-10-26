@@ -11,6 +11,8 @@ import { BlockedDestinationError, fetchPublic, INTAKE_LIMITS, parseIntakeUrl, re
 import { annotate, fetchFailure, observeRoute, providerObserver, recordParse, sourceTimer, type SourceName, type SourceOutcome } from "@/server/observability/measure";
 import { AccessRestrictedError, isAccessChallenge, isRestrictedEvent, manualFallback, providerForUrl, providerLabel } from "@/customer/studio/research/access";
 import { eventFromManual, readManualDetails } from "@/customer/studio/research/manual";
+import { decodeHtmlEntities, findJsonLdEvents } from "@/customer/studio/research/jsonLd";
+import { parseTicketinoUrl, ticketinoEvent, type TicketinoEventLink } from "@/customer/studio/research/ticketino";
 
 // Research an event from a link. Real page fetch + schema.org parse + Open-Meteo weather.
 // Every fact carries source + provenance: "live" only for values fetched in this request,
@@ -68,7 +70,7 @@ function searchFixtures(query: string): EventData[] {
 
 // ---------- Page fetch + parse ----------
 
-async function fetchPage(url: string): Promise<string> {
+async function fetchPage(url: string, ticketino?: TicketinoEventLink): Promise<string> {
   // Event sites sometimes reset a connection or return a transient 5xx. Retry once so a brief
   // upstream wobble does not turn into an unreadable-link response; timeouts and 4xx stay final.
   for (let attempt = 0; attempt < 2; attempt++) {
@@ -80,7 +82,10 @@ async function fetchPage(url: string): Promise<string> {
         headers: { "user-agent": UA, accept: "text/html,application/xhtml+xml" },
         signal: AbortSignal.timeout(8000),
         cache: "no-store",
-      });
+      }, ticketino ? (destination) => {
+        const next = parseTicketinoUrl(destination);
+        return next?.kind === "event" && next.id === ticketino.id;
+      } : undefined);
     } catch (error) {
       const outcome = fetchFailure(error);
       done(outcome);
@@ -139,17 +144,7 @@ async function fetchSourceJson<T>(source: SourceName, url: string): Promise<T | 
   }
 }
 
-function decodeEntities(s: string): string {
-  return s
-    .replace(/&amp;/g, "&")
-    .replace(/&quot;/g, '"')
-    .replace(/&#0?39;|&apos;/g, "'")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&#(\d+);/g, (_, d: string) => String.fromCharCode(Number(d)))
-    .trim();
-}
+const decodeEntities = decodeHtmlEntities;
 
 function metaContent(html: string, key: string): string | undefined {
   const re1 = new RegExp(`<meta[^>]+(?:property|name)=["']${key}["'][^>]*content=["']([^"']*)["']`, "i");
@@ -173,35 +168,13 @@ function pageText(html: string): string {
   ).slice(0, 8000);
 }
 
-const EVENT_TYPES = /(^|:)(Event|MusicEvent|SportsEvent|TheaterEvent|ComedyEvent|DanceEvent|Festival|ExhibitionEvent|SocialEvent|EducationEvent|BusinessEvent)$/;
-
 function typesOf(node: Json): string[] {
   const t = node["@type"];
   return (Array.isArray(t) ? t : [t]).filter((x): x is string => typeof x === "string");
 }
 
-function collectNodes(v: unknown, out: Json[]): void {
-  if (Array.isArray(v)) v.forEach((x) => collectNodes(x, out));
-  else if (v && typeof v === "object") {
-    const o = v as Json;
-    out.push(o);
-    if (o["@graph"]) collectNodes(o["@graph"], out);
-    if (o.subEvent) collectNodes(o.subEvent, out);
-  }
-}
-
 function findJsonLdEvent(html: string): Json | undefined {
-  const re = /<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
-  const nodes: Json[] = [];
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(html))) {
-    try {
-      collectNodes(JSON.parse(m[1].trim()), nodes);
-    } catch {
-      /* malformed block: skip */
-    }
-  }
-  return nodes.find((n) => typesOf(n).some((t) => EVENT_TYPES.test(t)));
+  return findJsonLdEvents(html)[0];
 }
 
 const str = (v: unknown): string | undefined => (typeof v === "string" && v.trim() ? decodeEntities(v) : undefined);
@@ -253,8 +226,12 @@ interface Extracted {
   dateConfidence: number;
 }
 
-function extract(html: string, url: string): Extracted | undefined {
+function extract(html: string, url: string, ticketino?: TicketinoEventLink): Extracted | undefined {
   const text = pageText(html);
+  if (ticketino) {
+    const event = ticketinoEvent(findJsonLdEvents(html), ticketino);
+    return event ? { parser: "schema_org", event, text, dateConfidence: 0.9 } : undefined;
+  }
   const node = findJsonLdEvent(html);
   const facts: Fact[] = [];
 
@@ -565,6 +542,9 @@ export const POST = route(observeRoute("research", async (req: Request) => {
   const live = process.env.TICKETSTUB_RUNTIME_MODE === "live";
   if (url && live && isRestrictedEvent(url)) return restricted(req, url);
   if (url && live && providerForUrl(url)?.id === "ra") return intakeRefusal(req, 422, "unsupported_url", "Use a Resident Advisor event link, not a listing or profile page.");
+  const ticketino = url && live ? parseTicketinoUrl(url) : undefined;
+  if (ticketino?.kind === "not_event") return intakeRefusal(req, 422, "unsupported_url", "Open a single TICKETINO event and copy its link. Event groups and categories cannot make a dated stub.");
+  if (ticketino?.kind === "event") url = new URL(ticketino.url);
   const tmLink = url && live ? parseTicketmasterUrl(url) : undefined;
   let tmMeta: TicketmasterMeta | undefined;
   if (tmLink) {
@@ -630,8 +610,8 @@ export const POST = route(observeRoute("research", async (req: Request) => {
 
   await recordEvent(req, "research_started", { source: tmLink ? "ticketmaster" : "link" });
   try {
-    const html = await fetchPage(url.toString());
-    const ex = extract(html, url.toString());
+    const html = await fetchPage(url.toString(), ticketino?.kind === "event" ? ticketino : undefined);
+    const ex = extract(html, url.toString(), ticketino?.kind === "event" ? ticketino : undefined);
     recordParse({ parser: ex?.parser ?? "none", facts: ex?.event.facts.length ?? 0, date: !!ex?.event.dateISO });
     if (!ex) return tmFallback();
     const { event } = ex;

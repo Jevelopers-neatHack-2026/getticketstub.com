@@ -301,11 +301,12 @@ export function setTransport(next?: Transport): void {
  * re-validated (scheme, credentials, port, length, literal host) and then connected through the
  * pinned transport, which validates the resolved address at connect time.
  */
-export async function fetchPublic(start: string | URL, init: RequestInit = {}): Promise<Response> {
+export async function fetchPublic(start: string | URL, init: RequestInit = {}, destinationAllowed?: (url: URL) => boolean): Promise<Response> {
   let url = typeof start === "string" ? new URL(start) : start;
   for (let hop = 0; ; hop++) {
     const check = checkUrl(url);
     if (!check.ok) throw new BlockedDestinationError(check.reason);
+    if (destinationAllowed && !destinationAllowed(check.url)) throw new BlockedDestinationError("blocked_destination");
     const res = await transport(check.url, init);
     if (res.status < 300 || res.status >= 400 || res.status === 304) return res;
     const location = res.headers.get("location");
