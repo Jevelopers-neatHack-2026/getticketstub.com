@@ -11,10 +11,13 @@ import { BlockedDestinationError, fetchPublic, INTAKE_LIMITS, parseIntakeUrl, re
 import { annotate, fetchFailure, observeRoute, providerObserver, recordParse, sourceTimer, type SourceName, type SourceOutcome } from "@/server/observability/measure";
 import { AccessRestrictedError, isAccessChallenge, isRestrictedEvent, manualFallback, providerForUrl, providerLabel } from "@/customer/studio/research/access";
 import { eventFromManual, readManualDetails } from "@/customer/studio/research/manual";
+import { supportsEnrichedFact } from "@/customer/studio/research/factEvidence";
 
 // Research an event from a link. Real page fetch + schema.org parse + Open-Meteo weather.
 // Every fact carries source + provenance: "live" only for values fetched in this request,
 // "simulated" for fixtures, "pending" for unknowns (EVAL-03 / AGT-01).
+// Provenance describes retrieval; it is not a guarantee of correctness. Model-only
+// interpretations remain estimated unless a conservative literal extraction supports them.
 
 const UA = "TicketStubResearch/0.1 (+https://getticketstub.com; event research for personal keepsakes)";
 const READ_ERROR = "We couldn't read that link.";
@@ -373,6 +376,7 @@ async function llmFacts(event: EventData, text: string, url: string, signal: Abo
 Event: ${event.title}${event.dateISO ? ` on ${event.dateISO}` : ""}${event.venue ? ` at ${event.venue}` : ""}.
 Return ONLY a JSON array (max 4 items) of objects {"id": "opener"|"tour"|"run"|"other", "label": short stub text (max 28 chars), "value": string, "evidence": exact short quote from the page, "confidence": 0..1}.
 Only include facts stated on the page. If nothing is stated, return [].
+Prefer verbatim field/value statements (for example "Opener: Example Band"); preserve uncertainty and do not infer a role from an unrelated mention.
 
 PAGE TEXT:
 ${text.slice(0, 6000)}`;
@@ -384,13 +388,12 @@ ${text.slice(0, 6000)}`;
     if (!json) throw new ProviderError("invalid_provider_response");
     const items = JSON.parse(json) as { id?: string; label?: string; value?: string; evidence?: string; confidence?: number }[];
     if (!Array.isArray(items) || items.some((i) => !i || typeof i !== "object" || typeof i.label !== "string" || typeof i.value !== "string" || (i.evidence !== undefined && typeof i.evidence !== "string"))) throw new ProviderError("invalid_provider_response");
-    const lowerText = text.toLowerCase();
     return uniqueFacts(items
       .filter((i) => i.label && i.value)
       .slice(0, 4)
       .map((i) => {
-        // Only trust as "live" when the quoted evidence really appears on the fetched page.
-        const grounded = typeof i.evidence === "string" && i.evidence.trim().length > 0 && i.evidence.length <= 2000 && lowerText.includes(i.evidence.toLowerCase());
+        // Quote presence alone cannot support the value or the role printed on the stub.
+        const grounded = supportsEnrichedFact(text, { ...i, label: i.label!, value: i.value! });
         return {
           id: i.id && ["opener", "tour", "run"].includes(i.id) ? i.id : "note",
           label: String(i.label).slice(0, 40),

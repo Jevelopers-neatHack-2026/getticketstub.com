@@ -101,7 +101,7 @@ for (const model of ["anthropic/test-model", "openai/test-model"]) test(`OpenRou
   assert.ok(!JSON.stringify(result).includes("discard"));
 });
 
-test("research keeps page citation and rejects ungrounded evidence as estimated", async () => {
+test("research keeps page citation without inferring an opener from a special-guest quote", async () => {
   configure("research");
   globalThis.fetch = async (url, init) => {
     if (url === "https://example.com/test-event") return new Response('<script type="application/ld+json">{"@type":"MusicEvent","name":"Offline Test"}</script><p>Special guest Local Band.</p>');
@@ -118,7 +118,8 @@ test("research keeps page citation and rejects ungrounded evidence as estimated"
   assert.equal(res.status, 200);
   const result = await res.json();
   const fact = result.facts.find(f => f.id === "opener");
-  assert.equal(fact.sourceUrl, "https://example.com/test-event"); assert.equal(fact.provenance, "live");
+  assert.equal(fact.sourceUrl, "https://example.com/test-event"); assert.equal(fact.provenance, "estimated");
+  assert.ok(fact.confidence <= 0.5);
   assert.equal(result.facts.find(f => f.id === "tour").provenance, "estimated");
   assert.equal(result.providerMetadata.provider, "openrouter");
 });
